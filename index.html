@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#1A1D2E"/>
+<title>Project Board V27</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+input{font-family:inherit;outline:none}
+
+/* ── Header ── */
+.hdr{background:#1A1D2E;color:#fff;padding:11px 13px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;gap:6px;flex-wrap:wrap}
+.hdr-l{display:flex;align-items:center;gap:9px}
+.hdr-r{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.logo{font-size:22px;color:#F59E0B}
+.h1{font-size:15px;font-weight:700}
+.h2{font-size:10px;color:#9CA3AF;margin-top:1px}
+.btn{border:none;border-radius:7px;padding:6px 9px;font-weight:700;font-size:11px;cursor:pointer}
+.bg{background:#374151;color:#fff}
+.bp{background:#8B5CF6;color:#fff}
+.bi{background:#6366F1;color:#fff}
+.ba{background:#F59E0B;color:#1A1D2E}
+.bgr{background:#10B981;color:#fff}
+.sdot{font-size:10px;font-weight:600;min-width:12px}
+
+/* ── Section divider ── */
+.sdiv{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#1A1D2E}
+.sline{flex:1;height:2px;background:repeating-linear-gradient(90deg,#374151 0,#374151 5px,transparent 5px,transparent 9px)}
+.stxt{font-size:12px;font-weight:800;color:#F1F5F9;letter-spacing:.18em;white-space:nowrap}
+
+/* ── NEXT section ── */
+.nrow{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid #E5E7EB;background:#fff}
+.ndot{width:8px;height:8px;border-radius:50%;background:#F59E0B;flex-shrink:0;pointer-events:none}
+.nproj{font-size:12px;font-weight:700;color:#1E293B;flex-shrink:0;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+.narr{font-size:10px;color:#94A3B8;flex-shrink:0;pointer-events:none}
+.ntask{font-size:12px;color:#374151;flex:1;line-height:1.4;word-break:break-word;pointer-events:auto;cursor:pointer}
+.ndel{background:none;border:none;color:#D1D5DB;cursor:pointer;font-size:11px;padding:4px;flex-shrink:0}
+.nadd-bar{padding:6px 10px;border-bottom:1px solid #E5E7EB;background:#FAFAFA}
+.nadd-inp{border:1px solid #F59E0B;border-radius:6px;padding:5px 8px;font-size:12px;flex:1;max-width:240px}
+.nadd-btn{background:none;border:1px dashed #F59E0B;border-radius:6px;padding:4px 10px;font-size:11px;color:#F59E0B;font-weight:700;cursor:pointer}
+/* ── Merge toggle (div, nu input — fiabil pe Android) ── */
+.nmerge{width:20px;height:20px;border:2px solid #D1D5DB;border-radius:5px;background:#fff;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:transparent;transition:background .15s,border-color .15s;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.nmerge.on{background:#F59E0B;border-color:#F59E0B;color:#1A1D2E}
+/* ── Merge bar ── */
+.merge-bar{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8EC;border-bottom:2px solid #F59E0B}
+.merge-count{font-size:11px;font-weight:700;color:#92400E}
+.merge-btn{background:#F59E0B;color:#1A1D2E;border:none;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:800;cursor:pointer;touch-action:manipulation}
+.merge-clear{background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;touch-action:manipulation}
+
+/* ── Col headers ── */
+.chdr{display:grid;grid-template-columns:110px 1fr 1fr 1fr;background:#1A1D2E;border-bottom:1px solid #2D3048;position:sticky;top:50px;z-index:100}
+.chdr-p{padding:7px 8px;font-size:9px;font-weight:700;color:#9CA3AF;letter-spacing:.1em}
+.chdr-c{padding:7px 6px;display:flex;align-items:center;gap:4px}
+.chdr-lbl{font-size:10px;font-weight:700;letter-spacing:.04em}
+.chdr-cnt{margin-left:auto;border-radius:99px;font-size:9px;font-weight:700;padding:1px 5px;color:#fff}
+
+/* ── Add bar ── */
+.abar{display:flex;gap:7px;align-items:center;padding:8px 11px;border-bottom:1px solid #E5E7EB}
+.abar input{flex:1;border:1px solid #3B82F6;border-radius:7px;padding:7px 10px;font-size:13px;max-width:270px}
+.abar.sec{background:#F5F3FF}.abar.sec input{border-color:#6366F1}
+.abar.proj{background:#EFF6FF}
+
+/* ── Section row ── */
+.srow{display:flex;align-items:center;justify-content:center;padding:12px 18px;background:#F0EDFF;border-bottom:1px solid #DDD6FE;border-top:1px solid #DDD6FE;position:relative;transition:background .12s}
+.srow.dov{background:#EDE9FE;box-shadow:inset 0 0 0 2px #6366F1}
+.srow.drg{opacity:.3}
+.sname{font-size:13px;font-weight:700;color:#4338CA;letter-spacing:.02em}
+.shandle{font-size:17px;color:#A5B4FC;cursor:grab;touch-action:none;user-select:none;position:absolute;left:11px}
+.sdel{background:none;border:none;color:#C4B5FD;cursor:pointer;font-size:11px;position:absolute;right:11px;padding:4px}
+
+/* ── Project row ── */
+.prow{display:grid;grid-template-columns:110px 1fr 1fr 1fr;border-bottom:1px solid #E5E7EB;background:#fff;min-height:58px;transition:background .12s,opacity .12s}
+.prow.dov{background:#EEF2FF;box-shadow:inset 0 0 0 2px #6366F1}
+.prow.drg{opacity:.3}
+.pnc{display:flex;align-items:flex-start;gap:4px;padding:8px 5px;border-right:1px solid #F3F4F6}
+.phandle{font-size:17px;color:#CBD5E1;cursor:grab;flex-shrink:0;touch-action:none;user-select:none;padding:1px 2px}
+.pname{font-size:12px;font-weight:600;color:#1A1D2E;flex:1;line-height:1.4;word-break:break-word}
+.pdel{background:none;border:none;color:#D1D5DB;cursor:pointer;font-size:11px;padding:2px;flex-shrink:0}
+
+/* ── Task cell ── */
+.tcell{padding:5px 4px 4px;display:flex;flex-direction:column;gap:4px;border-right:1px solid #F3F4F6;transition:background .12s}
+.tcell.don{outline:2px dashed currentColor;outline-offset:-2px;border-radius:4px}
+.tcard{background:#F9FAFB;border-top:1px solid #E5E7EB;border-right:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;border-radius:6px;padding:5px 5px;display:flex;align-items:center;gap:4px;touch-action:none;transition:opacity .12s}
+.tcard.drg{opacity:.3}
+.tname{font-size:11px;color:#374151;flex:1;line-height:1.4;word-break:break-word}
+.tdel{background:none;border:none;color:#D1D5DB;cursor:pointer;font-size:10px;padding:3px 4px;flex-shrink:0}
+.atw{display:flex;gap:3px;align-items:center}
+.ati{border:1px dashed #D1D5DB;border-radius:5px;padding:3px 4px;font-size:10px;color:#9CA3AF;background:transparent;flex:1;min-width:0;width:0}
+.atb{background:#E5E7EB;border:none;border-radius:4px;width:20px;height:20px;font-size:13px;color:#6B7280;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0}
+
+/* ── Edit input ── */
+.einp{border:1px solid #6366F1;border-radius:4px;padding:2px 5px;font-size:12px;width:100%}
+
+/* ── Ghost ── */
+#ghost{position:fixed;background:#1A1D2E;color:#fff;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:700;pointer-events:none;z-index:9999;opacity:.93;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:rotate(-2deg);display:none}
+
+/* ── Journal ── */
+.je{border-bottom:1px solid #E5E7EB;padding:8px 13px}
+.jdate{font-size:10px;color:#9CA3AF;margin-left:5px}
+.jtask{font-size:12px;color:#374151;padding:2px 0 2px 12px}
+.jmove{font-size:11px;color:#6B7280;padding:2px 0 2px 12px;font-style:italic}
+.sw{display:flex;align-items:center;background:#2D3348;border-radius:6px;padding:2px 6px;gap:3px}
+.si{background:transparent;border:none;color:#fff;font-size:12px;width:100px;outline:none}
+.si::placeholder{color:#6B7280}
+.sbtn{background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:13px;padding:1px 3px}
+.srp{background:#fff}
+.srp-h{padding:7px 13px;background:#1E2130;color:#9CA3AF;font-size:11px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.sri{padding:8px 13px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;gap:7px;font-size:12px}
+.sbg{font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px;flex-shrink:0}
+#top-btn{position:fixed;bottom:22px;right:16px;z-index:500;background:#1A1D2E;color:#F59E0B;border:2px solid #F59E0B;border-radius:50%;width:46px;height:46px;font-size:20px;font-weight:700;cursor:pointer;touch-action:manipulation;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;line-height:1}
+</style>
+</head>
+<body>
+<div id="ghost"></div>
+<div id="app"></div>
+<button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>
+'use strict';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V27';
+const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
+const CN={next:'To Do',wait:'Wait',done:'Done'};
+const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1';
+const DEF=[
+  {type:'project',id:'id_5p0uklazf',name:'Analize',tasks:[]},
+  {type:'project',id:'id_4ga7df4nt',name:'Liana-bucuresti',tasks:[]},
+  {type:'project',id:'id_he7ifnjpc',name:'Hol _ scandal',tasks:[]},
+  {type:'project',id:'id_euf0gd27v',name:'Focsani',tasks:[]},
+  {type:'project',id:'id_thwut2708',name:'Creta',tasks:[]},
+  {type:'section',id:'id_2wd1ntcry',name:'Asociatie - primarie'},
+  {type:'project',id:'id_3h9dl66c9',name:'Porumbei',tasks:[]},
+  {type:'project',id:'id_5v3149vew',name:'Cartela postas',tasks:[]},
+  {type:'project',id:'id_xq4k58x3r',name:'Parcare',tasks:[]},
+  {type:'section',id:'id_1hm20h8ts',name:'Dorin'},
+  {type:'project',id:'id_7hmx4niul',name:'Dorin asigurare accidente',tasks:[]},
+  {type:'project',id:'id_uoxfhx8d9',name:'Dorin - inchide firma',tasks:[]},
+  {type:'project',id:'id_68qlyjsfl',name:'Dorin PFA',tasks:[]},
+  {type:'section',id:'id_b7sfbirh0',name:'Chiriasi'},
+  {type:'project',id:'id_dyo0s8ha3',name:'6 chirie Diana',tasks:[]},
+  {type:'project',id:'id_zry7fca4n',name:'8 buletin',tasks:[]},
+  {type:'project',id:'id_hunpve3f0',name:'8 chirie - spv',tasks:[]},
+  {type:'project',id:'id_42m58rjyu',name:'8-mobila',tasks:[]},
+];
+
+// ── State ──
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],mergeFlags:{},view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false};
+function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
+function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
+function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
+function fmt(ts){const d=new Date(ts);return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});}
+function init(){const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));S.journal=ls(JK)||[];S.nextOrder=ls(NK)||[];S.freeTasks=ls(FK)||[];S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};}
+let saveT=null;
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
+function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);}
+function je(e){S.journal.push(e);lw(JK,S.journal);}
+
+// ── Next rows ──
+// nextOrder stochează: {type:'proj',projectId,taskId} sau {type:'free',id}
+// Logica selecție din To Do → NEXT:
+//   - dacă proiectul are un singur task în To Do → apare automat în NEXT
+//   - dacă are mai multe → doar cele care încep cu '*' apar în NEXT
+//   - în NEXT numele apare fără asterisk
+function getEligibleTodoPairs() {
+  const pairs = [];
+  S.items.forEach(it => {
+    if (it.type !== 'project') return;
+    const todos = (it.tasks || []).filter(t => t.status === 'next');
+    if (todos.length === 0) return;
+    if (todos.length === 1) {
+      // Singurul task → eligibil automat
+      pairs.push({ projectId: it.id, taskId: todos[0].id, warn: false });
+    } else {
+      const starred = todos.filter(t => t.name.startsWith('*'));
+      if (starred.length > 0) {
+        // Există * → doar cele cu *
+        starred.forEach(t => pairs.push({ projectId: it.id, taskId: t.id, warn: false }));
+      } else {
+        // Niciun * → toate apar cu avertisment
+        todos.forEach(t => pairs.push({ projectId: it.id, taskId: t.id, warn: true }));
+      }
+    }
+  });
+  return pairs;
+}
+
+function getNR(){
+  const eligibleProj = getEligibleTodoPairs();
+  const allFree = S.freeTasks.map(f => ({ type: 'free', id: f.id }));
+
+  const projKeys = new Set(eligibleProj.map(x => x.projectId + '::' + x.taskId));
+  const freeKeys = new Set(allFree.map(x => x.id));
+
+  // Filtrăm nextOrder — păstrăm doar ce e eligibil și există încă
+  const clean = S.nextOrder.filter(x => {
+    if (x.type === 'free') return freeKeys.has(x.id);
+    return projKeys.has((x.projectId || '') + '::' + (x.taskId || ''));
+  });
+
+  // Adăugăm la final ce e eligibil dar nu e încă în ordine
+  const inOrder = new Set(clean.map(x => x.type === 'free' ? 'f::' + x.id : (x.projectId + '::' + x.taskId)));
+  const newProj = eligibleProj.filter(x => !inOrder.has(x.projectId + '::' + x.taskId))
+    .map(x => ({ type: 'proj', projectId: x.projectId, taskId: x.taskId }));
+  const newFree = allFree.filter(x => !inOrder.has('f::' + x.id));
+  const unified = [...clean, ...newProj, ...newFree];
+
+  // Map warn pe unified din eligibleProj
+  const warnMap = new Map(eligibleProj.map(x => [x.projectId + '::' + x.taskId, x.warn]));
+
+  // Mapăm la rows — eliminăm * din nume la afișare
+  return unified.map(x => {
+    if (x.type === 'free') {
+      const f = S.freeTasks.find(ft => ft.id === x.id);
+      if (!f) return null;
+      return { isFree: true, id: f.id, pname: '—', tname: f.name, warn: false };
+    }
+    const p = S.items.find(it => it.id === x.projectId);
+    const t = p?.tasks?.find(t => t.id === x.taskId);
+    if (!p || !t) return null;
+    const displayName = t.name.startsWith('*') ? t.name.slice(1).trimStart() : t.name;
+    const warn = warnMap.get(x.projectId + '::' + x.taskId) || false;
+    return { isFree: false, projectId: x.projectId, taskId: x.taskId, pname: p.name, tname: displayName, warn };
+  }).filter(Boolean);
+}
+
+// ── WAITING rows — toate task-urile cu status 'wait' ──────────
+function getWR(){
+  const allProj=[];
+  S.items.forEach(it=>{
+    if(it.type!=='project')return;
+    (it.tasks||[]).forEach(t=>{if(t.status==='wait')allProj.push({type:'proj',projectId:it.id,taskId:t.id});});
+  });
+  const allFree=S.waitFreeTasks.map(f=>({type:'free',id:f.id}));
+  const projKeys=new Set(allProj.map(x=>x.projectId+'::'+x.taskId));
+  const freeKeys=new Set(allFree.map(x=>x.id));
+
+  const clean=S.waitOrder.filter(x=>{
+    if(x.type==='free')return freeKeys.has(x.id);
+    return projKeys.has((x.projectId||'')+'::'+( x.taskId||''));
+  });
+  const inOrder=new Set(clean.map(x=>x.type==='free'?'f::'+x.id:(x.projectId+'::'+x.taskId)));
+  const newProj=allProj.filter(x=>!inOrder.has(x.projectId+'::'+x.taskId));
+  const newFree=allFree.filter(x=>!inOrder.has('f::'+x.id));
+  const unified=[...clean,...newProj,...newFree];
+
+  return unified.map(x=>{
+    if(x.type==='free'){
+      const f=S.waitFreeTasks.find(ft=>ft.id===x.id);
+      if(!f)return null;
+      return {isFree:true,id:f.id,pname:'—',tname:f.name};
+    }
+    const p=S.items.find(it=>it.id===x.projectId);
+    const t=p?.tasks?.find(t=>t.id===x.taskId);
+    if(!p||!t)return null;
+    return {isFree:false,projectId:x.projectId,taskId:x.taskId,pname:p.name,tname:t.name};
+  }).filter(Boolean);
+}
+const ghost=document.getElementById('ghost');
+function sg(txt,x,y,col){ghost.textContent=txt;ghost.style.background=col||'#1A1D2E';ghost.style.left=x-24+'px';ghost.style.top=y-16+'px';ghost.style.display='block';}
+function mg(x,y){ghost.style.left=x-24+'px';ghost.style.top=y-16+'px';}
+function hg(){ghost.style.display='none';}
+
+// ── Drag ──
+let drag=null;
+// Hit test using bounding rects — works reliably on Android
+function hitCell(x,y){
+  const cells=document.querySelectorAll('.tcell');
+  for(let c of cells){const r=c.getBoundingClientRect();if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom)return c;}
+  return null;
+}
+function hitRow(x,y,skip){
+  const rows=document.querySelectorAll('[data-rid]');
+  for(let r of rows){if(r.dataset.rid===skip)continue;const b=r.getBoundingClientRect();if(x>=b.left&&x<=b.right&&y>=b.top&&y<=b.bottom)return r;}
+  return null;
+}
+function hitNextRow(x,y,skipIdx){
+  const rows=document.querySelectorAll('[data-nidx]');
+  for(let r of rows){if(parseInt(r.dataset.nidx)===skipIdx)continue;const b=r.getBoundingClientRect();if(x>=b.left&&x<=b.right&&y>=b.top&&y<=b.bottom)return r;}
+  return null;
+}
+function hitWaitRow(x,y,skipIdx){
+  const rows=document.querySelectorAll('[data-widx]');
+  for(let r of rows){if(parseInt(r.dataset.widx)===skipIdx)continue;const b=r.getBoundingClientRect();if(x>=b.left&&x<=b.right&&y>=b.top&&y<=b.bottom)return r;}
+  return null;
+}
+function clr(){
+  document.querySelectorAll('.dov').forEach(e=>e.classList.remove('dov'));
+  document.querySelectorAll('.tcell.don').forEach(e=>{e.classList.remove('don');e.style.background='';});
+  document.querySelectorAll('.nrow.dov').forEach(e=>e.classList.remove('dov'));
+}
+
+document.addEventListener('touchmove',e=>{
+  if(!drag)return;
+  e.preventDefault();
+  const t=e.touches[0];
+  mg(t.clientX,t.clientY);
+  clr();
+  if(drag.type==='next'){
+    const r=hitNextRow(t.clientX,t.clientY,drag.fromIdx);
+    if(r)r.classList.add('dov');
+    return;
+  }
+  if(drag.type==='wait'){
+    const r=hitWaitRow(t.clientX,t.clientY,drag.fromIdx);
+    if(r)r.classList.add('dov');
+    return;
+  }
+  if(drag.type==='task'){
+    const c=hitCell(t.clientX,t.clientY);
+    if(c){c.classList.add('don');const col=COLS.find(x=>x.id===c.dataset.col);if(col){c.style.background=col.bg;c.style.outlineColor=col.color;}}
+  } else {
+    const r=hitRow(t.clientX,t.clientY,drag.id);
+    if(r)r.classList.add('dov');
+  }
+},{passive:false});
+
+document.addEventListener('touchend',()=>{
+  if(!drag)return;
+  hg();
+
+  if(drag.type==='next'){
+    const toEl=document.querySelector('.nrow.dov');
+    if(toEl){
+      const toIdx=parseInt(toEl.dataset.nidx);
+      const fromIdx=drag.fromIdx;
+      const nr=getNR();
+      // Build unified key list
+      const ordered=nr.map(r=>r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId});
+      const [moved]=ordered.splice(fromIdx,1);
+      ordered.splice(toIdx,0,moved);
+      // Save unified order — also rebuild freeTasks order
+      S.nextOrder=ordered;
+      // Reorder freeTasks array to match new order
+      const newFreeTasks=[];
+      ordered.forEach(x=>{if(x.type==='free'){const f=S.freeTasks.find(ft=>ft.id===x.id);if(f)newFreeTasks.push(f);}});
+      // Add any freeTasks not in order (safety)
+      S.freeTasks.forEach(f=>{if(!newFreeTasks.find(x=>x.id===f.id))newFreeTasks.push(f);});
+      S.freeTasks=newFreeTasks;
+      lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+    }
+    clr();drag=null;render();return;
+  }
+
+  if(drag.type==='wait'){
+    const toEl=document.querySelector('[data-widx].dov');
+    if(toEl){
+      const toIdx=parseInt(toEl.dataset.widx);
+      const fromIdx=drag.fromIdx;
+      const wr=getWR();
+      const ordered=wr.map(r=>r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId});
+      const [moved]=ordered.splice(fromIdx,1);
+      ordered.splice(toIdx,0,moved);
+      S.waitOrder=ordered;
+      const newWF=[];
+      ordered.forEach(x=>{if(x.type==='free'){const f=S.waitFreeTasks.find(ft=>ft.id===x.id);if(f)newWF.push(f);}});
+      S.waitFreeTasks.forEach(f=>{if(!newWF.find(x=>x.id===f.id))newWF.push(f);});
+      S.waitFreeTasks=newWF;
+      lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);
+    }
+    clr();drag=null;render();return;
+  }
+
+  if(drag.type==='task'){
+    const c=document.querySelector('.tcell.don');
+    if(c&&c.dataset.col!==drag.colId){
+      const tc=c.dataset.col;
+      je({kind:'task-move',taskName:drag.tn,fromCol:drag.colId,toCol:tc,projectId:drag.pid,ts:Date.now()});
+      if(drag.colId==='next'){S.nextOrder=S.nextOrder.filter(x=>!(x.type==='proj'&&x.projectId===drag.pid&&x.taskId===drag.tid)||x.type==='free');lw(NK,S.nextOrder);}
+      if(tc==='next'){S.nextOrder=[...S.nextOrder,{type:'proj',projectId:drag.pid,taskId:drag.tid}];lw(NK,S.nextOrder);}
+      if(drag.colId==='wait'){S.waitOrder=S.waitOrder.filter(x=>!(x.type==='proj'&&x.projectId===drag.pid&&x.taskId===drag.tid));lw(WK,S.waitOrder);}
+      if(tc==='wait'){S.waitOrder=[...S.waitOrder,{type:'proj',projectId:drag.pid,taskId:drag.tid}];lw(WK,S.waitOrder);}
+      S.items=S.items.map(it=>it.type!=='project'||it.id!==drag.pid?it:{...it,tasks:it.tasks.map(t=>t.id===drag.tid?{...t,status:tc}:t)});
+      save();
+    }
+  } else if(drag.type==='row'){
+    const r=document.querySelector('[data-rid].dov');
+    if(r){const a=[...S.items],f=a.findIndex(x=>x.id===drag.id),t=a.findIndex(x=>x.id===r.dataset.rid);if(f>-1&&t>-1){const[m]=a.splice(f,1);a.splice(t,0,m);S.items=a;save();}}
+  }
+  clr();drag=null;render();
+});
+document.addEventListener('touchcancel',()=>{if(!drag)return;hg();clr();drag=null;});
+
+// ── Double tap ──
+const ltp={};
+function dbt(id,cb){const n=Date.now();if(n-(ltp[id]||0)<380){cb();ltp[id]=0;}else ltp[id]=n;}
+
+// ── Touch attach ──
+function attHandle(node,id,name,type){
+  node.addEventListener('touchstart',e=>{
+    e.preventDefault();e.stopPropagation();
+    const t=e.touches[0];
+    drag={type:'row',id,rowType:type};
+    node.closest('[data-rid]')?.classList.add('drg');
+    sg((type==='section'?'§ ':'⠿ ')+name,t.clientX,t.clientY,type==='section'?'#6366F1':'#1A1D2E');
+  },{passive:false});
+}
+function attNextHandle(node,idx,label){
+  node.addEventListener('touchstart',e=>{
+    e.preventDefault();e.stopPropagation();
+    const t=e.touches[0];
+    drag={type:'next',fromIdx:idx};
+    node.closest('[data-nidx]')?.classList.add('drg');
+    sg('⠿ '+label,t.clientX,t.clientY,'#0F172A');
+  },{passive:false});
+}
+function attWaitHandle(node,idx,label){
+  node.addEventListener('touchstart',e=>{
+    e.preventDefault();e.stopPropagation();
+    const t=e.touches[0];
+    drag={type:'wait',fromIdx:idx};
+    node.closest('[data-widx]')?.classList.add('drg');
+    sg('⠿ '+label,t.clientX,t.clientY,'#4F46E5');
+  },{passive:false});
+}
+function attCard(node,tid,pid,colId,tn){
+  node.addEventListener('touchstart',e=>{
+    e.preventDefault();e.stopPropagation();
+    const t=e.touches[0];
+    drag={type:'task',tid,tn,pid,colId};
+    node.classList.add('drg');
+    sg(tn,t.clientX,t.clientY);
+  },{passive:false});
+}
+
+// ── CRUD ──
+function archProj(id){
+  const p=S.items.find(x=>x.id===id);
+  if(p?.type==='project')je({kind:'project-archive',projectName:p.name,tasks:p.tasks,ts:Date.now()});
+  S.nextOrder=S.nextOrder.filter(x=>!(x.type==='proj'&&x.projectId===id));lw(NK,S.nextOrder);
+  S.waitOrder=S.waitOrder.filter(x=>!(x.type==='proj'&&x.projectId===id));lw(WK,S.waitOrder);
+  S.items=S.items.filter(x=>x.id!==id);save();render();
+}
+function delSec(id){S.items=S.items.filter(x=>x.id!==id);save();render();}
+function delTask(pid,tid){
+  S.nextOrder=S.nextOrder.filter(x=>!(x.type==='proj'&&x.projectId===pid&&x.taskId===tid));lw(NK,S.nextOrder);
+  S.waitOrder=S.waitOrder.filter(x=>!(x.type==='proj'&&x.projectId===pid&&x.taskId===tid));lw(WK,S.waitOrder);
+  S.items=S.items.map(x=>x.id===pid?{...x,tasks:x.tasks.filter(t=>t.id!==tid)}:x);save();render();
+}
+function addWaitFree(){
+  const name=S.wfree.trim();if(!name)return;
+  const ft={id:gid(),name,ts:Date.now()};
+  je({kind:'free-task-create',taskName:name,section:'wait',ts:ft.ts});
+  S.waitFreeTasks=[...S.waitFreeTasks,ft];
+  S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
+  lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
+  S.wfree='';S.showWFree=false;render();
+}
+function delWaitFree(id){
+  const f=S.waitFreeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,section:'wait',ts:Date.now()});
+  S.waitFreeTasks=S.waitFreeTasks.filter(x=>x.id!==id);
+  S.waitOrder=S.waitOrder.filter(x=>!(x.type==='free'&&x.id===id));
+  lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);render();
+}
+function addTask(pid,status){
+  const key=pid+'_'+status,name=(S.nt[key]||'').trim();if(!name)return;
+  const nt={id:gid(),name,status};
+  je({kind:'task-create',taskName:name,colId:status,projectId:pid,ts:Date.now()});
+  if(status==='next'){S.nextOrder=[...S.nextOrder,{type:'proj',projectId:pid,taskId:nt.id}];lw(NK,S.nextOrder);}
+  S.items=S.items.map(x=>x.id===pid?{...x,tasks:[...x.tasks,nt]}:x);S.nt[key]='';save();render();
+}
+function addFree(){
+  const name=S.nfree.trim();if(!name)return;
+  const ft={id:gid(),name,ts:Date.now()};
+  je({kind:'free-task-create',taskName:name,ts:ft.ts});
+  S.freeTasks=[...S.freeTasks,ft];
+  S.nextOrder=[...S.nextOrder,{type:'free',id:ft.id}];
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  S.nfree='';S.showFree=false;render();
+}
+function delFree(id){
+  const f=S.freeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,ts:Date.now()});
+  S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
+  S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
+}
+function confAdd(){
+  if(!S.addName.trim()||!S.showAdd)return;
+  const ni=S.showAdd==='section'?{type:'section',id:gid(),name:S.addName.trim()}:{type:'project',id:gid(),name:S.addName.trim(),tasks:[]};
+  S.items=[...S.items,ni];S.addName='';S.showAdd=null;save();render();
+}
+function doSearch(){
+  var q=S.sq.trim().toLowerCase();
+  if(!q){S.sr=null;render();return;}
+  var res=[];
+  S.items.forEach(function(item){
+    if(item.type==='section'){
+      if(item.name.toLowerCase().indexOf(q)>=0) res.push({k:'sec',name:item.name,id:item.id});
+      return;
+    }
+    if(item.name.toLowerCase().indexOf(q)>=0) res.push({k:'proj',name:item.name,id:item.id});
+    (item.tasks||[]).forEach(function(t){
+      if(t.name.toLowerCase().indexOf(q)>=0) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status});
+    });
+  });
+  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fn',name:f.name});});
+  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fw',name:f.name});});
+  S.sr=res;render();
+}
+function markDone(projectId, taskId, fromSection){
+  // Mută task-ul în done în proiect
+  je({kind:'task-move', taskName:'', fromCol:fromSection, toCol:'done', projectId:projectId, ts:Date.now()});
+  // Actualizăm taskName în jurnal
+  const proj = S.items.find(x=>x.id===projectId);
+  const task = proj && proj.tasks && proj.tasks.find(t=>t.id===taskId);
+  if(task){
+    S.journal[S.journal.length-1].taskName = task.name;
+    lw(JK, S.journal);
+  }
+  // Elimină din nextOrder/waitOrder
+  S.nextOrder = S.nextOrder.filter(x=>!(x.type==='proj'&&x.projectId===projectId&&x.taskId===taskId));
+  S.waitOrder = S.waitOrder.filter(x=>!(x.type==='proj'&&x.projectId===projectId&&x.taskId===taskId));
+  lw(NK, S.nextOrder); lw(WK, S.waitOrder);
+  // Mută task-ul în done
+  S.items = S.items.map(it=>{
+    if(it.type!=='project'||it.id!==projectId) return it;
+    return {...it, tasks: it.tasks.map(t=> t.id===taskId ? {...t, status:'done'} : t)};
+  });
+  save(); render();
+}
+
+function renderTaskText(node, text){
+  // Detectează URL-uri și le transformă în link-uri
+  var urlRegex=/(https?:\/\/[^\s]+)/g;
+  var parts=text.split(urlRegex);
+  parts.forEach(function(part){
+    if(urlRegex.test(part)){
+      var a=document.createElement('a');
+      a.href=part;
+      a.textContent=part;
+      a.target='_blank';
+      a.rel='noopener noreferrer';
+      a.style.cssText='color:#6366F1;text-decoration:underline;word-break:break-all;touch-action:manipulation';
+      a.addEventListener('touchend',function(e){e.stopPropagation();});
+      a.addEventListener('click',function(e){e.stopPropagation();});
+      node.appendChild(a);
+    } else if(part){
+      node.appendChild(document.createTextNode(part));
+    }
+    urlRegex.lastIndex=0;
+  });
+}
+function navigateTo(projectId){
+  S.sq='';S.sr=null;
+  render();
+  setTimeout(function(){
+    var el=document.querySelector('[data-rid="'+projectId+'"]');
+    if(!el)return;
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    var orig=el.style.background;
+    el.style.transition='background 0.3s';
+    el.style.background='#FEF9C3';
+    setTimeout(function(){el.style.background=orig||'';},1200);
+  },80);
+}
+function doCreateProject(freeId,projName,taskLabel){
+  var newId=gid();
+  var newTaskId=gid();
+  S.items=[...S.items,{type:'project',id:newId,name:projName,tasks:[{id:newTaskId,name:taskLabel,status:'next'}]}];
+  S.nextOrder=[...S.nextOrder,{type:'proj',projectId:newId,taskId:newTaskId}];
+  S.freeTasks=S.freeTasks.filter(function(x){return x.id!==freeId;});
+  S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===freeId);});
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  je({kind:'project-create',projectName:projName,fromFree:taskLabel,ts:Date.now()});
+  save();render();
+  setTimeout(function(){
+    var el=document.querySelector('[data-rid="'+newId+'"]');
+    if(!el)return;
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    var orig=el.style.background;
+    el.style.transition='background 0.3s';
+    el.style.background='#FEF9C3';
+    setTimeout(function(){el.style.background=orig||'';},1500);
+  },80);
+}
+function promoteToProject(freeId,taskName){
+  // Extrage titlul (prima linie) și URL-ul dacă există
+  var lines=taskName.split('\n');
+  var firstLine=lines[0].trim();
+  var urlLine=lines.find(function(l){return l.match(/^https?:\/\//);});
+
+  // Detectează prefix p: — ex: "p: Nume proiect"
+  var pMatch=firstLine.match(/^p:\s*(.+)/i);
+  if(pMatch){
+    var projName=pMatch[1].trim();
+    var taskLabel=urlLine||firstLine;
+    doCreateProject(freeId,projName,taskLabel);
+    return;
+  }
+
+  // Dacă taskName e URL sau conține URL ca titlu — cere nume proiect
+  var isUrl=firstLine.match(/^https?:\/\//);
+  var slashIdx=!isUrl?taskName.search(/[\/\\]/):(-1);
+
+  if(isUrl){
+    // Titlul e URL — cere nume proiect
+    var asked=window.prompt('Nume proiect:','');
+    if(!asked||!asked.trim())return;
+    doCreateProject(freeId,asked.trim(),urlLine||firstLine);
+    return;
+  }
+
+  if(slashIdx!==-1){
+    var projName=taskName.slice(slashIdx+1).trim()||taskName;
+    var taskLabel=taskName.slice(0,slashIdx).trim()||taskName;
+    doCreateProject(freeId,projName,taskLabel);
+    return;
+  }
+
+  // Text simplu — folosește ca nume proiect direct
+  doCreateProject(freeId,firstLine,firstLine);
+}
+function doExp(){
+  const b=new Blob([JSON.stringify({items:S.items,journal:S.journal,nextOrder:S.nextOrder,freeTasks:S.freeTasks},null,2)],{type:'application/json'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');
+  a.href=u;a.download='pb-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u);
+}
+function doImp(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const p=JSON.parse(ev.target.result);
+      if(Array.isArray(p)){S.items=p;lw(SK,p);}
+      else if(p.items){S.items=p.items;lw(SK,p.items);if(p.journal){S.journal=p.journal;lw(JK,p.journal);}if(p.nextOrder){S.nextOrder=p.nextOrder;lw(NK,p.nextOrder);}if(p.freeTasks){S.freeTasks=p.freeTasks;lw(FK,p.freeTasks);}if(p.waitOrder){S.waitOrder=p.waitOrder;lw(WK,p.waitOrder);}if(p.waitFreeTasks){S.waitFreeTasks=p.waitFreeTasks;lw(WFK,p.waitFreeTasks);}}
+      else throw 0;
+      alert('✓ Importat!');render();
+    }catch(_){alert('❌ Fișier invalid.');}
+  };
+  r.readAsText(f);e.target.value='';
+}
+function doExpJournal(){
+  const b=new Blob([JSON.stringify({journal:S.journal},null,2)],{type:'application/json'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');
+  a.href=u;a.download='pb-jurnal-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u);
+}
+function doImpJournal(e){
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const p=JSON.parse(ev.target.result);
+      if(p.journal&&Array.isArray(p.journal)){
+        S.journal=p.journal;lw(JK,S.journal);
+        alert('✓ Jurnal importat: '+p.journal.length+' intrări.');render();
+      } else throw 0;
+    }catch(_){alert('❌ Fișier jurnal invalid.');}
+  };
+  r.readAsText(f);e.target.value='';
+}
+
+// ── Helpers ──
+function mk(tag,cls){const e=document.createElement(tag);if(cls)e.className=cls;return e;}
+function div(cls){return mk('div',cls);}
+function sp(cls,txt){const s=mk('span',cls);if(txt!=null)s.textContent=txt;return s;}
+function bt(cls,txt,fn){const b=mk('button','btn '+cls);b.textContent=txt;b.addEventListener('click',fn);return b;}
+function ip(cls,ph,val,onI,onK){const i=mk('input',cls);i.placeholder=ph||'';i.value=val||'';if(onI)i.addEventListener('input',onI);if(onK)i.addEventListener('keydown',onK);return i;}
+function ap(el,...kids){
+  kids.forEach(k=>{
+    if(k==null||k===false||k===undefined)return;
+    if(Array.isArray(k)){k.forEach(x=>{if(x!=null)el.appendChild(typeof x==='string'?document.createTextNode(x):x);});return;}
+    el.appendChild(typeof k==='string'?document.createTextNode(k):k);
+  });
+  return el;
+}
+
+// ── Render journal ──
+function rJournal(){
+  const root=div('');
+  const h=div('hdr');
+  const jhl=div('hdr-l');
+  const jtitle=mk('div','h1');jtitle.textContent='Jurnal';
+  jhl.appendChild(sp('logo','◈'));jhl.appendChild(jtitle);
+  h.appendChild(jhl);
+  h.appendChild(bt('bg','← Board',()=>{S.view='board';render();}));
+  root.appendChild(h);
+  if(!S.journal.length){const e=div('');e.style.cssText='padding:32px;text-align:center;color:#9CA3AF;font-size:13px';e.textContent='Jurnalul este gol.';root.appendChild(e);return root;}
+  const pn={};S.items.forEach(x=>{if(x.type==='project')pn[x.id]=x.name;});
+  const jd=div('');jd.style.paddingBottom='40px';
+  [...S.journal].reverse().forEach(e=>{
+    const el=div('je');
+    if(e.kind==='project-archive'){el.style.cssText='background:#FFF8EC;border-left:4px solid #F59E0B';el.innerHTML='<div><span style="font-weight:700;font-size:13px">📁 '+e.projectName+'</span><span class="jdate">arhivat '+fmt(e.ts)+'</span></div>';(e.tasks||[]).forEach(t=>{const d=div('jtask');d.textContent='• '+t.name+' ['+CN[t.status]+']';el.appendChild(d);});}
+    else if(e.kind==='task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> → '+CN[e.colId]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='task-move'){const d=div('jmove');d.innerHTML='↔ <strong>'+e.taskName+'</strong>: '+CN[e.fromCol]+' → '+CN[e.toCol]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='free-task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> [Next liber]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='free-task-delete'){el.style.background='#FEF2F2';const d=div('jtask');d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Next liber șters]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='project-create'){el.style.background='#F0FDF4';const d=div('jtask');d.innerHTML='⊞ Proiect nou: <strong>'+e.projectName+'</strong>'+(e.fromFree!==e.projectName?' [din: '+e.fromFree+']':'')+'<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    jd.appendChild(el);
+  });
+  root.appendChild(jd);return root;
+}
+
+// ── Render board ──
+function rBoard(){
+  const nr=getNR();
+  const pc=S.items.filter(x=>x.type==='project').length;
+  const root=div('');
+
+  // header
+  const impI=mk('input','');impI.type='file';impI.accept='.json';impI.style.display='none';impI.addEventListener('change',doImp);document.body.appendChild(impI);
+  const impJ=mk('input','');impJ.type='file';impJ.accept='.json';impJ.style.display='none';impJ.addEventListener('change',doImpJournal);document.body.appendChild(impJ);
+  const h=div('hdr');
+  const hl=div('hdr-l');
+  const htitle=mk('div','h1');htitle.textContent='Project Board';
+  const hsub=mk('div','h2');hsub.textContent=pc+' proiecte · '+VERSION;
+  const htxt=div('');htxt.appendChild(htitle);htxt.appendChild(hsub);
+  hl.appendChild(sp('logo','◈'));hl.appendChild(htxt);
+  const hr=div('hdr-r');
+  // Search box — adăugat înaintea butonului de save
+  var sw=div('sw');
+  var si=mk('input','si');si.placeholder='Caută...';si.value=S.sq;
+  si.addEventListener('input',function(e){S.sq=e.target.value;});
+  si.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();if(e.key==='Escape'){S.sq='';S.sr=null;si.value='';render();}});
+  var sbtn=mk('button','sbtn');sbtn.textContent='🔍';sbtn.addEventListener('click',doSearch);
+  sw.appendChild(si);sw.appendChild(sbtn);
+  if(S.sq){var sc=mk('button','sbtn');sc.textContent='✕';sc.style.color='#EF4444';sc.addEventListener('click',function(){S.sq='';S.sr=null;render();});sw.appendChild(sc);}
+  hr.appendChild(sw);
+
+  const sdot=sp('sdot','');sdot.id='sdot';
+  // Buton clipboard — deschide un input unde poți lipi textul
+  const clipBtn=mk('button','btn bg');
+  clipBtn.textContent='📋+';
+  clipBtn.title='Lipește text în NEXT';
+  clipBtn.style.cssText='background:#0F766E;color:#fff;touch-action:manipulation';
+  function doClipboard(){
+    S.showClip=true;render();
+    setTimeout(function(){
+      var ci=document.getElementById('clip-inp');
+      if(ci){ci.focus();ci.select();}
+    },80);
+  }
+  clipBtn.addEventListener('click',doClipboard);
+  clipBtn.addEventListener('touchend',function(e){e.preventDefault();doClipboard();},{passive:false});
+  ap(hr,sdot,
+    bt('bg','💾',doExp),bt('bg','📂',()=>impI.click()),
+    bt('bp','💾',doExpJournal),bt('bp','📂',()=>impJ.click()),
+    bt('bp','📋 Jurnal',()=>{S.view='journal';render();}),
+    bt('bi','+ Secț.',()=>{S.showAdd='section';S.addName='';render();}),
+    bt('ba','+ Proiect',()=>{S.showAdd='project';S.addName='';render();}));
+  ap(h,hl,hr);root.appendChild(h);
+
+  // ── Panou lipire clipboard ──
+  if(S.showClip){
+    var cp=div('');
+    cp.style.cssText='display:flex;gap:8px;align-items:center;padding:10px 12px;background:#ECFDF5;border-bottom:2px solid #10B981';
+    var ci=mk('input','');ci.id='clip-inp';
+    ci.placeholder='Lipește textul aici (Paste) apoi apasă ✓';
+    ci.style.cssText='flex:1;border:1px solid #10B981;border-radius:7px;padding:8px 10px;font-size:13px;background:#fff';
+    var cok=mk('button','');cok.textContent='✓';
+    cok.style.cssText='background:#10B981;color:#fff;border:none;border-radius:7px;padding:8px 14px;font-size:15px;font-weight:700;cursor:pointer;touch-action:manipulation;min-width:40px;min-height:40px';
+    var cno=mk('button','');cno.textContent='✕';
+    cno.style.cssText='background:#E5E7EB;color:#374151;border:none;border-radius:7px;padding:8px 12px;font-size:13px;cursor:pointer;touch-action:manipulation;min-width:40px;min-height:40px';
+    function doAddClip(){
+      var text=(ci.value||'').trim();
+      if(!text){S.showClip=false;render();return;}
+      var ft={id:gid(),name:text,ts:Date.now()};
+      je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
+      S.freeTasks=[...S.freeTasks,ft];
+      S.nextOrder=[...S.nextOrder,{type:'free',id:ft.id}];
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+      S.showClip=false;render();
+      setTimeout(function(){
+        var nd=document.querySelector('.sdiv');
+        if(nd)nd.scrollIntoView({behavior:'smooth',block:'start'});
+      },80);
+    }
+    ci.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doAddClip();}if(e.key==='Escape'){S.showClip=false;render();}});
+    cok.addEventListener('click',doAddClip);
+    cok.addEventListener('touchend',function(e){e.preventDefault();doAddClip();},{passive:false});
+    cno.addEventListener('click',function(){S.showClip=false;render();});
+    cno.addEventListener('touchend',function(e){e.preventDefault();S.showClip=false;render();},{passive:false});
+    cp.appendChild(ci);cp.appendChild(cok);cp.appendChild(cno);
+    root.appendChild(cp);
+  }
+  if(S.sr!==null){
+    var srp=div('srp');
+    var srh=div('srp-h');
+    var sht=sp('',S.sr.length+' rezultat'+(S.sr.length!==1?'e':'')+' pentru "'+S.sq+'"');
+    var shc=mk('button','sbtn');shc.textContent='✕ Închide';shc.style.color='#9CA3AF';
+    shc.addEventListener('click',function(){S.sq='';S.sr=null;render();});
+    srh.appendChild(sht);srh.appendChild(shc);srp.appendChild(srh);
+    if(!S.sr.length){
+      var se=div('sri');se.textContent='Niciun rezultat.';se.style.color='#9CA3AF';srp.appendChild(se);
+    } else {
+      var SC={next:'#F59E0B',wait:'#6366F1',done:'#10B981'};
+      var SL={next:'To Do',wait:'Wait',done:'Done'};
+      S.sr.forEach(function(r){
+        var row=div('sri');
+        var targetId=null;
+        if(r.k==='proj') targetId=r.id;
+        else if(r.k==='task') targetId=r.projectId;
+        else if(r.k==='sec') targetId=r.id;
+        // fn și fw nu au targetId — nu se poate naviga la ele
+        if(r.k==='sec'){var bs=sp('sbg','SECȚ.');bs.style.cssText='background:#F0EDFF;color:#4338CA';row.appendChild(bs);row.appendChild(sp('',r.name));}
+        else if(r.k==='proj'){var bp=sp('sbg','PROIECT');bp.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bp);row.appendChild(sp('',r.name));}
+        else if(r.k==='task'){
+          var bt=sp('sbg','TASK');bt.style.cssText='background:#F0F9FF;color:#0369A1';row.appendChild(bt);
+          var td=div('');td.style.flex='1';
+          var tn=document.createElement('div');tn.textContent=r.tn;tn.style.fontWeight='600';
+          var ts=document.createElement('div');ts.textContent=r.pn;ts.style.cssText='font-size:10px;color:#9CA3AF';
+          td.appendChild(tn);td.appendChild(ts);row.appendChild(td);
+          var st=sp('',SL[r.st]||r.st);st.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
+          row.appendChild(st);
+        }
+        else if(r.k==='fn'){var bn=sp('sbg','NEXT');bn.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bn);row.appendChild(sp('',r.name));}
+        else if(r.k==='fw'){var bw=sp('sbg','WAIT');bw.style.cssText='background:#F0F0FF;color:#3730A3';row.appendChild(bw);row.appendChild(sp('',r.name));}
+        // Buton navigare — apare pentru orice rezultat cu targetId
+        if(targetId){
+          var gb=document.createElement('button');
+          gb.textContent='▶';
+          gb.style.cssText='margin-left:auto;background:#6366F1;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:36px;min-height:36px';
+          (function(tid){
+            gb.addEventListener('click',function(e){e.stopPropagation();navigateTo(tid);});
+            gb.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();navigateTo(tid);},{passive:false});
+          })(targetId);
+          row.appendChild(gb);
+        }
+        srp.appendChild(row);
+      });
+    }
+    root.appendChild(srp);
+  }
+
+  // NEXT divider — cu număr elemente
+  const nd=div('sdiv');
+  const nCount=sp('','  '+nr.length);
+  nCount.style.cssText='font-size:10px;font-weight:700;color:#F59E0B;background:#2D3048;border-radius:10px;padding:1px 7px;margin-left:-4px';
+  ap(nd,div('sline'),sp('stxt','NEXT'),nCount,div('sline'));
+  root.appendChild(nd);
+
+  // ── Bara merge — apare dacă există cel puțin un task bifat ──
+  var mergedCount=Object.keys(S.mergeFlags).length;
+  if(mergedCount>0){
+    const mb=div('merge-bar');
+    const mc=sp('merge-count','☑ '+mergedCount+' selectat'+(mergedCount>1?'e':''));
+    const mBtn=document.createElement('button');
+    mBtn.className='merge-btn';
+    mBtn.textContent='⧉ Merge → Clipboard';
+    mBtn.addEventListener('click',doMerge);
+    mBtn.addEventListener('touchend',function(e){e.preventDefault();doMerge();},{passive:false});
+    const mDl=document.createElement('button');
+    mDl.className='merge-clear';
+    mDl.style.cssText+='background:#6366F1;color:#fff;';
+    mDl.textContent='⬇ clipboard.txt';
+    mDl.addEventListener('click',doDownloadClipLog);
+    mDl.addEventListener('touchend',function(e){e.preventDefault();doDownloadClipLog();},{passive:false});
+    const mDel=document.createElement('button');
+    mDel.className='merge-clear';
+    mDel.style.cssText+='background:#EF4444;color:#fff;';
+    mDel.textContent='🗑 Șterge din Next';
+    mDel.addEventListener('click',doMergeDelete);
+    mDel.addEventListener('touchend',function(e){e.preventDefault();doMergeDelete();},{passive:false});
+    const mClr=document.createElement('button');
+    mClr.className='merge-clear';
+    mClr.textContent='✕ Deselectează';
+    mClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
+    mClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
+    ap(mb,mc,mBtn,mDl,mDel,mClr);
+    root.appendChild(mb);
+  }
+
+  // NEXT rows
+  const nsec=div('');
+  if(!nr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='Niciun task în Next.';nsec.appendChild(e);}
+  nr.forEach((row,idx)=>{
+    const r=div('nrow');
+    r.dataset.nidx=idx;
+    // Fundal portocaliu pal pentru task-urile cu avertisment
+    if(row.warn) r.style.background='#FFFBEB';
+    // Fundal galben pal dacă e bifat pentru merge
+    var rowKey=row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId;
+    if(S.mergeFlags[rowKey]) r.style.background='#FEFCE8';
+    // ── Toggle merge (div, nu input — fiabil pe Android) ──
+    (function(rk){
+      var tog=document.createElement('div');
+      tog.className='nmerge'+(S.mergeFlags[rk]?' on':'');
+      tog.textContent=S.mergeFlags[rk]?'✓':'';
+      tog.title='Selectează pentru merge';
+      function doToggle(e){
+        e.stopPropagation();e.preventDefault();
+        if(S.mergeFlags[rk]){delete S.mergeFlags[rk];}
+        else{S.mergeFlags[rk]=true;}
+        lw(MK,S.mergeFlags);
+        render();
+      }
+      tog.addEventListener('click',doToggle);
+      tog.addEventListener('touchend',doToggle,{passive:false});
+      r.appendChild(tog);
+    })(rowKey);
+    // Buton Done — doar pentru task-uri cu proiect
+    if(!row.isFree){
+      (function(pid,tid){
+        const db=document.createElement('button');
+        db.textContent='✓';
+        db.style.cssText='background:#DCFCE7;color:#166534;border:1px solid #BBF7D0;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        function doDone(e){e.stopPropagation();markDone(pid,tid,'next');}
+        db.addEventListener('click',doDone);
+        db.addEventListener('touchend',function(e){e.preventDefault();doDone(e);},{passive:false});
+        r.appendChild(db);
+      })(row.projectId, row.taskId);
+    }
+    const nh=sp('phandle','⠿');
+    nh.style.cssText='font-size:16px;color:#CBD5E1;cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
+    attNextHandle(nh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
+    r.appendChild(nh);
+    // Dot: portocaliu normal sau roșu+pulsant dacă warn
+    const dot=sp('ndot');
+    if(row.warn){dot.style.cssText='width:8px;height:8px;border-radius:50%;background:#EF4444;flex-shrink:0';}
+    r.appendChild(dot);
+    if(!row.isFree) r.appendChild(sp('nproj',row.pname));
+    if(!row.isFree) r.appendChild(sp('narr','›'));
+    const tn=sp('ntask','');
+    renderTaskText(tn,row.tname);
+    if(row.isFree) tn.style.fontStyle='italic';
+    if(row.warn) tn.style.color='#92400E';
+    r.appendChild(tn);
+    // Dublu tap/click editare inline — atașat pe RÂND (r), nu pe tnEl
+    // Motiv: renderTaskText() inserează noduri <a> care blochează dblclick pe tnEl
+    (function(rowSnap, tnEl, rowEl){
+      function doEditTask(e){
+        // Nu declanșa pe <a> (link) sau <button>
+        if(e.target && (e.target.tagName==='A' || e.target.tagName==='BUTTON')) return;
+        e.stopPropagation();
+        var lines=rowSnap.tname.split('\n');
+        var titleLine=lines.find(function(l){return !l.match(/^https?:\/\//);})||lines[0]||'';
+        var urlLines=lines.filter(function(l){return l.match(/^https?:\/\//);});
+        var inp=document.createElement('input');
+        inp.value=titleLine;
+        inp.style.cssText='flex:1;font-size:12px;'+(rowSnap.isFree?'font-style:italic;':'')+'border:1px solid #F59E0B;border-radius:5px;padding:3px 6px;outline:none;min-width:0;width:100%';
+        tnEl.replaceWith(inp);
+        inp.setSelectionRange(0,0);
+        inp.focus();
+        function saveEditTask(){
+          var newTitle=inp.value.trim()||titleLine;
+          var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
+          if(rowSnap.isFree){
+            var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
+            if(ft){ft.name=newName;lw(FK,S.freeTasks);}
+          } else {
+            // Sync înapoi în proiect
+            var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
+            if(proj){
+              var task=proj.tasks.find(function(t){return t.id===rowSnap.taskId;});
+              if(task){task.name=newName;save();}
+            }
+          }
+          render();
+        }
+        inp.addEventListener('keydown',function(e){
+          if(e.key==='Enter'){e.preventDefault();saveEditTask();}
+          if(e.key==='Escape'){render();}
+        });
+        inp.addEventListener('blur',saveEditTask);
+      }
+      // Desktop
+      rowEl.addEventListener('dblclick',doEditTask);
+      // Mobil — dublu tap
+      var lastTap=0;
+      rowEl.addEventListener('touchstart',function(e){
+        if(e.target && (e.target.tagName==='A' || e.target.tagName==='BUTTON')) return;
+        var now=Date.now();
+        if(now-lastTap<350){e.preventDefault();e.stopPropagation();doEditTask(e);}
+        lastTap=now;
+      },{passive:false});
+    })(row, tn, r);
+    // Indicator ⚠ la dreapta pentru warn
+    if(row.warn){
+      const wi=sp('','⚠');
+      wi.style.cssText='font-size:11px;color:#F59E0B;flex-shrink:0;margin-left:2px';
+      r.appendChild(wi);
+    }
+    // Buton ▶ navigare la proiect — doar pentru task-uri cu proiect
+    if(!row.isFree){
+      (function(pid){
+        const gb=document.createElement('button');
+        gb.textContent='▶';
+        gb.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px;margin-left:auto';
+        gb.addEventListener('click',function(e){e.stopPropagation();navigateTo(pid);});
+        gb.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();navigateTo(pid);},{passive:false});
+        r.appendChild(gb);
+      })(row.projectId);
+    }
+    if(row.isFree){
+      (function(fid,fname){
+        // Buton promovare
+        const pb=document.createElement('button');
+        pb.textContent='⊞';
+        pb.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        function doPromote(e){e.stopPropagation();promoteToProject(fid,fname);}
+        pb.addEventListener('click',doPromote);
+        pb.addEventListener('touchend',function(e){e.preventDefault();doPromote(e);},{passive:false});
+        r.appendChild(pb);
+      })(row.id,row.tname);
+      const xb=mk('button','ndel');xb.textContent='✕';
+      xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delFree(row.id);},{passive:false});
+      xb.addEventListener('click',()=>delFree(row.id));
+      r.appendChild(xb);
+    }
+    nsec.appendChild(r);
+  });
+
+  // Add free task
+  const ab=div('nadd-bar');
+  if(S.showFree){
+    const w=div('');w.style.cssText='display:flex;gap:6px;align-items:center';
+    const ai=ip('nadd-inp','Task liber în Next...',S.nfree,e=>S.nfree=e.target.value,e=>{if(e.key==='Enter')addFree();if(e.key==='Escape'){S.showFree=false;S.nfree='';render();}});
+    ap(w,ai,bt('bgr','✓',addFree),bt('bg','✕',()=>{S.showFree=false;S.nfree='';render();}));
+    ab.appendChild(w);setTimeout(()=>ai.focus(),40);
+  } else {
+    const fb=mk('button','nadd-btn');fb.textContent='+ Next';fb.addEventListener('click',()=>{S.showFree=true;render();});ab.appendChild(fb);
+  }
+  nsec.appendChild(ab);
+  root.appendChild(nsec);
+
+  // ══ WAITING SECTION ══
+  const wr=getWR();
+  const wd=div('sdiv');
+  const wline1=div('sline'),wline2=div('sline');
+  const wtxt=sp('stxt','WAITING');
+  wtxt.style.color='#A5B4FC';
+  const wCount=sp('','  '+wr.length);
+  wCount.style.cssText='font-size:10px;font-weight:700;color:#A5B4FC;background:#2D3048;border-radius:10px;padding:1px 7px;margin-left:-4px';
+  ap(wd,wline1,wtxt,wCount,wline2);root.appendChild(wd);
+  const wsec=div('');
+  if(!wr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='Niciun task în așteptare.';wsec.appendChild(e);}
+  wr.forEach((row,idx)=>{
+    const r=div('nrow');
+    r.dataset.widx=idx;
+    // Buton Done — doar pentru task-uri cu proiect
+    if(!row.isFree){
+      (function(pid,tid){
+        const db=document.createElement('button');
+        db.textContent='✓';
+        db.style.cssText='background:#DCFCE7;color:#166534;border:1px solid #BBF7D0;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        function doDone(e){e.stopPropagation();markDone(pid,tid,'wait');}
+        db.addEventListener('click',doDone);
+        db.addEventListener('touchend',function(e){e.preventDefault();doDone(e);},{passive:false});
+        r.appendChild(db);
+      })(row.projectId, row.taskId);
+    }
+    const wh=sp('phandle','⠿');
+    wh.style.cssText='font-size:16px;color:#CBD5E1;cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
+    attWaitHandle(wh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
+    r.appendChild(wh);
+    // Dot indigo pentru WAITING
+    const dot=sp('ndot');dot.style.background='#6366F1';r.appendChild(dot);
+    if(!row.isFree) r.appendChild(sp('nproj',row.pname));
+    if(!row.isFree) r.appendChild(sp('narr','›'));
+    const tn=sp('ntask','');
+    renderTaskText(tn,row.tname);
+    if(row.isFree) tn.style.fontStyle='italic';
+    r.appendChild(tn);
+    // Buton ▶ navigare la proiect — doar pentru task-uri cu proiect
+    if(!row.isFree){
+      (function(pid){
+        const gb=document.createElement('button');
+        gb.textContent='▶';
+        gb.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px;margin-left:auto';
+        gb.addEventListener('click',function(e){e.stopPropagation();navigateTo(pid);});
+        gb.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();navigateTo(pid);},{passive:false});
+        r.appendChild(gb);
+      })(row.projectId);
+    }
+    if(row.isFree){
+      const xb=mk('button','ndel');xb.textContent='✕';
+      xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delWaitFree(row.id);},{passive:false});
+      xb.addEventListener('click',()=>delWaitFree(row.id));
+      r.appendChild(xb);
+    }
+    wsec.appendChild(r);
+  });
+  // Add free task waiting
+  const wab=div('nadd-bar');
+  if(S.showWFree){
+    const ww=div('');ww.style.cssText='display:flex;gap:6px;align-items:center';
+    const wai=ip('nadd-inp','Task liber în Waiting...',S.wfree,e=>S.wfree=e.target.value,e=>{if(e.key==='Enter')addWaitFree();if(e.key==='Escape'){S.showWFree=false;S.wfree='';render();}});
+    wai.style.borderColor='#6366F1';
+    ap(ww,wai,bt('bgr','✓',addWaitFree),bt('bg','✕',()=>{S.showWFree=false;S.wfree='';render();}));
+    wab.appendChild(ww);setTimeout(()=>wai.focus(),40);
+  } else {
+    const wfb=mk('button','nadd-btn');wfb.textContent='+ Waiting';wfb.style.borderColor='#6366F1';wfb.style.color='#6366F1';
+    wfb.addEventListener('click',()=>{S.showWFree=true;render();});wab.appendChild(wfb);
+  }
+  wsec.appendChild(wab);
+  root.appendChild(wsec);
+
+  // ══ PROIECTE VIDE ══
+  const emptyProjects = S.items.filter(it=>{
+    if(it.type!=='project') return false;
+    const active = (it.tasks||[]).filter(t=>t.status==='next'||t.status==='wait');
+    return active.length === 0;
+  });
+
+  if(emptyProjects.length > 0){
+    const evd=div('sdiv');
+    const evline1=div('sline'), evline2=div('sline');
+    const evtxt=sp('stxt','PROIECTE VIDE');
+    evtxt.style.color='#94A3B8';
+    ap(evd,evline1,evtxt,evline2);root.appendChild(evd);
+
+    const evsec=div('');
+    emptyProjects.forEach(proj=>{
+      const r=div('');
+      r.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #E5E7EB;background:#FAFAFA';
+      // Checkbox arhivare
+      // Checkbox arhivare cu confirmare inline
+      (function(pid, pname){
+        const wrap=div('');
+        wrap.style.cssText='display:flex;align-items:center;gap:6px;flex-shrink:0';
+        const cb=document.createElement('input');
+        cb.type='checkbox';
+        cb.style.cssText='width:18px;height:18px;cursor:pointer;accent-color:#EF4444;touch-action:manipulation';
+        // Confirmare inline — apare când bifezi
+        const confirmWrap=div('');
+        confirmWrap.style.cssText='display:none;align-items:center;gap:4px';
+        const yesBtn=document.createElement('button');
+        yesBtn.textContent='Da';
+        yesBtn.style.cssText='background:#EF4444;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+        const noBtn=document.createElement('button');
+        noBtn.textContent='Nu';
+        noBtn.style.cssText='background:#E5E7EB;color:#374151;border:none;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+        confirmWrap.appendChild(yesBtn);
+        confirmWrap.appendChild(noBtn);
+        function showConfirm(e){
+          if(e) e.stopPropagation();
+          cb.style.display='none';
+          confirmWrap.style.display='flex';
+        }
+        function hideConfirm(){
+          cb.checked=false;
+          cb.style.display='';
+          confirmWrap.style.display='none';
+        }
+        cb.addEventListener('change',function(){if(cb.checked) showConfirm();});
+        cb.addEventListener('touchend',function(e){e.stopPropagation();},{passive:false});
+        yesBtn.addEventListener('click',function(e){e.stopPropagation();archProj(pid);});
+        yesBtn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();archProj(pid);},{passive:false});
+        noBtn.addEventListener('click',function(e){e.stopPropagation();hideConfirm();});
+        noBtn.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();hideConfirm();},{passive:false});
+        wrap.appendChild(cb);
+        wrap.appendChild(confirmWrap);
+        r.appendChild(wrap);
+      })(proj.id, proj.name);
+      // Nume proiect
+      const pn=sp('',proj.name);
+      pn.style.cssText='font-size:12px;font-weight:600;color:#64748B;flex:1';
+      r.appendChild(pn);
+      // Număr task-uri done
+      const doneCount = (proj.tasks||[]).filter(t=>t.status==='done').length;
+      if(doneCount > 0){
+        const dc=sp('','✅ '+doneCount+' done');
+        dc.style.cssText='font-size:10px;color:#10B981;flex-shrink:0';
+        r.appendChild(dc);
+      } else if((proj.tasks||[]).length === 0){
+        const dc=sp('','gol');
+        dc.style.cssText='font-size:10px;color:#CBD5E1;flex-shrink:0;font-style:italic';
+        r.appendChild(dc);
+      }
+      // Buton navigare
+      (function(pid){
+        const gb=document.createElement('button');
+        gb.textContent='▶';
+        gb.style.cssText='background:#94A3B8;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        gb.addEventListener('click',function(e){e.stopPropagation();navigateTo(pid);});
+        gb.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();navigateTo(pid);},{passive:false});
+        r.appendChild(gb);
+      })(proj.id);
+      evsec.appendChild(r);
+    });
+    root.appendChild(evsec);
+  }
+
+  // PROIECTE divider
+  const pd=div('sdiv');ap(pd,div('sline'),sp('stxt','PROIECTE'),div('sline'));root.appendChild(pd);
+
+  // col headers
+  const ch=div('chdr');const chp=mk('div','chdr-p');chp.textContent='PROIECT';ch.appendChild(chp);
+  COLS.forEach(col=>{
+    const c=div('chdr-c');c.style.borderBottom=`3px solid ${col.color}`;
+    const lbl=sp('chdr-lbl',col.label);lbl.style.color=col.color;
+    const cnt=sp('chdr-cnt',''+S.items.filter(x=>x.type==='project').reduce((a,p)=>a+p.tasks.filter(t=>t.status===col.id).length,0));cnt.style.background=col.color;
+    const ico=sp('','');ico.textContent=col.icon;ico.style.fontSize='11px';
+    ap(c,ico,lbl,cnt);ch.appendChild(c);
+  });root.appendChild(ch);
+
+  // add bar
+  if(S.showAdd){
+    const bar=div('abar '+(S.showAdd==='section'?'sec':'proj'));
+    const sym=sp('',S.showAdd==='section'?'§':'⊞');sym.style.cssText='font-size:13px;font-weight:700;align-self:center;color:'+(S.showAdd==='section'?'#6366F1':'#3B82F6');
+    const ai=ip('',S.showAdd==='section'?'Nume secțiune...':'Nume proiect...',S.addName,e=>S.addName=e.target.value,e=>{if(e.key==='Enter')confAdd();if(e.key==='Escape'){S.showAdd=null;render();}});
+    ap(bar,sym,ai,bt('bgr','✓',confAdd),bt('bg','✕',()=>{S.showAdd=null;render();}));
+    root.appendChild(bar);setTimeout(()=>ai.focus(),40);
+  }
+
+  // items
+  const id=div('');
+  S.items.forEach(item=>{
+    if(item.type==='section'){
+      const sr=div('srow');sr.dataset.rid=item.id;
+      const sh=sp('shandle','⠿');attHandle(sh,item.id,item.name,'section');sr.appendChild(sh);
+      if(S.editId===item.id){
+        const ei=ip('einp sec-name','',item.name,null,null);
+        ei.style.cssText='font-size:13px;font-weight:700;text-align:center;color:#4338CA;min-width:160px';
+        function saveSecEdit(){
+          const v=ei.value.trim();
+          if(v&&v!==item.name){S.items=S.items.map(x=>x.id===item.id?{...x,name:v}:x);save();}
+          S.editId=null;render();
+        }
+        ei.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveSecEdit();}if(e.key==='Escape'){S.editId=null;render();}});
+        ei.addEventListener('blur',saveSecEdit);
+        sr.appendChild(ei);setTimeout(()=>ei.focus(),40);
+      } else {
+        const sn=sp('sname',item.name);
+        sn.addEventListener('dblclick',()=>{S.editId=item.id;render();});
+        sn.addEventListener('touchend',()=>dbt(item.id,()=>{S.editId=item.id;render();}));
+        sr.appendChild(sn);
+      }
+      const sd=mk('button','sdel');sd.textContent='✕';sd.addEventListener('click',()=>delSec(item.id));sr.appendChild(sd);
+      id.appendChild(sr);return;
+    }
+
+    const pr=div('prow');pr.dataset.rid=item.id;
+    const pnc=div('pnc');
+    const ph=sp('phandle','⠿');attHandle(ph,item.id,item.name,'project');pnc.appendChild(ph);
+    if(S.editId===item.id){
+      const ei=ip('einp','',item.name,null,null);
+      function saveProjEdit(){
+        const v=ei.value.trim();
+        if(v&&v!==item.name){S.items=S.items.map(x=>x.id===item.id?{...x,name:v}:x);save();}
+        S.editId=null;render();
+      }
+      ei.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveProjEdit();}if(e.key==='Escape'){S.editId=null;render();}});
+      ei.addEventListener('blur',saveProjEdit);
+      pnc.appendChild(ei);setTimeout(()=>ei.focus(),40);
+    } else {
+      const pn=sp('pname',item.name);
+      pn.addEventListener('dblclick',()=>{S.editId=item.id;render();});
+      pn.addEventListener('touchend',()=>dbt(item.id,()=>{S.editId=item.id;render();}));
+      pnc.appendChild(pn);
+    }
+    const pd2=mk('button','pdel');pd2.textContent='✕';pd2.addEventListener('click',()=>archProj(item.id));pnc.appendChild(pd2);
+    pr.appendChild(pnc);
+
+    COLS.forEach(col=>{
+      const tc=div('tcell');tc.dataset.col=col.id;tc.dataset.project=item.id;
+      item.tasks.filter(t=>t.status===col.id).forEach(task=>{
+        if(S.editTid===task.id){
+          const ei=ip('einp','',task.name,null,null);
+          ei.style.fontSize='11px';
+          function saveTaskEdit(){
+            const v=ei.value.trim();
+            if(v&&v!==task.name){S.items=S.items.map(x=>x.id===item.id?{...x,tasks:x.tasks.map(t=>t.id===task.id?{...t,name:v}:t)}:x);save();}
+            S.editTid=null;render();
+          }
+          ei.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveTaskEdit();}if(e.key==='Escape'){S.editTid=null;render();}});
+          ei.addEventListener('blur',saveTaskEdit);
+          tc.appendChild(ei);setTimeout(()=>ei.focus(),40);return;
+        }
+        const card=div('tcard');card.style.borderLeft=`3px solid ${col.color}`;
+        const tn=sp('tname','');
+        renderTaskText(tn,task.name);
+        tn.addEventListener('dblclick',()=>{S.editTid=task.id;render();});
+        tn.addEventListener('touchend',()=>dbt(task.id,()=>{S.editTid=task.id;render();}));
+        card.appendChild(tn);
+        const td=mk('button','tdel');td.textContent='✕';
+        td.addEventListener('touchstart',e=>{e.stopPropagation();e.preventDefault();},{passive:false});
+        td.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delTask(item.id,task.id);});
+        td.addEventListener('click',()=>delTask(item.id,task.id));
+        card.appendChild(td);
+        attCard(card,task.id,item.id,col.id,task.name);
+        tc.appendChild(card);
+      });
+      const atw=div('atw');
+      const key=item.id+'_'+col.id;
+      const ai=ip('ati','+ task...',S.nt[key]||'',e=>S.nt[key]=e.target.value,e=>{if(e.key==='Enter'){e.preventDefault();addTask(item.id,col.id);}});
+      atw.appendChild(ai);
+      const ab2=mk('button','atb');ab2.textContent='+';
+      ab2.addEventListener('touchend',e=>{e.preventDefault();addTask(item.id,col.id);});
+      ab2.addEventListener('click',()=>addTask(item.id,col.id));
+      atw.appendChild(ab2);tc.appendChild(atw);pr.appendChild(tc);
+    });
+    id.appendChild(pr);
+  });
+  root.appendChild(id);
+
+  const ft=div('');ft.style.cssText='text-align:center;color:#9CA3AF;font-size:10px;margin-top:20px;padding:0 16px;line-height:1.8';ft.textContent='⠿ ține apăsat și trage · dublu-tap pentru editare';
+  root.appendChild(ft);return root;
+}
+
+function render(){
+  const app=document.getElementById('app');app.innerHTML='';
+  app.appendChild(S.view==='journal'?rJournal():rBoard());
+}
+
+init();
+window.addEventListener('beforeunload',saveAll);
+
+// ── Extrage textul afișabil dintr-un task (titlu + url dacă există) ──
+function getTaskDisplayText(tname){
+  var parts=tname.split('\n');
+  var title=parts.find(function(l){return !l.match(/^https?:\/\//);})||parts[0]||'';
+  var url=parts.find(function(l){return l.match(/^https?:\/\//);})||'';
+  var text=title.trim();
+  if(url) text=text+(text?' — ':'')+url.trim();
+  return text;
+}
+
+// ── Calculează șirurile merge conform algoritmului ──
+// Fiecare rând bifat = START al unui șir
+// Șirul include rândul marcat + toate rândurile ANTERIOARE (în sus)
+// până la rândul marcat anterior sau marginea de sus a listei Next
+// Rezultat: array de array-uri de texte (fiecare sub-array = un șir merge)
+function calcMergeGroups(){
+  var nr=getNR();
+  var rows=nr.map(function(row){
+    return {
+      rk: row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId,
+      text: getTaskDisplayText(row.tname),
+      row: row
+    };
+  });
+  var markedIdx=[];
+  rows.forEach(function(r,i){if(S.mergeFlags[r.rk]) markedIdx.push(i);});
+  if(!markedIdx.length) return [];
+  var groups=[];
+  for(var g=0;g<markedIdx.length;g++){
+    var end=markedIdx[g];   // rândul marcat = primul în output (cel mai jos)
+    var start=g===0?0:markedIdx[g-1]+1; // urcăm până după marcatorul anterior
+    var groupRows=rows.slice(start,end+1);
+    // Ordine inversă: marcat primul (jos), apoi urcăm spre sus
+    var texts=groupRows.reverse().map(function(r){return r.text;}).filter(Boolean);
+    if(texts.length) groups.push(texts);
+  }
+  return groups;
+}
+
+// ── Merge: clipboard + acumulare în localStorage ──
+function doMerge(){
+  var groups=calcMergeGroups();
+  if(!groups.length) return;
+  var SEP='\n* ';
+  var allLines=[];
+  groups.forEach(function(g){allLines=allLines.concat(g);});
+  var result=allLines.join(SEP);
+
+  // 1. Clipboard
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(result).catch(function(){});
+  } else {
+    var ta=document.createElement('textarea');
+    ta.value=result;ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');}catch(_){}
+    document.body.removeChild(ta);
+  }
+
+  // 2. Append la log intern (localStorage) — fără download automat
+  var existing=localStorage.getItem(CK)||'';
+  var newLog=existing+(existing?'\n':'')+result;
+  localStorage.setItem(CK,newLog);
+
+  // Toast
+  var total=allLines.length;
+  var toast=document.createElement('div');
+  toast.textContent='✓ '+total+' item'+(total>1?'s':'')+' copiat'+(total>1?'e':'')+' în clipboard';
+  toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1A1D2E;color:#F59E0B;border:1px solid #F59E0B;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none;white-space:nowrap';
+  document.body.appendChild(toast);
+  setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast);},2500);
+}
+
+// ── Descarcă tot log-ul acumulat ca clipboard.txt ──
+function doDownloadClipLog(){
+  var content=localStorage.getItem(CK)||'';
+  if(!content){
+    var t=document.createElement('div');
+    t.textContent='clipboard.txt e gol';
+    t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#374151;color:#9CA3AF;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none';
+    document.body.appendChild(t);
+    setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},2000);
+    return;
+  }
+  var blob=new Blob([content],{type:'text/plain'});
+  var u=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=u;a.download='clipboard.txt';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(u);},1000);
+}
+
+// ── Șterge din Next toate rândurile care au fost incluse în merge ──
+function doMergeDelete(){
+  var groups=calcMergeGroups();
+  if(!groups.length) return;
+  var nr=getNR();
+  // Colectează toate cheile rândurilor incluse în grupuri
+  var markedIdx=[];
+  var rows=nr.map(function(row,i){
+    return {
+      rk: row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId,
+      row: row, idx: i
+    };
+  });
+  // Aceleași indici ca în calcMergeGroups
+  var markedIdxList=[];
+  rows.forEach(function(r,i){if(S.mergeFlags[r.rk]) markedIdxList.push(i);});
+  var toDelete=[];
+  for(var g=0;g<markedIdxList.length;g++){
+    var end=markedIdxList[g];
+    var start=g===0?0:markedIdxList[g-1]+1;
+    for(var i=start;i<=end;i++) toDelete.push(rows[i]);
+  }
+  // Șterge fiecare rând din Next
+  toDelete.forEach(function(item){
+    var row=item.row;
+    if(row.isFree){
+      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
+      S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
+    } else {
+      S.nextOrder=S.nextOrder.filter(function(x){
+        return!(x.type==='proj'&&x.projectId===row.projectId&&x.taskId===row.taskId);
+      });
+      // Mută task-ul în done în proiect
+      var proj=S.items.find(function(x){return x.id===row.projectId;});
+      if(proj){
+        var task=proj.tasks.find(function(t){return t.id===row.taskId;});
+        if(task) task.status='done';
+      }
+    }
+    delete S.mergeFlags[item.rk];
+  });
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(MK,S.mergeFlags);
+  save();render();
+}
+
+// ── Popup manual când nu se găsesc metadate ──
+function showShareLabelPopup(urlToFetch, shareTitle, cb){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px;padding:20px 18px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='🔗 Link fără titlu detectat';
+  h.style.cssText='color:#F59E0B;font-weight:800;font-size:15px;margin-bottom:6px';
+  var urlPrev=document.createElement('div');
+  urlPrev.textContent=urlToFetch.length>60?urlToFetch.slice(0,60)+'…':urlToFetch;
+  urlPrev.style.cssText='color:#6B7280;font-size:10px;word-break:break-all;margin-bottom:14px;line-height:1.4';
+  var lbl=document.createElement('div');
+  lbl.textContent='Adaugă o descriere (opțional):';
+  lbl.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:6px';
+  var inp=document.createElement('input');
+  inp.placeholder='ex: Tutorial React, Articol util…';
+  inp.value=shareTitle||'';
+  inp.style.cssText='width:100%;border:1px solid #F59E0B;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;margin-bottom:14px;box-sizing:border-box';
+  var brow=document.createElement('div');
+  brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓ Adaugă';
+  bOk.style.cssText='flex:1;background:#F59E0B;color:#1A1D2E;border:none;border-radius:7px;padding:10px;font-weight:800;font-size:13px;cursor:pointer';
+  var bSkip=document.createElement('button');
+  bSkip.textContent='Fără descriere';
+  bSkip.style.cssText='flex:1;background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:10px;font-size:12px;cursor:pointer';
+  function doConfirm(){
+    var userLabel=inp.value.trim();
+    document.body.removeChild(ov);
+    cb(userLabel?userLabel+'\n'+urlToFetch:urlToFetch);
+  }
+  function doSkip(){
+    document.body.removeChild(ov);
+    cb(urlToFetch);
+  }
+  bOk.addEventListener('click',doConfirm);
+  bSkip.addEventListener('click',doSkip);
+  inp.addEventListener('keydown',function(ev){
+    if(ev.key==='Enter'){ev.preventDefault();doConfirm();}
+    if(ev.key==='Escape'){doSkip();}
+  });
+  brow.appendChild(bOk);brow.appendChild(bSkip);
+  card.appendChild(h);card.appendChild(urlPrev);card.appendChild(lbl);card.appendChild(inp);card.appendChild(brow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();},100);
+}
+
+// ── Extragere metadate cu fallback cascadă ──
+// 1. microlink.io → 2. jsonlink.io → 3. noembed (YouTube/etc) → 4. popup manual
+function fetchMetaWithFallback(urlToFetch, shareTitle, cb){
+  function buildText(t, desc){
+    t=(t||'').trim(); desc=(desc||'').trim();
+    var parts=[];
+    if(t) parts.push(t);
+    if(desc&&desc!==t) parts.push(desc);
+    return parts.length ? parts.join(' — ')+'\n'+urlToFetch : null;
+  }
+  var isYouTube=/youtube\.com|youtu\.be/i.test(urlToFetch);
+  // 1. microlink.io — sare peste YouTube (returnează mereu description generică)
+  var p1 = isYouTube
+    ? Promise.reject(new Error('skip youtube'))
+    : fetch('https://api.microlink.io/?url='+encodeURIComponent(urlToFetch))
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d&&d.status==='success'&&d.data){
+            var result=buildText(d.data.title, d.data.description);
+            if(result) return result;
+          }
+          throw new Error('no data');
+        });
+  p1.catch(function(){
+    // 2. noembed.com — excelent pentru YouTube, Vimeo, Twitter etc
+    return fetch('https://noembed.com/embed?url='+encodeURIComponent(urlToFetch))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d&&d.title&&d.title.trim()&&d.title!=='YouTube'){
+          var author=(d.author_name||'').trim();
+          var t=d.title.trim();
+          var result=(author?t+' · '+author:t)+'\n'+urlToFetch;
+          return result;
+        }
+        throw new Error('no data');
+      });
+  }).then(function(result){
+    cb(result);
+  }).catch(function(){
+    // 3. jsonlink.io
+    fetch('https://jsonlink.io/api/extract?url='+encodeURIComponent(urlToFetch))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        var result=buildText(d&&d.title, d&&d.description);
+        if(result){cb(result);return;}
+        throw new Error('no data');
+      })
+      .catch(function(){
+        // 4. Popup manual
+        showShareLabelPopup(urlToFetch, shareTitle, cb);
+      });
+  });
+}
+
+// ── Service Worker + Share Target ──
+function addToNext(taskText){
+  if(!taskText||!taskText.trim())return;
+  var ft={id:gid(),name:taskText.trim(),ts:Date.now()};
+  je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
+  S.freeTasks=[...S.freeTasks,ft];
+  S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  render();
+}
+
+function handleIncomingShare(){
+  var url=new URL(window.location.href);
+  var text=url.searchParams.get('addnext')||'';
+  var title=url.searchParams.get('addtitle')||'';
+  var sharedUrl=url.searchParams.get('addurl')||'';
+
+  // Curăță URL-ul din bara de adrese
+  if(text||title||sharedUrl){
+    history.replaceState({},'',window.location.pathname);
+  }
+
+  // Dacă avem un URL — extrage metadate cu cascadă + popup fallback
+  var urlToFetch=sharedUrl||(text&&text.match(/^https?:\/\//)?text:'');
+  if(urlToFetch){
+    fetchMetaWithFallback(urlToFetch, title, function(taskText){
+      addToNext(taskText);
+    });
+    return;
+  }
+
+  // Nu e URL — text simplu sau titlu
+  var taskText=text||title||'';
+  addToNext(taskText);
+}
+
+function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+  // Nu înregistra SW în artifact Claude sau pe file://
+  var host = window.location.hostname;
+  if(host === 'www.claudeusercontent.com' || host === '') return;
+  navigator.serviceWorker.register('sw.js').then(function(reg){
+    console.log('SW înregistrat:', reg.scope);
+  }).catch(function(err){
+    console.log('SW eroare:', err);
+  });
+  // Ascultă mesaje de la SW (share când app era deschisă)
+  navigator.serviceWorker.addEventListener('message',function(e){
+    if(e.data&&e.data.type==='ADD_NEXT'&&e.data.text){
+      var ft={id:gid(),name:e.data.text.trim(),ts:Date.now()};
+      je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
+      S.freeTasks=[...S.freeTasks,ft];
+      S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+      render();
+    }
+  });
+  // Verifică dacă există share pending (app era închisă)
+  caches.open('projectboard-v2').then(function(cache){
+    cache.match('/__pending_share__').then(function(resp){
+      if(!resp)return;
+      resp.text().then(function(text){
+        if(!text)return;
+        cache.delete('/__pending_share__');
+        var ft={id:gid(),name:text.trim(),ts:Date.now()};
+        je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
+        S.freeTasks=[...S.freeTasks,ft];
+        S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+        lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+        render();
+      });
+    });
+  }).catch(function(){});
+}
+
+handleIncomingShare();
+render();
+registerSW();
+</script>
+</body>
+</html>
