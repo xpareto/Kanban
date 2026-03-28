@@ -1,11 +1,11 @@
 //v27-github
 var CACHE = 'projectboard-v27';
 var FILES = [
-  '/Kamban/',
-  '/Kamban/index.html',
-  '/Kamban/manifest.json',
-  '/Kamban/icon-192.png',
-  '/Kamban/icon-512.png'
+  '/Kanban/',
+  '/Kanban/index.html',
+  '/Kanban/manifest.json',
+  '/Kanban/icon-192.png',
+  '/Kanban/icon-512.png'
 ];
 
 self.addEventListener('install', function(e) {
