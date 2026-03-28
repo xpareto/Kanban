@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V27</title>
+<title>Project Board V29</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -43,6 +43,10 @@ input{font-family:inherit;outline:none}
 .nadd-bar{padding:6px 10px;border-bottom:1px solid #E5E7EB;background:#FAFAFA}
 .nadd-inp{border:1px solid #F59E0B;border-radius:6px;padding:5px 8px;font-size:12px;flex:1;max-width:240px}
 .nadd-btn{background:none;border:1px dashed #F59E0B;border-radius:6px;padding:4px 10px;font-size:11px;color:#F59E0B;font-weight:700;cursor:pointer}
+/* ── Share section ── */
+.srow-share{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:1px solid #E5E7EB;background:#F0FDF4}
+.sdot-share{width:8px;height:8px;border-radius:50%;background:#10B981;flex-shrink:0}
+.share-to-next{background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:44px;min-height:32px}
 /* ── Merge toggle (div, nu input — fiabil pe Android) ── */
 .nmerge{width:20px;height:20px;border:2px solid #D1D5DB;border-radius:5px;background:#fff;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:transparent;transition:background .15s,border-color .15s;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .nmerge.on{background:#F59E0B;border-color:#F59E0B;color:#1A1D2E}
@@ -121,10 +125,10 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V27';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V29';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
-const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1';
+const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1';
 const DEF=[
   {type:'project',id:'id_5p0uklazf',name:'Analize',tasks:[]},
   {type:'project',id:'id_4ga7df4nt',name:'Liana-bucuresti',tasks:[]},
@@ -147,15 +151,15 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],mergeFlags:{},view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],mergeFlags:{},view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
 function fmt(ts){const d=new Date(ts);return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});}
-function init(){const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));S.journal=ls(JK)||[];S.nextOrder=ls(NK)||[];S.freeTasks=ls(FK)||[];S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};}
+function init(){const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));S.journal=ls(JK)||[];S.nextOrder=ls(NK)||[];S.freeTasks=ls(FK)||[];S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};S.shareTasks=ls(SHK)||[];}
 let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
-function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);}
+function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);}
 function je(e){S.journal.push(e);lw(JK,S.journal);}
 
 // ── Next rows ──
@@ -830,66 +834,13 @@ function rBoard(){
   ap(nd,div('sline'),sp('stxt','NEXT'),nCount,div('sline'));
   root.appendChild(nd);
 
-  // ── Bara merge — apare dacă există cel puțin un task bifat ──
-  var mergedCount=Object.keys(S.mergeFlags).length;
-  if(mergedCount>0){
-    const mb=div('merge-bar');
-    const mc=sp('merge-count','☑ '+mergedCount+' selectat'+(mergedCount>1?'e':''));
-    const mBtn=document.createElement('button');
-    mBtn.className='merge-btn';
-    mBtn.textContent='⧉ Merge → Clipboard';
-    mBtn.addEventListener('click',doMerge);
-    mBtn.addEventListener('touchend',function(e){e.preventDefault();doMerge();},{passive:false});
-    const mDl=document.createElement('button');
-    mDl.className='merge-clear';
-    mDl.style.cssText+='background:#6366F1;color:#fff;';
-    mDl.textContent='⬇ clipboard.txt';
-    mDl.addEventListener('click',doDownloadClipLog);
-    mDl.addEventListener('touchend',function(e){e.preventDefault();doDownloadClipLog();},{passive:false});
-    const mDel=document.createElement('button');
-    mDel.className='merge-clear';
-    mDel.style.cssText+='background:#EF4444;color:#fff;';
-    mDel.textContent='🗑 Șterge din Next';
-    mDel.addEventListener('click',doMergeDelete);
-    mDel.addEventListener('touchend',function(e){e.preventDefault();doMergeDelete();},{passive:false});
-    const mClr=document.createElement('button');
-    mClr.className='merge-clear';
-    mClr.textContent='✕ Deselectează';
-    mClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
-    mClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
-    ap(mb,mc,mBtn,mDl,mDel,mClr);
-    root.appendChild(mb);
-  }
-
   // NEXT rows
   const nsec=div('');
   if(!nr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='Niciun task în Next.';nsec.appendChild(e);}
   nr.forEach((row,idx)=>{
     const r=div('nrow');
     r.dataset.nidx=idx;
-    // Fundal portocaliu pal pentru task-urile cu avertisment
     if(row.warn) r.style.background='#FFFBEB';
-    // Fundal galben pal dacă e bifat pentru merge
-    var rowKey=row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId;
-    if(S.mergeFlags[rowKey]) r.style.background='#FEFCE8';
-    // ── Toggle merge (div, nu input — fiabil pe Android) ──
-    (function(rk){
-      var tog=document.createElement('div');
-      tog.className='nmerge'+(S.mergeFlags[rk]?' on':'');
-      tog.textContent=S.mergeFlags[rk]?'✓':'';
-      tog.title='Selectează pentru merge';
-      function doToggle(e){
-        e.stopPropagation();e.preventDefault();
-        if(S.mergeFlags[rk]){delete S.mergeFlags[rk];}
-        else{S.mergeFlags[rk]=true;}
-        lw(MK,S.mergeFlags);
-        render();
-      }
-      tog.addEventListener('click',doToggle);
-      tog.addEventListener('touchend',doToggle,{passive:false});
-      r.appendChild(tog);
-    })(rowKey);
-    // Buton Done — doar pentru task-uri cu proiect
     if(!row.isFree){
       (function(pid,tid){
         const db=document.createElement('button');
@@ -1085,6 +1036,149 @@ function rBoard(){
   }
   wsec.appendChild(wab);
   root.appendChild(wsec);
+
+  // ══ SHARE SECTION ══
+  const shd=div('sdiv');
+  const shline1=div('sline'),shline2=div('sline');
+  const shtxt=sp('stxt','SHARE');
+  shtxt.style.color='#6EE7B7';
+  const shCount=sp('','  '+S.shareTasks.length);
+  shCount.style.cssText='font-size:10px;font-weight:700;color:#10B981;background:#2D3048;border-radius:10px;padding:1px 7px;margin-left:-4px';
+  ap(shd,shline1,shtxt,shCount,shline2);root.appendChild(shd);
+
+  // ── Bara merge Share — apare dacă există cel puțin un item bifat ──
+  var shareMergeCount=Object.keys(S.mergeFlags).length;
+  if(shareMergeCount>0){
+    const smb=div('merge-bar');
+    const smc=sp('merge-count','☑ '+shareMergeCount+' selectat'+(shareMergeCount>1?'e':''));
+    const smBtn=document.createElement('button');
+    smBtn.className='merge-btn';
+    smBtn.textContent='⧉ Merge → Clipboard';
+    smBtn.addEventListener('click',doMerge);
+    smBtn.addEventListener('touchend',function(e){e.preventDefault();doMerge();},{passive:false});
+    const smDl=document.createElement('button');
+    smDl.className='merge-clear';
+    smDl.style.cssText+='background:#6366F1;color:#fff;';
+    smDl.textContent='⬇ clipboard.txt';
+    smDl.addEventListener('click',doDownloadClipLog);
+    smDl.addEventListener('touchend',function(e){e.preventDefault();doDownloadClipLog();},{passive:false});
+    const smDel=document.createElement('button');
+    smDel.className='merge-clear';
+    smDel.style.cssText+='background:#EF4444;color:#fff;';
+    smDel.textContent='🗑 Șterge din Share';
+    smDel.addEventListener('click',doMergeDelete);
+    smDel.addEventListener('touchend',function(e){e.preventDefault();doMergeDelete();},{passive:false});
+    const smClr=document.createElement('button');
+    smClr.className='merge-clear';
+    smClr.textContent='✕ Deselectează';
+    smClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
+    smClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
+    ap(smb,smc,smBtn,smDl,smDel,smClr);
+    root.appendChild(smb);
+  }
+
+  const shsec=div('');
+  if(!S.shareTasks.length){
+    const se=div('');
+    se.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';
+    se.textContent='Niciun link primit prin Share.';
+    shsec.appendChild(se);
+  }
+  S.shareTasks.forEach(function(item){
+    const r=div('srow-share');
+    var sk='s:'+item.id;
+    if(S.mergeFlags[sk]) r.style.background='#ECFDF5';
+    // ── Toggle merge ──
+    (function(rk){
+      var tog=document.createElement('div');
+      tog.className='nmerge'+(S.mergeFlags[rk]?' on':'');
+      tog.textContent=S.mergeFlags[rk]?'✓':'';
+      tog.title='Selectează pentru merge';
+      function doToggle(e){
+        e.stopPropagation();e.preventDefault();
+        if(S.mergeFlags[rk]) delete S.mergeFlags[rk];
+        else S.mergeFlags[rk]=true;
+        lw(MK,S.mergeFlags);render();
+      }
+      tog.addEventListener('click',doToggle);
+      tog.addEventListener('touchend',doToggle,{passive:false});
+      r.appendChild(tog);
+    })(sk);
+    const dot=sp('sdot-share','');
+    r.appendChild(dot);
+    // Text task
+    const tn=sp('ntask','');
+    renderTaskText(tn,item.name);
+    tn.style.fontStyle='italic';
+    r.appendChild(tn);
+    // Dublu-tap editare
+    (function(sid,sname,tnEl,rowEl){
+      function doEdit(e){
+        if(e.target&&(e.target.tagName==='A'||e.target.tagName==='BUTTON')) return;
+        e.stopPropagation();
+        var lines=sname.split('\n');
+        var titleLine=lines.find(function(l){return !l.match(/^https?:\/\//);})||lines[0]||'';
+        var urlLines=lines.filter(function(l){return l.match(/^https?:\/\//);});
+        var inp=document.createElement('input');
+        inp.value=titleLine;
+        inp.style.cssText='flex:1;font-size:12px;font-style:italic;border:1px solid #10B981;border-radius:5px;padding:3px 6px;outline:none;min-width:0;width:100%';
+        tnEl.replaceWith(inp);
+        inp.setSelectionRange(0,0);inp.focus();
+        function saveEdit(){
+          var newTitle=inp.value.trim()||titleLine;
+          var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
+          var st=S.shareTasks.find(function(x){return x.id===sid;});
+          if(st){st.name=newName;lw(SHK,S.shareTasks);}
+          render();
+        }
+        inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveEdit();}if(e.key==='Escape'){render();}});
+        inp.addEventListener('blur',saveEdit);
+      }
+      rowEl.addEventListener('dblclick',doEdit);
+      var lastTap=0;
+      rowEl.addEventListener('touchstart',function(e){
+        if(e.target&&(e.target.tagName==='A'||e.target.tagName==='BUTTON')) return;
+        var now=Date.now();
+        if(now-lastTap<350){e.preventDefault();e.stopPropagation();doEdit(e);}
+        lastTap=now;
+      },{passive:false});
+    })(item.id,item.name,tn,r);
+    // Buton → Next
+    (function(sid,sname){
+      const nb=document.createElement('button');
+      nb.className='share-to-next';
+      nb.textContent='→ Next';
+      function doToNext(e){
+        e.stopPropagation();
+        var ft={id:gid(),name:sname,ts:Date.now()};
+        je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
+        S.freeTasks=[...S.freeTasks,ft];
+        S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+        S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
+        delete S.mergeFlags['s:'+sid];
+        lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+        render();
+      }
+      nb.addEventListener('click',doToNext);
+      nb.addEventListener('touchend',function(e){e.preventDefault();doToNext(e);},{passive:false});
+      r.appendChild(nb);
+    })(item.id,item.name);
+    // Buton ✕ șterge
+    (function(sid){
+      const xb=mk('button','ndel');xb.textContent='✕';
+      function doDel(e){
+        e.stopPropagation();
+        S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
+        delete S.mergeFlags['s:'+sid];
+        lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);render();
+      }
+      xb.addEventListener('click',doDel);
+      xb.addEventListener('touchend',function(e){e.preventDefault();doDel(e);},{passive:false});
+      r.appendChild(xb);
+    })(item.id);
+    shsec.appendChild(r);
+  });
+  root.appendChild(shsec);
 
   // ══ PROIECTE VIDE ══
   const emptyProjects = S.items.filter(it=>{
@@ -1313,12 +1407,12 @@ function getTaskDisplayText(tname){
 // până la rândul marcat anterior sau marginea de sus a listei Next
 // Rezultat: array de array-uri de texte (fiecare sub-array = un șir merge)
 function calcMergeGroups(){
-  var nr=getNR();
-  var rows=nr.map(function(row){
+  // Operează pe shareTasks în ordinea afișată (0=sus=cel mai recent)
+  var rows=S.shareTasks.map(function(item){
     return {
-      rk: row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId,
-      text: getTaskDisplayText(row.tname),
-      row: row
+      rk: 's:'+item.id,
+      text: getTaskDisplayText(item.name),
+      id: item.id
     };
   });
   var markedIdx=[];
@@ -1326,12 +1420,12 @@ function calcMergeGroups(){
   if(!markedIdx.length) return [];
   var groups=[];
   for(var g=0;g<markedIdx.length;g++){
-    var end=markedIdx[g];   // rândul marcat = primul în output (cel mai jos)
-    var start=g===0?0:markedIdx[g-1]+1; // urcăm până după marcatorul anterior
+    var end=markedIdx[g];
+    var start=g===0?0:markedIdx[g-1]+1;
     var groupRows=rows.slice(start,end+1);
-    // Ordine inversă: marcat primul (jos), apoi urcăm spre sus
-    var texts=groupRows.reverse().map(function(r){return r.text;}).filter(Boolean);
-    if(texts.length) groups.push(texts);
+    // Ordinea inversă: marcat primul (cel mai recent), apoi urcăm
+    var texts=groupRows.slice().reverse().map(function(r){return r.text;}).filter(Boolean);
+    if(texts.length) groups.push({texts:texts, ids:groupRows.map(function(r){return r.id;})});
   }
   return groups;
 }
@@ -1342,7 +1436,7 @@ function doMerge(){
   if(!groups.length) return;
   var SEP='\n* ';
   var allLines=[];
-  groups.forEach(function(g){allLines=allLines.concat(g);});
+  groups.forEach(function(g){allLines=allLines.concat(g.texts);});
   var result=allLines.join(SEP);
 
   // 1. Clipboard
@@ -1356,16 +1450,15 @@ function doMerge(){
     document.body.removeChild(ta);
   }
 
-  // 2. Append la log intern (localStorage) — fără download automat
+  // 2. Append la log intern
   var existing=localStorage.getItem(CK)||'';
   var newLog=existing+(existing?'\n':'')+result;
   localStorage.setItem(CK,newLog);
 
-  // Toast
   var total=allLines.length;
   var toast=document.createElement('div');
   toast.textContent='✓ '+total+' item'+(total>1?'s':'')+' copiat'+(total>1?'e':'')+' în clipboard';
-  toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1A1D2E;color:#F59E0B;border:1px solid #F59E0B;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none;white-space:nowrap';
+  toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1A1D2E;color:#10B981;border:1px solid #10B981;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none;white-space:nowrap';
   document.body.appendChild(toast);
   setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast);},2500);
 }
@@ -1394,45 +1487,16 @@ function doDownloadClipLog(){
 function doMergeDelete(){
   var groups=calcMergeGroups();
   if(!groups.length) return;
-  var nr=getNR();
-  // Colectează toate cheile rândurilor incluse în grupuri
-  var markedIdx=[];
-  var rows=nr.map(function(row,i){
-    return {
-      rk: row.isFree?'f:'+row.id:'p:'+row.projectId+':'+row.taskId,
-      row: row, idx: i
-    };
+  // Colectează toate ID-urile din toate grupurile
+  var allIds=[];
+  groups.forEach(function(g){allIds=allIds.concat(g.ids);});
+  // Șterge din shareTasks
+  allIds.forEach(function(sid){
+    S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
+    delete S.mergeFlags['s:'+sid];
   });
-  // Aceleași indici ca în calcMergeGroups
-  var markedIdxList=[];
-  rows.forEach(function(r,i){if(S.mergeFlags[r.rk]) markedIdxList.push(i);});
-  var toDelete=[];
-  for(var g=0;g<markedIdxList.length;g++){
-    var end=markedIdxList[g];
-    var start=g===0?0:markedIdxList[g-1]+1;
-    for(var i=start;i<=end;i++) toDelete.push(rows[i]);
-  }
-  // Șterge fiecare rând din Next
-  toDelete.forEach(function(item){
-    var row=item.row;
-    if(row.isFree){
-      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
-      S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
-    } else {
-      S.nextOrder=S.nextOrder.filter(function(x){
-        return!(x.type==='proj'&&x.projectId===row.projectId&&x.taskId===row.taskId);
-      });
-      // Mută task-ul în done în proiect
-      var proj=S.items.find(function(x){return x.id===row.projectId;});
-      if(proj){
-        var task=proj.tasks.find(function(t){return t.id===row.taskId;});
-        if(task) task.status='done';
-      }
-    }
-    delete S.mergeFlags[item.rk];
-  });
-  lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(MK,S.mergeFlags);
-  save();render();
+  lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+  render();
 }
 
 // ── Popup manual când nu se găsesc metadate ──
@@ -1549,29 +1613,36 @@ function addToNext(taskText){
   render();
 }
 
+// Tot ce vine prin Share Target merge în secțiunea SHARE, nu în Next
+function addToShare(taskText){
+  if(!taskText||!taskText.trim())return;
+  var st={id:gid(),name:taskText.trim(),ts:Date.now()};
+  je({kind:'share-receive',taskName:st.name,ts:st.ts});
+  S.shareTasks=[st,...S.shareTasks];
+  lw(SHK,S.shareTasks);
+  render();
+}
+
 function handleIncomingShare(){
   var url=new URL(window.location.href);
   var text=url.searchParams.get('addnext')||'';
   var title=url.searchParams.get('addtitle')||'';
   var sharedUrl=url.searchParams.get('addurl')||'';
 
-  // Curăță URL-ul din bara de adrese
   if(text||title||sharedUrl){
     history.replaceState({},'',window.location.pathname);
   }
 
-  // Dacă avem un URL — extrage metadate cu cascadă + popup fallback
   var urlToFetch=sharedUrl||(text&&text.match(/^https?:\/\//)?text:'');
   if(urlToFetch){
     fetchMetaWithFallback(urlToFetch, title, function(taskText){
-      addToNext(taskText);
+      addToShare(taskText);
     });
     return;
   }
 
-  // Nu e URL — text simplu sau titlu
   var taskText=text||title||'';
-  addToNext(taskText);
+  addToShare(taskText);
 }
 
 function registerSW(){
@@ -1587,27 +1658,17 @@ function registerSW(){
   // Ascultă mesaje de la SW (share când app era deschisă)
   navigator.serviceWorker.addEventListener('message',function(e){
     if(e.data&&e.data.type==='ADD_NEXT'&&e.data.text){
-      var ft={id:gid(),name:e.data.text.trim(),ts:Date.now()};
-      je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
-      S.freeTasks=[...S.freeTasks,ft];
-      S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
-      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
-      render();
+      addToShare(e.data.text.trim());
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v2').then(function(cache){
+  caches.open('projectboard-v27').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
         if(!text)return;
         cache.delete('/__pending_share__');
-        var ft={id:gid(),name:text.trim(),ts:Date.now()};
-        je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
-        S.freeTasks=[...S.freeTasks,ft];
-        S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
-        lw(FK,S.freeTasks);lw(NK,S.nextOrder);
-        render();
+        addToShare(text.trim());
       });
     });
   }).catch(function(){});
