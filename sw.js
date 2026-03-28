@@ -1,10 +1,11 @@
-//v27
+//v27-github
 var CACHE = 'projectboard-v27';
 var FILES = [
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/kanban/',
+  '/kanban/index.html',
+  '/kanban/manifest.json',
+  '/kanban/icon-192.png',
+  '/kanban/icon-512.png'
 ];
 
 self.addEventListener('install', function(e) {
@@ -28,8 +29,6 @@ self.addEventListener('activate', function(e) {
   self.clients.claim();
 });
 
-// Fetch handler complet — necesar pentru instalare PWA
-// Share target NU e interceptat — URL ajunge direct la handleIncomingShare()
 self.addEventListener('fetch', function(e) {
   e.respondWith(
     caches.match(e.request).then(function(cached) {
@@ -43,8 +42,7 @@ self.addEventListener('fetch', function(e) {
         return resp;
       });
     }).catch(function() {
-      return caches.match('/index.html');
+      return caches.match('/kanban/index.html');
     })
   );
 });
-
