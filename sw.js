@@ -1,11 +1,11 @@
 //v27-github
 var CACHE = 'projectboard-v27';
 var FILES = [
-  '/kanban/',
-  '/kanban/index.html',
-  '/kanban/manifest.json',
-  '/kanban/icon-192.png',
-  '/kanban/icon-512.png'
+  '/Kamban/',
+  '/Kamban/index.html',
+  '/Kamban/manifest.json',
+  '/Kamban/icon-192.png',
+  '/Kamban/icon-512.png'
 ];
 
 self.addEventListener('install', function(e) {
@@ -42,7 +42,7 @@ self.addEventListener('fetch', function(e) {
         return resp;
       });
     }).catch(function() {
-      return caches.match('/kanban/index.html');
+      return caches.match('/Kamban/index.html');
     })
   );
 });
