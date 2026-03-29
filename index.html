@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="ro">
 <head>
 <meta charset="UTF-8"/>
@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V29</title>
+<title>Project Board V30</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,7 +125,7 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V29';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V30';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1';
@@ -690,6 +690,8 @@ function rJournal(){
     else if(e.kind==='task-move'){const d=div('jmove');d.innerHTML='↔ <strong>'+e.taskName+'</strong>: '+CN[e.fromCol]+' → '+CN[e.toCol]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='free-task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> [Next liber]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='free-task-delete'){el.style.background='#FEF2F2';const d=div('jtask');d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Next liber șters]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='share-receive'){el.style.background='#F0FDF4';const d=div('jtask');d.innerHTML='📥 <strong>'+e.taskName+'</strong> [Share primit]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='share-delete'){el.style.background='#FEF2F2';const d=div('jtask');d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Share șters]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='project-create'){el.style.background='#F0FDF4';const d=div('jtask');d.innerHTML='⊞ Proiect nou: <strong>'+e.projectName+'</strong>'+(e.fromFree!==e.projectName?' [din: '+e.fromFree+']':'')+'<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     jd.appendChild(el);
   });
@@ -827,11 +829,23 @@ function rBoard(){
     root.appendChild(srp);
   }
 
-  // NEXT divider — cu număr elemente
+  // NEXT divider — cu număr elemente + buton salt la Share
   const nd=div('sdiv');
   const nCount=sp('','  '+nr.length);
   nCount.style.cssText='font-size:10px;font-weight:700;color:#F59E0B;background:#2D3048;border-radius:10px;padding:1px 7px;margin-left:-4px';
-  ap(nd,div('sline'),sp('stxt','NEXT'),nCount,div('sline'));
+  const nJumpShare=document.createElement('button');
+  nJumpShare.textContent='↓ Share';
+  nJumpShare.style.cssText='background:none;border:1px solid #10B981;color:#6EE7B7;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;touch-action:manipulation;margin-left:auto';
+  nJumpShare.addEventListener('click',function(){
+    var el=document.querySelector('.sdiv-share');
+    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  nJumpShare.addEventListener('touchend',function(e){
+    e.preventDefault();
+    var el=document.querySelector('.sdiv-share');
+    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  },{passive:false});
+  ap(nd,div('sline'),sp('stxt','NEXT'),nCount,nJumpShare,div('sline'));
   root.appendChild(nd);
 
   // NEXT rows
@@ -1039,6 +1053,7 @@ function rBoard(){
 
   // ══ SHARE SECTION ══
   const shd=div('sdiv');
+  shd.classList.add('sdiv-share');
   const shline1=div('sline'),shline2=div('sline');
   const shtxt=sp('stxt','SHARE');
   shtxt.style.color='#6EE7B7';
@@ -1163,11 +1178,13 @@ function rBoard(){
       nb.addEventListener('touchend',function(e){e.preventDefault();doToNext(e);},{passive:false});
       r.appendChild(nb);
     })(item.id,item.name);
-    // Buton ✕ șterge
-    (function(sid){
+    // Buton ✕ șterge — cu log în jurnal
+    (function(sid,sname){
       const xb=mk('button','ndel');xb.textContent='✕';
       function doDel(e){
         e.stopPropagation();
+        // A3: salvează în jurnal
+        je({kind:'share-delete',taskName:sname,ts:Date.now()});
         S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
         delete S.mergeFlags['s:'+sid];
         lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);render();
@@ -1175,7 +1192,7 @@ function rBoard(){
       xb.addEventListener('click',doDel);
       xb.addEventListener('touchend',function(e){e.preventDefault();doDel(e);},{passive:false});
       r.appendChild(xb);
-    })(item.id);
+    })(item.id,item.name);
     shsec.appendChild(r);
   });
   root.appendChild(shsec);
@@ -1437,7 +1454,8 @@ function doMerge(){
   var SEP='\n* ';
   var allLines=[];
   groups.forEach(function(g){allLines=allLines.concat(g.texts);});
-  var result=allLines.join(SEP);
+  // A1: primul item prefixat cu '* ' la fel ca restul
+  var result='* '+allLines.join(SEP);
 
   // 1. Clipboard
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -1483,18 +1501,26 @@ function doDownloadClipLog(){
   setTimeout(function(){URL.revokeObjectURL(u);},1000);
 }
 
-// ── Șterge din Next toate rândurile care au fost incluse în merge ──
+// ── Șterge din Share itemurile merguite, lasă rezultatul concatenat ──
 function doMergeDelete(){
   var groups=calcMergeGroups();
   if(!groups.length) return;
+  var SEP='\n* ';
+  // Construiește rezultatul merge (același ca doMerge)
+  var allLines=[];
+  groups.forEach(function(g){allLines=allLines.concat(g.texts);});
+  var mergedText='* '+allLines.join(SEP);
   // Colectează toate ID-urile din toate grupurile
   var allIds=[];
   groups.forEach(function(g){allIds=allIds.concat(g.ids);});
-  // Șterge din shareTasks
+  // Șterge itemurile originale din Share
   allIds.forEach(function(sid){
     S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
     delete S.mergeFlags['s:'+sid];
   });
+  // A2: adaugă rezultatul concatenat ca item nou în Share (sus)
+  var newItem={id:gid(),name:mergedText,ts:Date.now()};
+  S.shareTasks=[newItem,...S.shareTasks];
   lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
   render();
 }
@@ -1662,7 +1688,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v29').then(function(cache){
+  caches.open('projectboard-v30').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
