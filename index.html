@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V30</title>
+<title>Project Board V31</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,10 +125,10 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V30';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V31';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
-const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1';
+const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
 const DEF=[
   {type:'project',id:'id_5p0uklazf',name:'Analize',tasks:[]},
   {type:'project',id:'id_4ga7df4nt',name:'Liana-bucuresti',tasks:[]},
@@ -151,15 +151,15 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],mergeFlags:{},view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
 function fmt(ts){const d=new Date(ts);return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});}
-function init(){const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));S.journal=ls(JK)||[];S.nextOrder=ls(NK)||[];S.freeTasks=ls(FK)||[];S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};S.shareTasks=ls(SHK)||[];}
+function init(){const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));S.journal=ls(JK)||[];S.nextOrder=ls(NK)||[];S.freeTasks=ls(FK)||[];S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};S.shareTasks=ls(SHK)||[];S.labels=ls(LBLK)||['#a','#u','#c'];S.shareJournal=ls(SHJK)||[];}
 let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
-function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);}
+function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);lw(LBLK,S.labels);lw(SHJK,S.shareJournal);}
 function je(e){S.journal.push(e);lw(JK,S.journal);}
 
 // ── Next rows ──
@@ -640,6 +640,58 @@ function doExpJournal(){
   const u=URL.createObjectURL(b);const a=document.createElement('a');
   a.href=u;a.download='pb-jurnal-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u);
 }
+// Export jurnal ca .txt — pentru căutare
+function doExpJournalTxt(){
+  var CN2={next:'To Do',wait:'Wait',done:'Done'};
+  var lines=[];
+  S.journal.forEach(function(e){
+    var d=new Date(e.ts);
+    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    if(e.kind==='task-create') lines.push('['+ds+'] TASK NOU: '+e.taskName+' → '+(CN2[e.colId]||e.colId));
+    else if(e.kind==='task-move') lines.push('['+ds+'] MUTARE: '+e.taskName+': '+(CN2[e.fromCol]||e.fromCol)+' → '+(CN2[e.toCol]||e.toCol));
+    else if(e.kind==='free-task-create') lines.push('['+ds+'] NEXT LIBER: '+e.taskName);
+    else if(e.kind==='free-task-delete') lines.push('['+ds+'] ȘTERS NEXT: '+e.taskName);
+    else if(e.kind==='share-receive') lines.push('['+ds+'] SHARE PRIMIT: '+e.taskName);
+    else if(e.kind==='share-delete') lines.push('['+ds+'] SHARE ȘTERS: '+e.taskName);
+    else if(e.kind==='project-create') lines.push('['+ds+'] PROIECT NOU: '+e.projectName);
+    else if(e.kind==='project-archive') lines.push('['+ds+'] ARHIVAT: '+e.projectName);
+    else lines.push('['+ds+'] '+e.kind+': '+(e.taskName||e.projectName||''));
+  });
+  var txt=lines.join('\n');
+  var b2=new Blob([txt],{type:'text/plain'});
+  var u2=URL.createObjectURL(b2);var a2=document.createElement('a');
+  a2.href=u2;a2.download='jurnal-'+new Date().toISOString().slice(0,10)+'.txt';a2.click();URL.revokeObjectURL(u2);
+}
+// Export jurnal Share ca .txt
+function doExpShareJournalTxt(){
+  var lines=S.shareJournal.map(function(e){
+    var d=new Date(e.ts);
+    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    return '['+ds+']\n'+e.text+'\n';
+  });
+  if(!lines.length){alert('Jurnalul Share e gol.');return;}
+  var b=new Blob([lines.join('\n')],{type:'text/plain'});
+  var u=URL.createObjectURL(b);var a=document.createElement('a');
+  a.href=u;a.download='share-jurnal-'+new Date().toISOString().slice(0,10)+'.txt';a.click();URL.revokeObjectURL(u);
+}
+// Import jurnal Share din .txt
+function doImpShareJournalTxt(e){
+  var f=e.target.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(ev){
+    var txt=ev.target.result||'';
+    // Parsează blocuri [data]\ntext\n
+    var blocks=txt.split(/\n(?=\[)/);
+    var entries=[];
+    blocks.forEach(function(block){
+      var m=block.match(/^\[([^\]]+)\]\n([\s\S]+)/);
+      if(m) entries.push({ts:new Date(m[1]).getTime()||Date.now(),text:m[2].trim()});
+    });
+    S.shareJournal=entries;lw(SHJK,S.shareJournal);
+    alert('✓ Jurnal Share importat: '+entries.length+' intrări.');render();
+  };
+  r.readAsText(f);e.target.value='';
+}
 function doImpJournal(e){
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
@@ -725,27 +777,76 @@ function rBoard(){
   hr.appendChild(sw);
 
   const sdot=sp('sdot','');sdot.id='sdot';
-  // Buton clipboard — deschide un input unde poți lipi textul
-  const clipBtn=mk('button','btn bg');
-  clipBtn.textContent='📋+';
-  clipBtn.title='Lipește text în NEXT';
-  clipBtn.style.cssText='background:#0F766E;color:#fff;touch-action:manipulation';
-  function doClipboard(){
-    S.showClip=true;render();
-    setTimeout(function(){
-      var ci=document.getElementById('clip-inp');
-      if(ci){ci.focus();ci.select();}
-    },80);
-  }
-  clipBtn.addEventListener('click',doClipboard);
-  clipBtn.addEventListener('touchend',function(e){e.preventDefault();doClipboard();},{passive:false});
+  // Butoane etichete rapide
+  var lblBtns=div('');lblBtns.style.cssText='display:flex;gap:3px;align-items:center;flex-wrap:wrap';
+  S.labels.forEach(function(lbl){
+    var lb=mk('button','btn');
+    lb.textContent=lbl;
+    lb.style.cssText='background:#2D3048;color:#A5B4FC;border:1px solid #4B5563;border-radius:5px;padding:3px 7px;font-size:10px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    function doLbl(e){
+      e.stopPropagation();
+      S.sq=lbl;
+      si.value=lbl;
+      doSearch();
+    }
+    lb.addEventListener('click',doLbl);
+    lb.addEventListener('touchend',function(e){e.preventDefault();doLbl(e);},{passive:false});
+    lblBtns.appendChild(lb);
+  });
+  // Buton Settings ⚙
+  var settBtn=mk('button','btn bg');
+  settBtn.textContent='⚙';
+  settBtn.title='Settings etichete';
+  settBtn.style.cssText='background:#374151;color:#F59E0B;border:none;border-radius:7px;padding:6px 9px;font-size:13px;cursor:pointer;touch-action:manipulation';
+  settBtn.addEventListener('click',function(){S.showSettings=!S.showSettings;render();});
+  settBtn.addEventListener('touchend',function(e){e.preventDefault();S.showSettings=!S.showSettings;render();},{passive:false});
   ap(hr,sdot,
     bt('bg','💾',doExp),bt('bg','📂',()=>impI.click()),
-    bt('bp','💾',doExpJournal),bt('bp','📂',()=>impJ.click()),
+    bt('bp','💾',doExpJournal),bt('bp','📋',doExpJournalTxt),bt('bp','📂',()=>impJ.click()),
     bt('bp','📋 Jurnal',()=>{S.view='journal';render();}),
     bt('bi','+ Secț.',()=>{S.showAdd='section';S.addName='';render();}),
-    bt('ba','+ Proiect',()=>{S.showAdd='project';S.addName='';render();}));
+    bt('ba','+ Proiect',()=>{S.showAdd='project';S.addName='';render();}),
+    settBtn,lblBtns);
   ap(h,hl,hr);root.appendChild(h);
+
+  // ── Panou Settings ──
+  if(S.showSettings){
+    var sp2=div('');
+    sp2.style.cssText='padding:10px 12px;background:#1E2130;border-bottom:2px solid #F59E0B;display:flex;flex-direction:column;gap:8px';
+    var sp2h=sp('','⚙ Etichete rapide');
+    sp2h.style.cssText='color:#F59E0B;font-weight:700;font-size:12px';
+    var sp2row=div('');sp2row.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center';
+    // Afișează etichetele existente cu buton X
+    S.labels.forEach(function(lbl,idx){
+      var chip=div('');chip.style.cssText='display:flex;align-items:center;gap:3px;background:#2D3048;border:1px solid #4B5563;border-radius:6px;padding:3px 8px';
+      var ct=sp('',lbl);ct.style.cssText='color:#A5B4FC;font-size:11px;font-weight:700';
+      var cx=mk('button','');cx.textContent='✕';cx.style.cssText='background:none;border:none;color:#6B7280;font-size:10px;cursor:pointer;padding:0 2px;line-height:1';
+      cx.addEventListener('click',function(){S.labels.splice(idx,1);lw(LBLK,S.labels);render();});
+      chip.appendChild(ct);chip.appendChild(cx);
+      sp2row.appendChild(chip);
+    });
+    // Input pentru etichetă nouă
+    var sp2inp=mk('input','');
+    sp2inp.placeholder='+ etichetă nouă (ex: #p)';
+    sp2inp.style.cssText='border:1px solid #F59E0B;border-radius:6px;padding:4px 8px;font-size:11px;background:#0F1117;color:#F1F5F9;width:140px;outline:none';
+    var sp2add=mk('button','');sp2add.textContent='+ Adaugă';
+    sp2add.style.cssText='background:#F59E0B;color:#1A1D2E;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer';
+    function doAddLabel(){
+      var v=sp2inp.value.trim();
+      if(!v)return;
+      if(!v.startsWith('#')) v='#'+v;
+      if(S.labels.indexOf(v)<0){S.labels.push(v);lw(LBLK,S.labels);}
+      sp2inp.value='';render();
+    }
+    sp2add.addEventListener('click',doAddLabel);
+    sp2inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doAddLabel();}});
+    var sp2close=mk('button','');sp2close.textContent='✕ Închide';
+    sp2close.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;margin-left:auto';
+    sp2close.addEventListener('click',function(){S.showSettings=false;render();});
+    sp2row.appendChild(sp2inp);sp2row.appendChild(sp2add);
+    sp2.appendChild(sp2h);sp2.appendChild(sp2row);sp2.appendChild(sp2close);
+    root.appendChild(sp2);
+  }
 
   // ── Panou lipire clipboard ──
   if(S.showClip){
@@ -1197,6 +1298,39 @@ function rBoard(){
   });
   root.appendChild(shsec);
 
+  // ── Jurnal Share (clipboard log) ──
+  if(S.shareJournal&&S.shareJournal.length){
+    var impSHJ=mk('input','');impSHJ.type='file';impSHJ.accept='.txt';impSHJ.style.display='none';
+    impSHJ.addEventListener('change',doImpShareJournalTxt);document.body.appendChild(impSHJ);
+    var sjd=div('sdiv');sjd.style.background='#0F1117';
+    var sjtxt=sp('stxt','JURNAL CLIPBOARD');sjtxt.style.cssText='font-size:11px;font-weight:800;color:#6EE7B7;letter-spacing:.18em';
+    var sjCount=sp('','  '+S.shareJournal.length);
+    sjCount.style.cssText='font-size:10px;font-weight:700;color:#10B981;background:#1E2130;border-radius:10px;padding:1px 7px';
+    var sjExp=mk('button','');sjExp.textContent='⬇ .txt';
+    sjExp.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:10px;font-weight:700;cursor:pointer;margin-left:auto';
+    sjExp.addEventListener('click',doExpShareJournalTxt);
+    var sjImp=mk('button','');sjImp.textContent='📂';
+    sjImp.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer';
+    sjImp.addEventListener('click',function(){impSHJ.click();});
+    ap(sjd,div('sline'),sjtxt,sjCount,sjExp,sjImp,div('sline'));
+    root.appendChild(sjd);
+    var sjsec=div('');
+    [...S.shareJournal].reverse().forEach(function(e){
+      var row=div('');
+      row.style.cssText='padding:6px 13px;border-bottom:1px solid #1E2130;background:#0F1117';
+      var dt=new Date(e.ts);
+      var ds=dt.toLocaleDateString('ro-RO')+' '+dt.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+      var drow=div('');
+      drow.style.cssText='font-size:9px;color:#6B7280;margin-bottom:3px';drow.textContent=ds;
+      var txt=div('');
+      txt.style.cssText='font-size:11px;color:#D1FAE5;white-space:pre-wrap;word-break:break-word;line-height:1.5';
+      txt.textContent=e.text;
+      row.appendChild(drow);row.appendChild(txt);
+      sjsec.appendChild(row);
+    });
+    root.appendChild(sjsec);
+  }
+
   // ══ PROIECTE VIDE ══
   const emptyProjects = S.items.filter(it=>{
     if(it.type!=='project') return false;
@@ -1468,10 +1602,13 @@ function doMerge(){
     document.body.removeChild(ta);
   }
 
-  // 2. Append la log intern
+  // 2. Append la log intern + shareJournal
   var existing=localStorage.getItem(CK)||'';
   var newLog=existing+(existing?'\n':'')+result;
   localStorage.setItem(CK,newLog);
+  // Jurnal Share
+  S.shareJournal.push({ts:Date.now(),text:result});
+  lw(SHJK,S.shareJournal);
 
   var total=allLines.length;
   var toast=document.createElement('div');
@@ -1688,7 +1825,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v30').then(function(cache){
+  caches.open('projectboard-v31').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
