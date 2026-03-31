@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V34</title>
+<title>Project Board V35</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,7 +125,7 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V34';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V35';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
@@ -599,7 +599,7 @@ function promoteToProject(freeId,taskName){
   taskPrev.style.cssText='color:#6B7280;font-size:10px;margin-bottom:12px;word-break:break-word';
 
   // Lista proiectelor existente ca butoane
-  var projList=S.items.filter(function(x){return x.type==='project';});
+  var projList=S.items.filter(function(x){return x.type==='project';}).slice().sort(function(a,b){return a.name.localeCompare(b.name,'ro');});
   var listLbl=document.createElement('div');
   listLbl.textContent='Proiecte existente:';
   listLbl.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:6px;flex-shrink:0';
@@ -1912,7 +1912,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v34').then(function(cache){
+  caches.open('projectboard-v35').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
