@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V32</title>
+<title>Project Board V33</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,7 +125,7 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V32';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V33';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
@@ -580,41 +580,86 @@ function doCreateProject(freeId,projName,taskLabel){
   },80);
 }
 function promoteToProject(freeId,taskName){
-  // Extrage titlul (prima linie) și URL-ul dacă există
   var lines=taskName.split('\n');
-  var firstLine=lines[0].trim();
-  var urlLine=lines.find(function(l){return l.match(/^https?:\/\//);});
+  var taskLabel=lines.find(function(l){return !l.match(/^https?:\/\//);})||lines[0]||taskName;
+  taskLabel=taskLabel.trim();
+  var urlLine=lines.find(function(l){return l.match(/^https?:\/\//);})||'';
+  if(urlLine) taskLabel=taskLabel+(taskLabel?' — ':'')+urlLine;
 
-  // Detectează prefix p: — ex: "p: Nume proiect"
-  var pMatch=firstLine.match(/^p:\s*(.+)/i);
-  if(pMatch){
-    var projName=pMatch[1].trim();
-    var taskLabel=urlLine||firstLine;
-    doCreateProject(freeId,projName,taskLabel);
-    return;
+  // Popup combobox cu lista proiectelor existente
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px;padding:20px 18px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='⊞ Adaugă la proiect';
+  h.style.cssText='color:#10B981;font-weight:800;font-size:15px;margin-bottom:6px';
+  var taskPrev=document.createElement('div');
+  taskPrev.textContent=taskLabel.length>55?taskLabel.slice(0,55)+'…':taskLabel;
+  taskPrev.style.cssText='color:#6B7280;font-size:10px;margin-bottom:14px;line-height:1.4;word-break:break-word';
+  var lbl=document.createElement('div');
+  lbl.textContent='Alege proiect existent sau scrie unul nou:';
+  lbl.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:6px';
+  // Datalist cu proiectele existente
+  var dlId='proj-dl-'+Date.now();
+  var dl=document.createElement('datalist');
+  dl.id=dlId;
+  S.items.filter(function(x){return x.type==='project';}).forEach(function(p){
+    var opt=document.createElement('option');
+    opt.value=p.name;
+    dl.appendChild(opt);
+  });
+  var inp=document.createElement('input');
+  inp.setAttribute('list',dlId);
+  inp.placeholder='Nume proiect...';
+  inp.style.cssText='width:100%;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;margin-bottom:14px;box-sizing:border-box';
+  var brow=document.createElement('div');
+  brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓ Adaugă';
+  bOk.style.cssText='flex:1;background:#10B981;color:#fff;border:none;border-radius:7px;padding:10px;font-weight:800;font-size:13px;cursor:pointer';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='Anulează';
+  bCancel.style.cssText='flex:1;background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:10px;font-size:12px;cursor:pointer';
+  function doConfirm(){
+    var projName=inp.value.trim();
+    if(!projName)return;
+    document.body.removeChild(ov);
+    // Verifică dacă există un proiect cu același nume
+    var existing=S.items.find(function(x){return x.type==='project'&&x.name===projName;});
+    if(existing){
+      // Adaugă task la proiect existent
+      var newTaskId=gid();
+      existing.tasks=[...existing.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
+      S.nextOrder=[...S.nextOrder,{type:'proj',projectId:existing.id,taskId:newTaskId}];
+      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==freeId;});
+      S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===freeId);});
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+      je({kind:'task-create',taskName:taskLabel,colId:'next',projectId:existing.id,ts:Date.now()});
+      save();render();
+      setTimeout(function(){
+        var el=document.querySelector('[data-rid="'+existing.id+'"]');
+        if(!el)return;
+        el.scrollIntoView({behavior:'smooth',block:'center'});
+        el.style.transition='background 0.3s';el.style.background='#FEF9C3';
+        setTimeout(function(){el.style.background='';},1500);
+      },80);
+    } else {
+      // Creează proiect nou
+      doCreateProject(freeId,projName,taskLabel);
+    }
   }
-
-  // Dacă taskName e URL sau conține URL ca titlu — cere nume proiect
-  var isUrl=firstLine.match(/^https?:\/\//);
-  var slashIdx=!isUrl?taskName.search(/[\/\\]/):(-1);
-
-  if(isUrl){
-    // Titlul e URL — cere nume proiect
-    var asked=window.prompt('Nume proiect:','');
-    if(!asked||!asked.trim())return;
-    doCreateProject(freeId,asked.trim(),urlLine||firstLine);
-    return;
-  }
-
-  if(slashIdx!==-1){
-    var projName=taskName.slice(slashIdx+1).trim()||taskName;
-    var taskLabel=taskName.slice(0,slashIdx).trim()||taskName;
-    doCreateProject(freeId,projName,taskLabel);
-    return;
-  }
-
-  // Text simplu — folosește ca nume proiect direct
-  doCreateProject(freeId,firstLine,firstLine);
+  bOk.addEventListener('click',doConfirm);
+  bCancel.addEventListener('click',function(){document.body.removeChild(ov);});
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();doConfirm();}
+    if(e.key==='Escape'){document.body.removeChild(ov);}
+  });
+  brow.appendChild(bOk);brow.appendChild(bCancel);
+  card.appendChild(h);card.appendChild(taskPrev);card.appendChild(lbl);card.appendChild(dl);card.appendChild(inp);card.appendChild(brow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();},80);
 }
 function doExp(){
   const b=new Blob([JSON.stringify({items:S.items,journal:S.journal,nextOrder:S.nextOrder,freeTasks:S.freeTasks},null,2)],{type:'application/json'});
@@ -982,23 +1027,28 @@ function rBoard(){
     root.appendChild(srp);
   }
 
-  // NEXT divider — cu număr elemente + buton salt la Share
+  // NEXT divider — cu număr elemente + butoane salt
   const nd=div('sdiv');
   const nCount=sp('','  '+nr.length);
   nCount.style.cssText='font-size:10px;font-weight:700;color:#F59E0B;background:#2D3048;border-radius:10px;padding:1px 7px;margin-left:-4px';
+  // Buton salt la Proiecte (sus)
+  const nJumpProj=document.createElement('button');
+  nJumpProj.textContent='↑ Proiecte';
+  nJumpProj.style.cssText='background:none;border:1px solid #6366F1;color:#A5B4FC;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;touch-action:manipulation;margin-left:auto';
+  function doJumpProj(){window.scrollTo({top:0,behavior:'smooth'});}
+  nJumpProj.addEventListener('click',doJumpProj);
+  nJumpProj.addEventListener('touchend',function(e){e.preventDefault();doJumpProj();},{passive:false});
+  // Buton salt la Share (jos)
   const nJumpShare=document.createElement('button');
   nJumpShare.textContent='↓ Share';
-  nJumpShare.style.cssText='background:none;border:1px solid #10B981;color:#6EE7B7;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;touch-action:manipulation;margin-left:auto';
-  nJumpShare.addEventListener('click',function(){
+  nJumpShare.style.cssText='background:none;border:1px solid #10B981;color:#6EE7B7;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  function doJumpShare(){
     var el=document.querySelector('.sdiv-share');
     if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
-  });
-  nJumpShare.addEventListener('touchend',function(e){
-    e.preventDefault();
-    var el=document.querySelector('.sdiv-share');
-    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
-  },{passive:false});
-  ap(nd,div('sline'),sp('stxt','NEXT'),nCount,nJumpShare,div('sline'));
+  }
+  nJumpShare.addEventListener('click',doJumpShare);
+  nJumpShare.addEventListener('touchend',function(e){e.preventDefault();doJumpShare();},{passive:false});
+  ap(nd,div('sline'),sp('stxt','NEXT'),nCount,nJumpProj,nJumpShare,div('sline'));
   root.appendChild(nd);
 
   // NEXT rows
@@ -1775,8 +1825,8 @@ function fetchMetaWithFallback(urlToFetch, shareTitle, cb){
         throw new Error('no data');
       })
       .catch(function(){
-        // 4. Popup manual
-        showShareLabelPopup(urlToFetch, shareTitle, cb);
+        // Fallback silențios — salvează URL-ul direct, fără popup
+        cb((shareTitle?shareTitle+' — ':'')+urlToFetch);
       });
   });
 }
@@ -1841,7 +1891,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v32').then(function(cache){
+  caches.open('projectboard-v33').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
