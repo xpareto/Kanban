@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V31</title>
+<title>Project Board V32</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,7 +125,7 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V31';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V32';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
@@ -750,6 +750,57 @@ function rJournal(){
   root.appendChild(jd);return root;
 }
 
+// ── Render Jurnal Clipboard Share ──
+function rClipJournal(){
+  var impSHJ=mk('input','');impSHJ.type='file';impSHJ.accept='.txt';impSHJ.style.display='none';
+  impSHJ.addEventListener('change',doImpShareJournalTxt);document.body.appendChild(impSHJ);
+  const root=div('');
+  const h=div('hdr');
+  const jhl=div('hdr-l');
+  const jtitle=mk('div','h1');jtitle.textContent='Jurnal Clipboard';
+  jhl.appendChild(sp('logo','◈'));jhl.appendChild(jtitle);
+  h.appendChild(jhl);
+  const hr2=div('hdr-r');
+  // Buton download .txt — conținut complet acumulat
+  var dlBtn=mk('button','btn bg');dlBtn.textContent='⬇ clipboard.txt';
+  dlBtn.style.cssText='background:#10B981;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  dlBtn.addEventListener('click',doDownloadClipLog);
+  // Buton export jurnal .txt
+  var expBtn=mk('button','btn bg');expBtn.textContent='⬇ jurnal.txt';
+  expBtn.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  expBtn.addEventListener('click',doExpShareJournalTxt);
+  // Buton import
+  var impBtn=mk('button','btn bg');impBtn.textContent='📂';
+  impBtn.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer;touch-action:manipulation';
+  impBtn.addEventListener('click',function(){impSHJ.click();});
+  ap(hr2,dlBtn,expBtn,impBtn,bt('bg','← Board',()=>{S.view='board';render();}));
+  h.appendChild(hr2);
+  root.appendChild(h);
+  if(!S.shareJournal||!S.shareJournal.length){
+    const e=div('');
+    e.style.cssText='padding:32px;text-align:center;color:#9CA3AF;font-size:13px';
+    e.textContent='Nicio concatenare salvată încă.';
+    root.appendChild(e);return root;
+  }
+  const jd=div('');jd.style.cssText='padding-bottom:40px;background:#0F1117;min-height:100vh';
+  // Afișează entrările în ordine inversă (cel mai recent sus) — identic cu jurnalul principal
+  [...S.shareJournal].reverse().forEach(function(e){
+    const el=div('je');
+    el.style.cssText='border-bottom:1px solid #1E2130;background:#0F1117;padding:10px 13px';
+    var dt=new Date(e.ts);
+    var ds=dt.toLocaleDateString('ro-RO')+' '+dt.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    var drow=div('');
+    drow.style.cssText='font-size:9px;color:#6B7280;margin-bottom:4px';
+    drow.textContent='📋 '+ds;
+    var txt=div('');
+    txt.style.cssText='font-size:12px;color:#D1FAE5;white-space:pre-wrap;word-break:break-word;line-height:1.6';
+    txt.textContent=e.text;
+    el.appendChild(drow);el.appendChild(txt);
+    jd.appendChild(el);
+  });
+  root.appendChild(jd);return root;
+}
+
 // ── Render board ──
 function rBoard(){
   const nr=getNR();
@@ -804,6 +855,7 @@ function rBoard(){
     bt('bg','💾',doExp),bt('bg','📂',()=>impI.click()),
     bt('bp','💾',doExpJournal),bt('bp','📋',doExpJournalTxt),bt('bp','📂',()=>impJ.click()),
     bt('bp','📋 Jurnal',()=>{S.view='journal';render();}),
+    bt('bp','📋 Clipboard',()=>{S.view='clipjournal';render();}),
     bt('bi','+ Secț.',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Proiect',()=>{S.showAdd='project';S.addName='';render();}),
     settBtn,lblBtns);
@@ -1184,12 +1236,7 @@ function rBoard(){
     smDel.textContent='🗑 Șterge din Share';
     smDel.addEventListener('click',doMergeDelete);
     smDel.addEventListener('touchend',function(e){e.preventDefault();doMergeDelete();},{passive:false});
-    const smClr=document.createElement('button');
-    smClr.className='merge-clear';
-    smClr.textContent='✕ Deselectează';
-    smClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
-    smClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
-    ap(smb,smc,smBtn,smDl,smDel,smClr);
+    ap(smb,smc,smBtn,smDl,smDel);
     root.appendChild(smb);
   }
 
@@ -1297,39 +1344,6 @@ function rBoard(){
     shsec.appendChild(r);
   });
   root.appendChild(shsec);
-
-  // ── Jurnal Share (clipboard log) ──
-  if(S.shareJournal&&S.shareJournal.length){
-    var impSHJ=mk('input','');impSHJ.type='file';impSHJ.accept='.txt';impSHJ.style.display='none';
-    impSHJ.addEventListener('change',doImpShareJournalTxt);document.body.appendChild(impSHJ);
-    var sjd=div('sdiv');sjd.style.background='#0F1117';
-    var sjtxt=sp('stxt','JURNAL CLIPBOARD');sjtxt.style.cssText='font-size:11px;font-weight:800;color:#6EE7B7;letter-spacing:.18em';
-    var sjCount=sp('','  '+S.shareJournal.length);
-    sjCount.style.cssText='font-size:10px;font-weight:700;color:#10B981;background:#1E2130;border-radius:10px;padding:1px 7px';
-    var sjExp=mk('button','');sjExp.textContent='⬇ .txt';
-    sjExp.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:3px 9px;font-size:10px;font-weight:700;cursor:pointer;margin-left:auto';
-    sjExp.addEventListener('click',doExpShareJournalTxt);
-    var sjImp=mk('button','');sjImp.textContent='📂';
-    sjImp.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer';
-    sjImp.addEventListener('click',function(){impSHJ.click();});
-    ap(sjd,div('sline'),sjtxt,sjCount,sjExp,sjImp,div('sline'));
-    root.appendChild(sjd);
-    var sjsec=div('');
-    [...S.shareJournal].reverse().forEach(function(e){
-      var row=div('');
-      row.style.cssText='padding:6px 13px;border-bottom:1px solid #1E2130;background:#0F1117';
-      var dt=new Date(e.ts);
-      var ds=dt.toLocaleDateString('ro-RO')+' '+dt.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-      var drow=div('');
-      drow.style.cssText='font-size:9px;color:#6B7280;margin-bottom:3px';drow.textContent=ds;
-      var txt=div('');
-      txt.style.cssText='font-size:11px;color:#D1FAE5;white-space:pre-wrap;word-break:break-word;line-height:1.5';
-      txt.textContent=e.text;
-      row.appendChild(drow);row.appendChild(txt);
-      sjsec.appendChild(row);
-    });
-    root.appendChild(sjsec);
-  }
 
   // ══ PROIECTE VIDE ══
   const emptyProjects = S.items.filter(it=>{
@@ -1536,7 +1550,7 @@ function rBoard(){
 
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
-  app.appendChild(S.view==='journal'?rJournal():rBoard());
+  app.appendChild(S.view==='journal'?rJournal():S.view==='clipjournal'?rClipJournal():rBoard());
 }
 
 init();
@@ -1618,17 +1632,19 @@ function doMerge(){
   setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast);},2500);
 }
 
-// ── Descarcă tot log-ul acumulat ca clipboard.txt ──
+// ── Descarcă tot istoricul clipboard acumulat ──
 function doDownloadClipLog(){
-  var content=localStorage.getItem(CK)||'';
-  if(!content){
+  if(!S.shareJournal||!S.shareJournal.length){
     var t=document.createElement('div');
-    t.textContent='clipboard.txt e gol';
+    t.textContent='Jurnalul clipboard e gol';
     t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#374151;color:#9CA3AF;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none';
     document.body.appendChild(t);
     setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},2000);
     return;
   }
+  // Conținut: toate concatenările în ordine cronologică, separate de linie goală
+  var lines=S.shareJournal.map(function(e){return e.text;});
+  var content=lines.join('\n\n');
   var blob=new Blob([content],{type:'text/plain'});
   var u=URL.createObjectURL(blob);
   var a=document.createElement('a');
@@ -1825,7 +1841,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v31').then(function(cache){
+  caches.open('projectboard-v32').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
