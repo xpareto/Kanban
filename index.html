@@ -751,11 +751,36 @@ function promoteToProject(freeId,taskName){
   ov.addEventListener('click',function(e){if(e.target===ov)doClose();});
   setTimeout(function(){inp.focus();},80);
 }
-function doExp(){
-  const b=new Blob([JSON.stringify({items:S.items,journal:S.journal,nextOrder:S.nextOrder,freeTasks:S.freeTasks},null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(b);const a=document.createElement('a');
-  a.href=u;a.download='pb-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u);
+// ── Elimină diacritice pentru export .txt (compatibilitate Google Drive / search) ──
+function stripDiacritics(s){
+  return (s||'').replace(/[ăâ]/g,'a').replace(/[ÂÄ]/g,'A').replace(/[Ă]/g,'A')
+    .replace(/î/g,'i').replace(/Î/g,'I')
+    .replace(/[șş]/g,'s').replace(/[ȘŞ]/g,'S')
+    .replace(/[țţ]/g,'t').replace(/[ȚŢ]/g,'T')
+    .replace(/é/g,'e').replace(/É/g,'E')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
+// Descarcă un blob text — helper comun
+function dlBlob(content,filename,mime){
+  var b=new Blob([content],{type:mime||'application/json'});
+  var u=URL.createObjectURL(b);var a=document.createElement('a');
+  a.href=u;a.download=filename;document.body.appendChild(a);a.click();
+  document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(u);},1000);
+}
+function todayStr(){return new Date().toISOString().slice(0,10);}// 2026-04-01
+
+// ── Export date complet JSON ──
+// withDate=true → pb-date-2026-04-01.json (istoric)
+// withDate=false → pb-date.json (fix, override Google Drive)
+function doExp(withDate){
+  var payload=JSON.stringify({
+    items:S.items,journal:S.journal,nextOrder:S.nextOrder,freeTasks:S.freeTasks,
+    waitOrder:S.waitOrder,waitFreeTasks:S.waitFreeTasks,shareTasks:S.shareTasks,
+    shareJournal:S.shareJournal,labels:S.labels
+  },null,2);
+  dlBlob(payload, withDate?'pb-date-'+todayStr()+'.json':'pb-date.json');
+}
+// ── Import date complet JSON ──
 function doImp(e){
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
@@ -763,70 +788,29 @@ function doImp(e){
     try{
       const p=JSON.parse(ev.target.result);
       if(Array.isArray(p)){S.items=p;lw(SK,p);}
-      else if(p.items){S.items=p.items;lw(SK,p.items);if(p.journal){S.journal=p.journal;lw(JK,p.journal);}if(p.nextOrder){S.nextOrder=p.nextOrder;lw(NK,p.nextOrder);}if(p.freeTasks){S.freeTasks=p.freeTasks;lw(FK,p.freeTasks);}if(p.waitOrder){S.waitOrder=p.waitOrder;lw(WK,p.waitOrder);}if(p.waitFreeTasks){S.waitFreeTasks=p.waitFreeTasks;lw(WFK,p.waitFreeTasks);}}
+      else if(p.items){
+        S.items=p.items;lw(SK,p.items);
+        if(p.journal){S.journal=p.journal;lw(JK,p.journal);}
+        if(p.nextOrder){S.nextOrder=p.nextOrder;lw(NK,p.nextOrder);}
+        if(p.freeTasks){S.freeTasks=p.freeTasks;lw(FK,p.freeTasks);}
+        if(p.waitOrder){S.waitOrder=p.waitOrder;lw(WK,p.waitOrder);}
+        if(p.waitFreeTasks){S.waitFreeTasks=p.waitFreeTasks;lw(WFK,p.waitFreeTasks);}
+        if(p.shareTasks){S.shareTasks=p.shareTasks;lw(SHK,p.shareTasks);}
+        if(p.shareJournal){S.shareJournal=p.shareJournal;lw(SHJK,p.shareJournal);}
+        if(p.labels){S.labels=p.labels;lw(LBLK,p.labels);}
+      }
       else throw 0;
       alert('✓ Importat!');render();
-    }catch(_){alert('❌ Fișier invalid.');}
+    }catch(_){alert('❌ Fisier invalid.');}
   };
   r.readAsText(f);e.target.value='';
 }
-function doExpJournal(){
-  const b=new Blob([JSON.stringify({journal:S.journal},null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(b);const a=document.createElement('a');
-  a.href=u;a.download='pb-jurnal-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u);
+// ── Export jurnal principal JSON ──
+function doExpJournal(withDate){
+  dlBlob(JSON.stringify({journal:S.journal},null,2),
+    withDate?'pb-jurnal-'+todayStr()+'.json':'pb-jurnal.json');
 }
-// Export jurnal ca .txt — pentru căutare
-function doExpJournalTxt(){
-  var CN2={next:'To Do',wait:'Wait',done:'Done'};
-  var lines=[];
-  S.journal.forEach(function(e){
-    var d=new Date(e.ts);
-    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-    if(e.kind==='task-create') lines.push('['+ds+'] TASK NOU: '+e.taskName+' → '+(CN2[e.colId]||e.colId));
-    else if(e.kind==='task-move') lines.push('['+ds+'] MUTARE: '+e.taskName+': '+(CN2[e.fromCol]||e.fromCol)+' → '+(CN2[e.toCol]||e.toCol));
-    else if(e.kind==='free-task-create') lines.push('['+ds+'] NEXT LIBER: '+e.taskName);
-    else if(e.kind==='free-task-delete') lines.push('['+ds+'] ȘTERS NEXT: '+e.taskName);
-    else if(e.kind==='share-receive') lines.push('['+ds+'] SHARE PRIMIT: '+e.taskName);
-    else if(e.kind==='share-delete') lines.push('['+ds+'] SHARE ȘTERS: '+e.taskName);
-    else if(e.kind==='project-create') lines.push('['+ds+'] PROIECT NOU: '+e.projectName);
-    else if(e.kind==='project-archive') lines.push('['+ds+'] ARHIVAT: '+e.projectName);
-    else lines.push('['+ds+'] '+e.kind+': '+(e.taskName||e.projectName||''));
-  });
-  var txt=lines.join('\n');
-  var b2=new Blob([txt],{type:'text/plain'});
-  var u2=URL.createObjectURL(b2);var a2=document.createElement('a');
-  a2.href=u2;a2.download='jurnal-'+new Date().toISOString().slice(0,10)+'.txt';a2.click();URL.revokeObjectURL(u2);
-}
-// Export jurnal Share ca .txt
-function doExpShareJournalTxt(){
-  var lines=S.shareJournal.map(function(e){
-    var d=new Date(e.ts);
-    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-    return '['+ds+']\n'+e.text+'\n';
-  });
-  if(!lines.length){alert('Jurnalul Share e gol.');return;}
-  var b=new Blob([lines.join('\n')],{type:'text/plain'});
-  var u=URL.createObjectURL(b);var a=document.createElement('a');
-  a.href=u;a.download='share-jurnal-'+new Date().toISOString().slice(0,10)+'.txt';a.click();URL.revokeObjectURL(u);
-}
-// Import jurnal Share din .txt
-function doImpShareJournalTxt(e){
-  var f=e.target.files[0];if(!f)return;
-  var r=new FileReader();
-  r.onload=function(ev){
-    var txt=ev.target.result||'';
-    // Parsează blocuri [data]\ntext\n
-    var blocks=txt.split(/\n(?=\[)/);
-    var entries=[];
-    blocks.forEach(function(block){
-      var m=block.match(/^\[([^\]]+)\]\n([\s\S]+)/);
-      if(m) entries.push({ts:new Date(m[1]).getTime()||Date.now(),text:m[2].trim()});
-    });
-    S.shareJournal=entries;lw(SHJK,S.shareJournal);
-    alert('✓ Jurnal Share importat: '+entries.length+' intrări.');render();
-  };
-  r.readAsText(f);e.target.value='';
-}
+// ── Import jurnal principal JSON ──
 function doImpJournal(e){
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
@@ -835,9 +819,77 @@ function doImpJournal(e){
       const p=JSON.parse(ev.target.result);
       if(p.journal&&Array.isArray(p.journal)){
         S.journal=p.journal;lw(JK,S.journal);
-        alert('✓ Jurnal importat: '+p.journal.length+' intrări.');render();
+        alert('✓ Jurnal importat: '+p.journal.length+' intrari.');render();
       } else throw 0;
-    }catch(_){alert('❌ Fișier jurnal invalid.');}
+    }catch(_){alert('❌ Fisier jurnal invalid.');}
+  };
+  r.readAsText(f);e.target.value='';
+}
+// ── Export jurnal principal .txt (fără diacritice) ──
+function doExpJournalTxt(withDate){
+  var CN2={next:'To Do',wait:'Wait',done:'Done'};
+  var lines=[];
+  S.journal.forEach(function(e){
+    var d=new Date(e.ts);
+    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    var line='';
+    if(e.kind==='task-create') line='['+ds+'] TASK NOU: '+e.taskName+' > '+(CN2[e.colId]||e.colId);
+    else if(e.kind==='task-move') line='['+ds+'] MUTARE: '+e.taskName+': '+(CN2[e.fromCol]||e.fromCol)+' > '+(CN2[e.toCol]||e.toCol);
+    else if(e.kind==='free-task-create') line='['+ds+'] NEXT LIBER: '+e.taskName;
+    else if(e.kind==='free-task-delete') line='['+ds+'] STERS NEXT: '+e.taskName;
+    else if(e.kind==='share-receive') line='['+ds+'] SHARE PRIMIT: '+e.taskName;
+    else if(e.kind==='share-delete') line='['+ds+'] SHARE STERS: '+e.taskName;
+    else if(e.kind==='project-create') line='['+ds+'] PROIECT NOU: '+e.projectName;
+    else if(e.kind==='project-archive') line='['+ds+'] ARHIVAT: '+e.projectName;
+    else line='['+ds+'] '+e.kind+': '+(e.taskName||e.projectName||'');
+    lines.push(stripDiacritics(line));
+  });
+  dlBlob(lines.join('\n'), withDate?'jurnal-'+todayStr()+'.txt':'jurnal.txt','text/plain');
+}
+// ── Export jurnal Clipboard JSON ──
+function doExpShareJournal(withDate){
+  dlBlob(JSON.stringify({shareJournal:S.shareJournal},null,2),
+    withDate?'pb-clipjurnal-'+todayStr()+'.json':'pb-clipjurnal.json');
+}
+// ── Import jurnal Clipboard JSON ──
+function doImpShareJournal(e){
+  var f=e.target.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(ev){
+    try{
+      var p=JSON.parse(ev.target.result);
+      if(p.shareJournal&&Array.isArray(p.shareJournal)){
+        S.shareJournal=p.shareJournal;lw(SHJK,S.shareJournal);
+        alert('✓ Clipboard jurnal importat: '+p.shareJournal.length+' intrari.');render();
+      } else throw 0;
+    }catch(_){alert('❌ Fisier invalid.');}
+  };
+  r.readAsText(f);e.target.value='';
+}
+// ── Export jurnal Clipboard .txt (fără diacritice) ──
+function doExpShareJournalTxt(withDate){
+  var lines=S.shareJournal.map(function(e){
+    var d=new Date(e.ts);
+    var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+    return stripDiacritics('['+ds+']\n'+e.text);
+  });
+  if(!lines.length){alert('Jurnalul Clipboard e gol.');return;}
+  dlBlob(lines.join('\n\n'), withDate?'clipjurnal-'+todayStr()+'.txt':'clipjurnal.txt','text/plain');
+}
+// ── Import jurnal Clipboard .txt (legacy) ──
+function doImpShareJournalTxt(e){
+  var f=e.target.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(ev){
+    var txt=ev.target.result||'';
+    var blocks=txt.split(/\n(?=\[)/);
+    var entries=[];
+    blocks.forEach(function(block){
+      var m=block.match(/^\[([^\]]+)\]\n([\s\S]+)/);
+      if(m) entries.push({ts:new Date(m[1]).getTime()||Date.now(),text:m[2].trim()});
+    });
+    S.shareJournal=entries;lw(SHJK,S.shareJournal);
+    alert('✓ Clipboard jurnal importat (txt): '+entries.length+' intrari.');render();
   };
   r.readAsText(f);e.target.value='';
 }
@@ -887,8 +939,12 @@ function rJournal(){
 
 // ── Render Jurnal Clipboard Share ──
 function rClipJournal(){
-  var impSHJ=mk('input','');impSHJ.type='file';impSHJ.accept='.txt';impSHJ.style.display='none';
-  impSHJ.addEventListener('change',doImpShareJournalTxt);document.body.appendChild(impSHJ);
+  var impSHJ=mk('input','');impSHJ.type='file';impSHJ.accept='.json,.txt';impSHJ.style.display='none';
+  impSHJ.addEventListener('change',function(e){
+    var f=e.target.files[0];if(!f)return;
+    if(f.name.endsWith('.json')) doImpShareJournal(e); else doImpShareJournalTxt(e);
+  });
+  document.body.appendChild(impSHJ);
   const root=div('');
   const h=div('hdr');
   const jhl=div('hdr-l');
@@ -896,19 +952,22 @@ function rClipJournal(){
   jhl.appendChild(sp('logo','◈'));jhl.appendChild(jtitle);
   h.appendChild(jhl);
   const hr2=div('hdr-r');
-  // Buton download .txt — conținut complet acumulat
-  var dlBtn=mk('button','btn bg');dlBtn.textContent='⬇ clipboard.txt';
+  var dlBtn=mk('button','btn bg');dlBtn.textContent='ET';dlBtn.title='Export TXT (cu data, fara diacritice)';
   dlBtn.style.cssText='background:#10B981;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  dlBtn.addEventListener('click',doDownloadClipLog);
-  // Buton export jurnal .txt
-  var expBtn=mk('button','btn bg');expBtn.textContent='⬇ jurnal.txt';
-  expBtn.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  expBtn.addEventListener('click',doExpShareJournalTxt);
-  // Buton import
-  var impBtn=mk('button','btn bg');impBtn.textContent='📂';
+  dlBtn.addEventListener('click',function(){doExpShareJournalTxt(true);});
+  var dlBtnF=mk('button','btn bg');dlBtnF.textContent='TF';dlBtnF.title='Export TXT fisier fix (clipjurnal.txt)';
+  dlBtnF.style.cssText='background:#0D9488;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  dlBtnF.addEventListener('click',function(){doExpShareJournalTxt(false);});
+  var expJsonBtn=mk('button','btn bg');expJsonBtn.textContent='EJ';expJsonBtn.title='Export JSON (cu data)';
+  expJsonBtn.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  expJsonBtn.addEventListener('click',function(){doExpShareJournal(true);});
+  var expJsonBtnF=mk('button','btn bg');expJsonBtnF.textContent='EF';expJsonBtnF.title='Export JSON fisier fix (pb-clipjurnal.json)';
+  expJsonBtnF.style.cssText='background:#4F46E5;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  expJsonBtnF.addEventListener('click',function(){doExpShareJournal(false);});
+  var impBtn=mk('button','btn bg');impBtn.textContent='IM';impBtn.title='Import JSON sau TXT';
   impBtn.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer;touch-action:manipulation';
   impBtn.addEventListener('click',function(){impSHJ.click();});
-  ap(hr2,dlBtn,expBtn,impBtn,bt('bg','← Board',()=>{S.view='board';render();}));
+  ap(hr2,dlBtn,dlBtnF,expJsonBtn,expJsonBtnF,impBtn,bt('bg','← Board',()=>{S.view='board';render();}));
   h.appendChild(hr2);
   root.appendChild(h);
   if(!S.shareJournal||!S.shareJournal.length){
@@ -942,9 +1001,16 @@ function rBoard(){
   const pc=S.items.filter(x=>x.type==='project').length;
   const root=div('');
 
-  // header
+  // ── Inputs hidden pentru import ──
   const impI=mk('input','');impI.type='file';impI.accept='.json';impI.style.display='none';impI.addEventListener('change',doImp);document.body.appendChild(impI);
   const impJ=mk('input','');impJ.type='file';impJ.accept='.json';impJ.style.display='none';impJ.addEventListener('change',doImpJournal);document.body.appendChild(impJ);
+  const impCJ=mk('input','');impCJ.type='file';impCJ.accept='.json,.txt';impCJ.style.display='none';
+  impCJ.addEventListener('change',function(e){
+    var f=e.target.files[0];if(!f)return;
+    if(f.name.endsWith('.json')) doImpShareJournal(e); else doImpShareJournalTxt(e);
+  });
+  document.body.appendChild(impCJ);
+
   const h=div('hdr');
   const hl=div('hdr-l');
   const htitle=mk('div','h1');htitle.textContent='Project Board';
@@ -986,13 +1052,45 @@ function rBoard(){
   settBtn.style.cssText='background:#374151;color:#F59E0B;border:none;border-radius:7px;padding:6px 9px;font-size:13px;cursor:pointer;touch-action:manipulation';
   settBtn.addEventListener('click',function(){S.showSettings=!S.showSettings;render();});
   settBtn.addEventListener('touchend',function(e){e.preventDefault();S.showSettings=!S.showSettings;render();},{passive:false});
-  ap(hr,sdot,
-    bt('bg','💾',doExp),bt('bg','📂',()=>impI.click()),
-    bt('bp','💾',doExpJournal),bt('bp','📋',doExpJournalTxt),bt('bp','📂',()=>impJ.click()),
-    bt('bp','📋 Jurnal',()=>{S.view='journal';render();}),
-    bt('bp','📋 Clipboard',()=>{S.view='clipjournal';render();}),
-    bt('bi','+ Secț.',()=>{S.showAdd='section';S.addName='';render();}),
-    bt('ba','+ Proiect',()=>{S.showAdd='project';S.addName='';render();}),
+  // ── Helper buton header cu etichetă și tooltip ──
+  function hbtn(bg,label,title,fn){
+    var b=mk('button','btn '+bg);
+    b.textContent=label;b.title=title;
+    b.addEventListener('click',fn);
+    b.addEventListener('touchend',function(e){e.preventDefault();fn(e);},{passive:false});
+    return b;
+  }
+  // ── Grup 1: Date (gri) ──
+  var gDate=div('');gDate.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #374151;border-radius:7px;padding:2px 3px;background:#1E2130';
+  var gDateLbl=sp('','Date');gDateLbl.style.cssText='font-size:8px;color:#6B7280;padding:0 3px;font-weight:700;letter-spacing:.06em';
+  gDate.appendChild(gDateLbl);
+  gDate.appendChild(hbtn('bg','EJ','Export JSON date (cu data in nume)',function(){doExp(true);}));
+  gDate.appendChild(hbtn('bg','EF','Export JSON date (fisier fix — override)',function(){doExp(false);}));
+  gDate.appendChild(hbtn('bg','IM','Import JSON date',function(){impI.click();}));
+  // ── Grup 2: Jurnal (violet) ──
+  var gJur=div('');gJur.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #4B5563;border-radius:7px;padding:2px 3px;background:#1E2130';
+  var gJurLbl=sp('','Jurnal');gJurLbl.style.cssText='font-size:8px;color:#A5B4FC;padding:0 3px;font-weight:700;letter-spacing:.06em';
+  gJur.appendChild(gJurLbl);
+  gJur.appendChild(hbtn('bp','EJ','Export Jurnal JSON (cu data)',function(){doExpJournal(true);}));
+  gJur.appendChild(hbtn('bp','EF','Export Jurnal JSON (fisier fix)',function(){doExpJournal(false);}));
+  gJur.appendChild(hbtn('bp','ET','Export Jurnal TXT (fara diacritice)',function(){doExpJournalTxt(true);}));
+  gJur.appendChild(hbtn('bp','TF','Export Jurnal TXT (fisier fix)',function(){doExpJournalTxt(false);}));
+  gJur.appendChild(hbtn('bp','IM','Import Jurnal JSON',function(){impJ.click();}));
+  gJur.appendChild(hbtn('bp','JR','Vezi Jurnal',function(){S.view='journal';render();}));
+  // ── Grup 3: Clipboard (indigo) ──
+  var gClip=div('');gClip.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #4B5563;border-radius:7px;padding:2px 3px;background:#1E2130';
+  var gClipLbl=sp('','Clip');gClipLbl.style.cssText='font-size:8px;color:#818CF8;padding:0 3px;font-weight:700;letter-spacing:.06em';
+  gClip.appendChild(gClipLbl);
+  gClip.appendChild(hbtn('bi','EJ','Export Clipboard Jurnal JSON (cu data)',function(){doExpShareJournal(true);}));
+  gClip.appendChild(hbtn('bi','EF','Export Clipboard Jurnal JSON (fisier fix)',function(){doExpShareJournal(false);}));
+  gClip.appendChild(hbtn('bi','ET','Export Clipboard TXT (fara diacritice, cu data)',function(){doExpShareJournalTxt(true);}));
+  gClip.appendChild(hbtn('bi','TF','Export Clipboard TXT (fisier fix)',function(){doExpShareJournalTxt(false);}));
+  gClip.appendChild(hbtn('bi','IM','Import Clipboard JSON sau TXT',function(){impCJ.click();}));
+  gClip.appendChild(hbtn('bi','CB','Vezi Jurnal Clipboard',function(){S.view='clipjournal';render();}));
+  // ── Grup 4: Structură (galben/verde) ──
+  ap(hr,sdot,gDate,gJur,gClip,
+    bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
+    bt('ba','+ Pro',()=>{S.showAdd='project';S.addName='';render();}),
     settBtn,lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
@@ -1817,26 +1915,9 @@ function doMerge(){
   setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast);},2500);
 }
 
-// ── Descarcă tot istoricul clipboard acumulat ──
+// ── Descarcă tot istoricul clipboard acumulat (legacy — folosit din bara merge) ──
 function doDownloadClipLog(){
-  if(!S.shareJournal||!S.shareJournal.length){
-    var t=document.createElement('div');
-    t.textContent='Jurnalul clipboard e gol';
-    t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#374151;color:#9CA3AF;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none';
-    document.body.appendChild(t);
-    setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},2000);
-    return;
-  }
-  // Conținut: toate concatenările în ordine cronologică, separate de linie goală
-  var lines=S.shareJournal.map(function(e){return e.text;});
-  var content=lines.join('\n\n');
-  var blob=new Blob([content],{type:'text/plain'});
-  var u=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=u;a.download='clipboard.txt';
-  document.body.appendChild(a);a.click();
-  document.body.removeChild(a);
-  setTimeout(function(){URL.revokeObjectURL(u);},1000);
+  doExpShareJournalTxt(true);
 }
 
 // ── Șterge din Share itemurile merguite, lasă rezultatul concatenat ──
