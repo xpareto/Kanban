@@ -604,22 +604,37 @@ function stripCalCmd(text){
 }
 // ───────────────────────────────────────────────────────────────
 
-// Adaugă buton 📅 dacă taskul conține /c — și handler care deschide GCal + șterge /c
-// saveFn(newName) — callback care persistă noul text fără /c
+// Formatează data parsed într-un șir lizibil: "2.apr 14:00" sau "2.apr" (all-day)
+var MONTHS_RO=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'];
+function fmtCalLabel(parsed){
+  var mon=MONTHS_RO[(parsed.month-1)%12]||String(parsed.month);
+  var base=parsed.day+'.'+mon;
+  if(parsed.timeStr) base+=' '+parsed.timeStr;
+  if(parsed.rep){
+    var repLbl={rz:'zil',rs:'sapt',rl:'lunar',ra:'anual'};
+    base+=' ('+( repLbl[parsed.rep]||parsed.rep)+')';
+  }
+  return base;
+}
+
+// Adaugă buton 📅 dacă taskul conține /c — și handler care deschide GCal + înlocuiește /c cu label formatat
+// saveFn(newName) — callback care persistă noul text
 function maybeAddCalBtn(rowEl, taskName, saveFn){
   var parsed=parseCalCmd(taskName);
   if(!parsed) return;
   var btn=document.createElement('button');
   btn.textContent='📅';
-  btn.title='Creează alarmă Google Calendar ('+parsed.full+')';
+  btn.title='Seteaza alarma Google Calendar ('+parsed.full+')';
   btn.style.cssText='background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD;border-radius:6px;padding:5px 8px;font-size:14px;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
   function doCalendar(e){
     e.stopPropagation();e.preventDefault();
     var cleanTitle=stripCalCmd(taskName);
     var url=buildGCalUrl(cleanTitle,parsed);
     window.open(url,'_blank');
-    // Șterge /c din text și salvează
-    saveFn(cleanTitle+' 📅');
+    // Înlocuiește /c2.4rz 14:00 cu 📅 2.apr 14:00 (zil) — păstrează data vizibilă
+    var label='📅 '+fmtCalLabel(parsed);
+    var newName=taskName.replace(RE_CCMD,label).replace(/\s{2,}/g,' ').trim();
+    saveFn(newName);
   }
   btn.addEventListener('click',doCalendar);
   btn.addEventListener('touchend',function(e){e.preventDefault();doCalendar(e);},{passive:false});
@@ -1119,7 +1134,7 @@ function rBoard(){
     function doAddLabel(){
       var v=sp2inp.value.trim();
       if(!v)return;
-      if(!v.startsWith('#')) v='#'+v;
+      // Nu mai forțăm prefixul # — utilizatorul poate introduce orice șir (/c, #p, etc.)
       if(S.labels.indexOf(v)<0){S.labels.push(v);lw(LBLK,S.labels);}
       sp2inp.value='';render();
     }
