@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V37</title>
+<title>Project Board V38</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -130,7 +130,7 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V37';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V38';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
@@ -794,14 +794,44 @@ function stripDiacritics(s){
     .replace(/é/g,'e').replace(/É/g,'E')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
-// Descarcă un blob text — helper comun
-function dlBlob(content,filename,mime){
-  var b=new Blob([content],{type:mime||'application/json'});
-  var u=URL.createObjectURL(b);var a=document.createElement('a');
-  a.href=u;a.download=filename;document.body.appendChild(a);a.click();
-  document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(u);},1000);
+// Descarcă un blob — încearcă File System Access API (overwrite real), fallback la <a download>
+// fileHandles păstrează handleurile per nume de fișier pentru sesiunea curentă
+var _fsHandles={};
+async function dlBlob(content, filename, mime){
+  var blob=new Blob([content],{type:mime||'application/json'});
+  // Încearcă File System Access API (Chrome desktop + Android Chrome 86+)
+  if(window.showSaveFilePicker){
+    try{
+      // Reutilizează handle-ul existent dacă avem deja unul pentru acest fișier
+      var handle=_fsHandles[filename];
+      if(!handle){
+        var ext=filename.split('.').pop().toLowerCase();
+        var typeMap={json:{description:'JSON',accept:{'application/json':['.json']}},txt:{description:'Text',accept:{'text/plain':['.txt']}}};
+        handle=await window.showSaveFilePicker({
+          suggestedName:filename,
+          types:[typeMap[ext]||{description:'File',accept:{'application/octet-stream':['.*']}}]
+        });
+        _fsHandles[filename]=handle;
+      }
+      var writable=await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }catch(err){
+      // Utilizatorul a anulat sau API indisponibil — fallback
+      if(err.name==='AbortError') return;
+      delete _fsHandles[filename]; // resetează handle-ul dacă a expirat
+    }
+  }
+  // Fallback clasic
+  var u=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=u;a.download=filename;
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(u);},1000);
 }
-function todayStr(){return new Date().toISOString().slice(0,10);}// 2026-04-01
+function todayStr(){return new Date().toISOString().slice(0,10);}
 
 // ── Export date complet JSON ──
 // withDate=true → pb-date-2026-04-01.json (istoric)
@@ -944,7 +974,65 @@ function ap(el,...kids){
 }
 
 // ── Render journal ──
+// ── Helper bara de butoane export uniformă ──
+function mkExportBar(cfg){
+  // cfg: {color, label, buttons:[{lbl,title,fn}], backFn, impInput}
+  var bar=div('');
+  bar.style.cssText='display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:8px 12px;background:#1E2130;border-bottom:2px solid '+cfg.color;
+  var lbl=sp('',cfg.label);
+  lbl.style.cssText='font-size:10px;font-weight:800;color:'+cfg.color+';margin-right:4px;letter-spacing:.08em';
+  bar.appendChild(lbl);
+  cfg.buttons.forEach(function(b){
+    var btn=mk('button','btn');
+    btn.textContent=b.lbl;btn.title=b.title;
+    btn.style.cssText='background:#2D3048;color:#F1F5F9;border:1px solid #4B5563;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    btn.addEventListener('click',b.fn);
+    btn.addEventListener('touchend',function(e){e.preventDefault();b.fn();},{passive:false});
+    bar.appendChild(btn);
+  });
+  if(cfg.impInput) bar.appendChild(cfg.impInput);
+  var back=mk('button','btn bg');back.textContent='← Board';back.style.marginLeft='auto';
+  back.addEventListener('click',cfg.backFn);
+  bar.appendChild(back);
+  return bar;
+}
+
+// ── View Date ──
+function rData(){
+  var impI2=mk('input','');impI2.type='file';impI2.accept='.json';impI2.style.display='none';
+  impI2.addEventListener('change',doImp);document.body.appendChild(impI2);
+  var root=div('');
+  var h=div('hdr');
+  var hl=div('hdr-l');
+  var t=mk('div','h1');t.textContent='Date';
+  hl.appendChild(sp('logo','◈'));hl.appendChild(t);
+  h.appendChild(hl);
+  h.appendChild(bt('bg','← Board',function(){S.view='board';render();}));
+  root.appendChild(h);
+  root.appendChild(mkExportBar({
+    color:'#9CA3AF',label:'DATE',
+    buttons:[
+      {lbl:'EJD',title:'Export JSON cu data (istoric)',fn:function(){doExp(true);}},
+      {lbl:'EJ', title:'Export JSON fisier fix — pb-date.json (overwrite)',fn:function(){doExp(false);}},
+      {lbl:'I',  title:'Import JSON date',fn:function(){impI2.click();}}
+    ],
+    backFn:function(){S.view='board';render();}
+  }));
+  var info=div('');
+  info.style.cssText='padding:20px 16px;font-size:13px;color:#6B7280;line-height:1.8';
+  var pc=S.items.filter(function(x){return x.type==='project';}).length;
+  var tc=S.items.reduce(function(a,x){return a+(x.tasks?x.tasks.length:0);},0);
+  info.innerHTML='<strong style="color:#1E293B">'+pc+' proiecte</strong> · '+tc+' task-uri totale<br>'+
+    'Jurnal: <strong>'+S.journal.length+'</strong> intrări<br>'+
+    'Share inbox: <strong>'+S.shareTasks.length+'</strong> items<br>'+
+    'Clipboard jurnal: <strong>'+S.shareJournal.length+'</strong> intrări';
+  root.appendChild(info);
+  return root;
+}
+
 function rJournal(){
+  var impJ2=mk('input','');impJ2.type='file';impJ2.accept='.json';impJ2.style.display='none';
+  impJ2.addEventListener('change',doImpJournal);document.body.appendChild(impJ2);
   const root=div('');
   const h=div('hdr');
   const jhl=div('hdr-l');
@@ -953,6 +1041,17 @@ function rJournal(){
   h.appendChild(jhl);
   h.appendChild(bt('bg','← Board',()=>{S.view='board';render();}));
   root.appendChild(h);
+  root.appendChild(mkExportBar({
+    color:'#A5B4FC',label:'JURNAL',
+    buttons:[
+      {lbl:'EJD',title:'Export JSON cu data',fn:function(){doExpJournal(true);}},
+      {lbl:'EJ', title:'Export JSON fisier fix — pb-jurnal.json',fn:function(){doExpJournal(false);}},
+      {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpJournalTxt(true);}},
+      {lbl:'ET', title:'Export TXT fisier fix — jurnal.txt',fn:function(){doExpJournalTxt(false);}},
+      {lbl:'I',  title:'Import JSON jurnal',fn:function(){impJ2.click();}}
+    ],
+    backFn:function(){S.view='board';render();}
+  }));
   if(!S.journal.length){const e=div('');e.style.cssText='padding:32px;text-align:center;color:#9CA3AF;font-size:13px';e.textContent='Jurnalul este gol.';root.appendChild(e);return root;}
   const pn={};S.items.forEach(x=>{if(x.type==='project')pn[x.id]=x.name;});
   const jd=div('');jd.style.paddingBottom='40px';
@@ -985,25 +1084,19 @@ function rClipJournal(){
   const jtitle=mk('div','h1');jtitle.textContent='Jurnal Clipboard';
   jhl.appendChild(sp('logo','◈'));jhl.appendChild(jtitle);
   h.appendChild(jhl);
-  const hr2=div('hdr-r');
-  var dlBtn=mk('button','btn bg');dlBtn.textContent='ET';dlBtn.title='Export TXT (cu data, fara diacritice)';
-  dlBtn.style.cssText='background:#10B981;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  dlBtn.addEventListener('click',function(){doExpShareJournalTxt(true);});
-  var dlBtnF=mk('button','btn bg');dlBtnF.textContent='TF';dlBtnF.title='Export TXT fisier fix (clipjurnal.txt)';
-  dlBtnF.style.cssText='background:#0D9488;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  dlBtnF.addEventListener('click',function(){doExpShareJournalTxt(false);});
-  var expJsonBtn=mk('button','btn bg');expJsonBtn.textContent='EJ';expJsonBtn.title='Export JSON (cu data)';
-  expJsonBtn.style.cssText='background:#6366F1;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  expJsonBtn.addEventListener('click',function(){doExpShareJournal(true);});
-  var expJsonBtnF=mk('button','btn bg');expJsonBtnF.textContent='EF';expJsonBtnF.title='Export JSON fisier fix (pb-clipjurnal.json)';
-  expJsonBtnF.style.cssText='background:#4F46E5;color:#fff;border:none;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
-  expJsonBtnF.addEventListener('click',function(){doExpShareJournal(false);});
-  var impBtn=mk('button','btn bg');impBtn.textContent='IM';impBtn.title='Import JSON sau TXT';
-  impBtn.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer;touch-action:manipulation';
-  impBtn.addEventListener('click',function(){impSHJ.click();});
-  ap(hr2,dlBtn,dlBtnF,expJsonBtn,expJsonBtnF,impBtn,bt('bg','← Board',()=>{S.view='board';render();}));
-  h.appendChild(hr2);
+  h.appendChild(bt('bg','← Board',()=>{S.view='board';render();}));
   root.appendChild(h);
+  root.appendChild(mkExportBar({
+    color:'#818CF8',label:'CLIPBOARD',
+    buttons:[
+      {lbl:'EJD',title:'Export JSON cu data',fn:function(){doExpShareJournal(true);}},
+      {lbl:'EJ', title:'Export JSON fisier fix — pb-clipjurnal.json',fn:function(){doExpShareJournal(false);}},
+      {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpShareJournalTxt(true);}},
+      {lbl:'ET', title:'Export TXT fisier fix — clipjurnal.txt',fn:function(){doExpShareJournalTxt(false);}},
+      {lbl:'I',  title:'Import JSON sau TXT',fn:function(){impSHJ.click();}}
+    ],
+    backFn:function(){S.view='board';render();}
+  }));
   if(!S.shareJournal||!S.shareJournal.length){
     const e=div('');
     e.style.cssText='padding:32px;text-align:center;color:#9CA3AF;font-size:13px';
@@ -1011,17 +1104,14 @@ function rClipJournal(){
     root.appendChild(e);return root;
   }
   const jd=div('');jd.style.cssText='padding-bottom:40px;background:#0F1117;min-height:100vh';
-  // Afișează entrările în ordine inversă (cel mai recent sus) — identic cu jurnalul principal
   [...S.shareJournal].reverse().forEach(function(e){
     const el=div('je');
     el.style.cssText='border-bottom:1px solid #1E2130;background:#0F1117;padding:10px 13px';
     var dt=new Date(e.ts);
     var ds=dt.toLocaleDateString('ro-RO')+' '+dt.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-    var drow=div('');
-    drow.style.cssText='font-size:9px;color:#6B7280;margin-bottom:4px';
+    var drow=div('');drow.style.cssText='font-size:9px;color:#6B7280;margin-bottom:4px';
     drow.textContent='📋 '+ds;
-    var txt=div('');
-    txt.style.cssText='font-size:12px;color:#D1FAE5;white-space:pre-wrap;word-break:break-word;line-height:1.6';
+    var txt=div('');txt.style.cssText='font-size:12px;color:#D1FAE5;white-space:pre-wrap;word-break:break-word;line-height:1.6';
     txt.textContent=e.text;
     el.appendChild(drow);el.appendChild(txt);
     jd.appendChild(el);
@@ -1094,38 +1184,15 @@ function rBoard(){
     b.addEventListener('touchend',function(e){e.preventDefault();fn(e);},{passive:false});
     return b;
   }
-  // ── Grup 1: Date (gri) ──
-  var gDate=div('');gDate.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #374151;border-radius:7px;padding:2px 3px;background:#1E2130';
-  var gDateLbl=sp('','Date');gDateLbl.style.cssText='font-size:8px;color:#6B7280;padding:0 3px;font-weight:700;letter-spacing:.06em';
-  gDate.appendChild(gDateLbl);
-  gDate.appendChild(hbtn('bg','EJ','Export JSON date (cu data in nume)',function(){doExp(true);}));
-  gDate.appendChild(hbtn('bg','EF','Export JSON date (fisier fix — override)',function(){doExp(false);}));
-  gDate.appendChild(hbtn('bg','IM','Import JSON date',function(){impI.click();}));
-  // ── Grup 2: Jurnal (violet) ──
-  var gJur=div('');gJur.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #4B5563;border-radius:7px;padding:2px 3px;background:#1E2130';
-  var gJurLbl=sp('','Jurnal');gJurLbl.style.cssText='font-size:8px;color:#A5B4FC;padding:0 3px;font-weight:700;letter-spacing:.06em';
-  gJur.appendChild(gJurLbl);
-  gJur.appendChild(hbtn('bp','EJ','Export Jurnal JSON (cu data)',function(){doExpJournal(true);}));
-  gJur.appendChild(hbtn('bp','EF','Export Jurnal JSON (fisier fix)',function(){doExpJournal(false);}));
-  gJur.appendChild(hbtn('bp','ET','Export Jurnal TXT (fara diacritice)',function(){doExpJournalTxt(true);}));
-  gJur.appendChild(hbtn('bp','TF','Export Jurnal TXT (fisier fix)',function(){doExpJournalTxt(false);}));
-  gJur.appendChild(hbtn('bp','IM','Import Jurnal JSON',function(){impJ.click();}));
-  gJur.appendChild(hbtn('bp','JR','Vezi Jurnal',function(){S.view='journal';render();}));
-  // ── Grup 3: Clipboard (indigo) ──
-  var gClip=div('');gClip.style.cssText='display:flex;gap:2px;align-items:center;border:1px solid #4B5563;border-radius:7px;padding:2px 3px;background:#1E2130';
-  var gClipLbl=sp('','Clip');gClipLbl.style.cssText='font-size:8px;color:#818CF8;padding:0 3px;font-weight:700;letter-spacing:.06em';
-  gClip.appendChild(gClipLbl);
-  gClip.appendChild(hbtn('bi','EJ','Export Clipboard Jurnal JSON (cu data)',function(){doExpShareJournal(true);}));
-  gClip.appendChild(hbtn('bi','EF','Export Clipboard Jurnal JSON (fisier fix)',function(){doExpShareJournal(false);}));
-  gClip.appendChild(hbtn('bi','ET','Export Clipboard TXT (fara diacritice, cu data)',function(){doExpShareJournalTxt(true);}));
-  gClip.appendChild(hbtn('bi','TF','Export Clipboard TXT (fisier fix)',function(){doExpShareJournalTxt(false);}));
-  gClip.appendChild(hbtn('bi','IM','Import Clipboard JSON sau TXT',function(){impCJ.click();}));
-  gClip.appendChild(hbtn('bi','CB','Vezi Jurnal Clipboard',function(){S.view='clipjournal';render();}));
-  // ── Grup 4: Structură (galben/verde) ──
-  ap(hr,sdot,gDate,gJur,gClip,
+  // ── Header simplificat: doar etichete + buton vizualizare ──
+  // Butoanele EJD/EJ/ETD/ET/I sunt în interiorul fiecărui view
+  ap(hr, sdot,
+    hbtn('bg','Date','Vizualizare / export date',function(){S.view='data';render();}),
+    hbtn('bp','Jurnal','Vizualizare / export jurnal',function(){S.view='journal';render();}),
+    hbtn('bi','Clip','Vizualizare / export clipboard',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Pro',()=>{S.showAdd='project';S.addName='';render();}),
-    settBtn,lblBtns);
+    settBtn, lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
   // ── Panou Settings ──
@@ -1308,17 +1375,31 @@ function rBoard(){
     r.dataset.nidx=idx;
     if(row.warn&&!isSel) r.style.background='#FFFBEB';
 
-    // Long-press → activează selectMode + selectează rândul
+    // Long-press → selectMode; dublu-tap → editare — un singur touchstart {passive:false}
     var lpTimer=null;
+    var lastTapTs=0;
     r.addEventListener('touchstart',function(e){
       if(e.target&&(e.target.tagName==='BUTTON'||e.target.tagName==='A')) return;
+      var now=Date.now();
+      // Dublu-tap (<350ms între atingeri) → editare, anulează long-press
+      if(now-lastTapTs<350){
+        if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
+        e.preventDefault();e.stopPropagation();
+        // declanșează editare direct
+        r.dispatchEvent(new CustomEvent('dbl-tap-edit',{bubbles:false}));
+        lastTapTs=0;
+        return;
+      }
+      lastTapTs=now;
+      // Long-press (500ms)
       lpTimer=setTimeout(function(){
         lpTimer=null;
+        lastTapTs=0;
         S.selectMode=true;
         S.selectedNext[selKey]=true;
         render();
       },500);
-    },{passive:true});
+    },{passive:false});
     r.addEventListener('touchend',function(){if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
     r.addEventListener('touchmove',function(){if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}},{passive:true});
     // Tap în selectMode → toggle selecție
@@ -1395,16 +1476,10 @@ function rBoard(){
         });
         inp.addEventListener('blur',saveEditTask);
       }
-      // Desktop
+      // Desktop dblclick
       rowEl.addEventListener('dblclick',doEditTask);
-      // Mobil — dublu tap
-      var lastTap=0;
-      rowEl.addEventListener('touchstart',function(e){
-        if(e.target && (e.target.tagName==='A' || e.target.tagName==='BUTTON')) return;
-        var now=Date.now();
-        if(now-lastTap<350){e.preventDefault();e.stopPropagation();doEditTask(e);}
-        lastTap=now;
-      },{passive:false});
+      // Mobil — custom event trimis din handler-ul unificat touchstart de mai sus
+      rowEl.addEventListener('dbl-tap-edit',doEditTask);
     })(row, tn, r);
     // Indicator ⚠ la dreapta pentru warn
     if(row.warn){
@@ -1947,7 +2022,12 @@ function moveSelectedNext(where){
 
 function render(){
   const app=document.getElementById('app');app.innerHTML='';
-  app.appendChild(S.view==='journal'?rJournal():S.view==='clipjournal'?rClipJournal():rBoard());
+  app.appendChild(
+    S.view==='journal'?rJournal():
+    S.view==='clipjournal'?rClipJournal():
+    S.view==='data'?rData():
+    rBoard()
+  );
 }
 
 init();
@@ -2227,7 +2307,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v37').then(function(cache){
+  caches.open('projectboard-v38').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
