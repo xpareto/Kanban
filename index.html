@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V38</title>
+<title>Project Board V39</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -110,6 +110,9 @@ input{font-family:inherit;outline:none}
 .jmove{font-size:11px;color:#6B7280;padding:2px 0 2px 12px;font-style:italic}
 .nrow.sel-on{background:#EFF6FF!important;border-left:3px solid #3B82F6;}
 .sel-bar{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#1E40AF;border-bottom:2px solid #3B82F6;}
+.nrow.cal-ev{background:#EFF6FF!important;border-left:3px solid #3B82F6;}
+.nrow.cal-ev .ndot{background:#3B82F6!important;}
+.cal-time{font-size:9px;font-weight:700;background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:1px 5px;flex-shrink:0;white-space:nowrap;}
 .sel-count{font-size:11px;font-weight:700;color:#BFDBFE;}
 .sel-btn{background:#3B82F6;color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:800;cursor:pointer;touch-action:manipulation;}
 .sel-btn.end{background:#6366F1;}
@@ -130,10 +133,14 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V38';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V39';
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
+const CAL_CK='pb-cal-token-v1',CAL_DK='pb-cal-day-v1',CAL_EK='pb-cal-events-v1';
+const GCAL_CLIENT_ID='679630226914-8sftsbf2gqu7hhv82jn8rc9q51j94pha.apps.googleusercontent.com';
+const GCAL_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
+const GCAL_REDIRECT=window.location.origin+window.location.pathname;
 const DEF=[
   {type:'project',id:'id_demo_p1',name:'Renovare baie',tasks:[
     {id:'id_demo_t1',name:'Cumpărat gresie și adeziv de la Dedeman',status:'next',weight:3},
@@ -173,6 +180,171 @@ function init(){
 }
 let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
+
+// ══════════════════════════════════════════════════════════════
+// ── Google Calendar OAuth + Fetch ──────────────────────────
+// Flux: Implicit Grant (token în URL hash) — fără client secret
+// ══════════════════════════════════════════════════════════════
+
+function calTodayStr(){
+  // Returnează YYYY-MM-DD în timezone local
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// Verifică dacă tokenul din localStorage e valid (ne-expirat)
+function calGetToken(){
+  try{
+    var t=JSON.parse(localStorage.getItem(CAL_CK)||'null');
+    if(!t||!t.access_token||!t.expires_at) return null;
+    if(Date.now()>t.expires_at-60000) return null; // expiră în <1 min
+    return t.access_token;
+  }catch(_){return null;}
+}
+function calSaveToken(access_token, expires_in){
+  localStorage.setItem(CAL_CK,JSON.stringify({
+    access_token:access_token,
+    expires_at:Date.now()+parseInt(expires_in||3600)*1000
+  }));
+}
+function calClearToken(){localStorage.removeItem(CAL_CK);}
+
+// Pornește fluxul OAuth — redirect la Google
+function calLogin(){
+  var state=Math.random().toString(36).substr(2,10);
+  sessionStorage.setItem('cal_oauth_state',state);
+  var params=new URLSearchParams({
+    client_id:GCAL_CLIENT_ID,
+    redirect_uri:GCAL_REDIRECT,
+    response_type:'token',
+    scope:GCAL_SCOPE,
+    state:state,
+    prompt:'select_account'
+  });
+  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+params.toString();
+}
+
+// Procesează token-ul din URL hash după redirect OAuth
+function calHandleCallback(){
+  var hash=window.location.hash;
+  if(!hash||hash.indexOf('access_token')<0) return false;
+  var params=new URLSearchParams(hash.replace(/^#/,''));
+  var token=params.get('access_token');
+  var expiresIn=params.get('expires_in')||3600;
+  var state=params.get('state');
+  // Curăță hash din URL
+  history.replaceState({},'',window.location.pathname+window.location.search);
+  if(!token) return false;
+  calSaveToken(token,expiresIn);
+  return true;
+}
+
+// Fetch evenimente calendar azi + mâine, ignoră recurente zilnice
+async function calFetchEvents(token){
+  var now=new Date();
+  var todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0);
+  var tomorrowEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate()+2,0,0,0);
+  var url='https://www.googleapis.com/calendar/v3/calendars/primary/events?'+
+    'timeMin='+encodeURIComponent(todayStart.toISOString())+
+    '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
+    '&singleEvents=true&orderBy=startTime&maxResults=50';
+  var resp=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+  if(resp.status===401){calClearToken();return null;} // token expirat
+  if(!resp.ok) return null;
+  var data=await resp.json();
+  var events=(data.items||[]).filter(function(ev){
+    // Ignoră evenimentele recurente zilnice (DAILY)
+    if(ev.recurrence){
+      var hasDaily=ev.recurrence.some(function(r){return r.indexOf('FREQ=DAILY')>=0;});
+      if(hasDaily) return false;
+    }
+    // Ignoră evenimentele fără titlu
+    if(!ev.summary||!ev.summary.trim()) return false;
+    return true;
+  });
+  return events;
+}
+
+// Formatează ora unui eveniment: "09:00" sau "toată ziua"
+function calFmtTime(ev){
+  if(ev.start&&ev.start.dateTime){
+    var d=new Date(ev.start.dateTime);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  return 'zi';
+}
+
+// Determina dacă evenimentul e azi sau mâine
+function calEvDay(ev){
+  var now=new Date();
+  var today=now.toISOString().slice(0,10);
+  var tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1).toISOString().slice(0,10);
+  var evDate=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
+  if(evDate===today) return 'azi';
+  if(evDate===tomorrow) return 'mâine';
+  return evDate;
+}
+
+// Injectează evenimentele în NEXT (la început, fond albastru)
+// Șterge evenimentele de calendar din ziua precedentă înainte
+function calInjectEvents(events){
+  // Construiește free tasks din evenimente — cu prefixul special 'cal::'
+  var newFree=events.map(function(ev){
+    var time=calFmtTime(ev);
+    var day=calEvDay(ev);
+    var label=(day==='azi'?'':'['+day+'] ')+ev.summary.trim()+(time!=='zi'?' ⏰'+time:'');
+    return {id:'cal::'+ev.id,name:label,ts:Date.now(),isCalEv:true};
+  });
+
+  // Șterge evenimentele de calendar vechi din freeTasks și nextOrder
+  S.freeTasks=S.freeTasks.filter(function(f){return !f.id.startsWith('cal::');});
+  S.nextOrder=S.nextOrder.filter(function(x){
+    if(x.type==='free'){
+      var f=S.freeTasks.find(function(ft){return ft.id===x.id;});
+      return !!f; // dacă nu mai există în freeTasks, scoate din ordine
+    }
+    return true;
+  });
+  // Elimină și ordinile vechi cu id cal::
+  S.nextOrder=S.nextOrder.filter(function(x){
+    return !(x.type==='free'&&(x.id||'').startsWith('cal::'));
+  });
+
+  // Adaugă noile evenimente la începutul listei
+  var newOrders=newFree.map(function(f){return {type:'free',id:f.id};});
+  S.freeTasks=newFree.concat(S.freeTasks);
+  S.nextOrder=newOrders.concat(S.nextOrder);
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  // Salvează ziua curentă ca dată ultimei colectări
+  localStorage.setItem(CAL_DK,calTodayStr());
+}
+
+// Verifică dacă e prima rulare a zilei și dacă avem token
+async function calCheckAndFetch(){
+  var lastDay=localStorage.getItem(CAL_DK)||'';
+  var today=calTodayStr();
+  if(lastDay===today) return; // deja colectat azi
+  var token=calGetToken();
+  if(!token) return; // nu suntem autentificați
+  var events=await calFetchEvents(token);
+  if(events===null) return; // eroare sau token expirat
+  calInjectEvents(events);
+  render();
+}
+
+// Buton deconectare calendar
+function calLogout(){
+  calClearToken();
+  localStorage.removeItem(CAL_DK);
+  // Șterge evenimentele de calendar din NEXT
+  S.freeTasks=S.freeTasks.filter(function(f){return !f.id.startsWith('cal::');});
+  S.nextOrder=S.nextOrder.filter(function(x){
+    return !(x.type==='free'&&(x.id||'').startsWith('cal::'));
+  });
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  render();
+}
+// ══════════════════════════════════════════════════════════════
 function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);lw(LBLK,S.labels);lw(SHJK,S.shareJournal);}
 function je(e){S.journal.push(e);lw(JK,S.journal);}
 
@@ -1176,6 +1348,21 @@ function rBoard(){
   settBtn.style.cssText='background:#374151;color:#F59E0B;border:none;border-radius:7px;padding:6px 9px;font-size:13px;cursor:pointer;touch-action:manipulation';
   settBtn.addEventListener('click',function(){S.showSettings=!S.showSettings;render();});
   settBtn.addEventListener('touchend',function(e){e.preventDefault();S.showSettings=!S.showSettings;render();},{passive:false});
+  // Buton Calendar Google
+  var hasCalToken=!!calGetToken();
+  var calBtn=mk('button','btn');
+  calBtn.textContent=hasCalToken?'📅 ✓':'📅';
+  calBtn.title=hasCalToken?'Calendar conectat — click pentru deconectare':'Conectează Google Calendar';
+  calBtn.style.cssText=hasCalToken?
+    'background:#1E3A8A;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation':
+    'background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
+  function doCalBtn(e){
+    e.stopPropagation();e.preventDefault();
+    if(hasCalToken){calLogout();}
+    else{calLogin();}
+  }
+  calBtn.addEventListener('click',doCalBtn);
+  calBtn.addEventListener('touchend',function(e){e.preventDefault();doCalBtn(e);},{passive:false});
   // ── Helper buton header cu etichetă și tooltip ──
   function hbtn(bg,label,title,fn){
     var b=mk('button','btn '+bg);
@@ -1192,7 +1379,7 @@ function rBoard(){
     hbtn('bi','Clip','Vizualizare / export clipboard',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Pro',()=>{S.showAdd='project';S.addName='';render();}),
-    settBtn, lblBtns);
+    settBtn, calBtn, lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
   // ── Panou Settings ──
@@ -1370,10 +1557,13 @@ function rBoard(){
     // Cheie unică pentru selecție
     var selKey=row.isFree?'f::'+row.id:'p::'+row.projectId+'::'+row.taskId;
     var isSel=!!(S.selectedNext[selKey]);
+    // Detectează eveniment de calendar (id începe cu 'cal::')
+    var isCalEv=row.isFree&&row.id&&row.id.startsWith('cal::');
     const r=div('nrow');
     if(isSel) r.classList.add('sel-on');
+    if(isCalEv&&!isSel) r.classList.add('cal-ev');
     r.dataset.nidx=idx;
-    if(row.warn&&!isSel) r.style.background='#FFFBEB';
+    if(row.warn&&!isSel&&!isCalEv) r.style.background='#FFFBEB';
 
     // Long-press → selectMode; dublu-tap → editare — un singur touchstart {passive:false}
     var lpTimer=null;
@@ -1507,24 +1697,26 @@ function rBoard(){
       })(row.projectId);
     }
     if(row.isFree){
-      // Buton 📅 Calendar — pentru free tasks cu /c
-      (function(fid,fname){
-        maybeAddCalBtn(r, fname, function(newName){
-          var ft=S.freeTasks.find(function(x){return x.id===fid;});
-          if(ft){ft.name=newName;lw(FK,S.freeTasks);}
-          render();
-        });
-      })(row.id, row.tname);
-      (function(fid,fname){
-        // Buton promovare
-        const pb=document.createElement('button');
-        pb.textContent='⊞';
-        pb.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
-        function doPromote(e){e.stopPropagation();promoteToProject(fid,fname);}
-        pb.addEventListener('click',doPromote);
-        pb.addEventListener('touchend',function(e){e.preventDefault();doPromote(e);},{passive:false});
-        r.appendChild(pb);
-      })(row.id,row.tname);
+      // Buton 📅 Calendar — pentru free tasks cu /c (nu pentru cal events)
+      if(!isCalEv){
+        (function(fid,fname){
+          maybeAddCalBtn(r, fname, function(newName){
+            var ft=S.freeTasks.find(function(x){return x.id===fid;});
+            if(ft){ft.name=newName;lw(FK,S.freeTasks);}
+            render();
+          });
+        })(row.id, row.tname);
+        (function(fid,fname){
+          // Buton promovare
+          const pb=document.createElement('button');
+          pb.textContent='⊞';
+          pb.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+          function doPromote(e){e.stopPropagation();promoteToProject(fid,fname);}
+          pb.addEventListener('click',doPromote);
+          pb.addEventListener('touchend',function(e){e.preventDefault();doPromote(e);},{passive:false});
+          r.appendChild(pb);
+        })(row.id,row.tname);
+      }
       const xb=mk('button','ndel');xb.textContent='✕';
       xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delFree(row.id);},{passive:false});
       xb.addEventListener('click',()=>delFree(row.id));
@@ -1995,7 +2187,7 @@ function moveSelectedNext(where){
   var unified=nr.map(function(r){
     return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
   });
-  function rowKey(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  function rowKey(r){return r.type==='free'?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
   var selSet=new Set(selKeys);
   var selected=unified.filter(function(r){return selSet.has(rowKey(r));});
   var rest=unified.filter(function(r){return !selSet.has(rowKey(r));});
@@ -2307,7 +2499,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v38').then(function(cache){
+  caches.open('projectboard-v39').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
@@ -2320,8 +2512,12 @@ function registerSW(){
 }
 
 handleIncomingShare();
+// Procesează token OAuth dacă venim din redirect Google
+calHandleCallback();
 render();
 registerSW();
+// Fetch calendar după render (async, nu blochează UI)
+calCheckAndFetch();
 </script>
 </body>
 </html>
