@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ProjectBoard — Help</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#F8FAFC;color:#1E293B;line-height:1.7;padding-bottom:60px}
+.hdr{background:#1A1D2E;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .ver{font-size:11px;color:#9CA3AF;margin-left:auto}
+.sec{padding:20px 20px 0}
+.sec h2{font-size:17px;font-weight:800;color:#1A1D2E;border-bottom:2px solid #E2E8F0;padding-bottom:8px;margin-bottom:14px;margin-top:24px}
+.sec h3{font-size:14px;font-weight:700;color:#334155;margin:16px 0 6px}
+p{font-size:13px;margin-bottom:10px;color:#374151}
+code{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;color:#0F172A}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
+th{background:#1A1D2E;color:#fff;padding:7px 10px;text-align:left;font-weight:700}
+td{padding:7px 10px;border-bottom:1px solid #E2E8F0;vertical-align:top}
+tr:nth-child(even)td{background:#F8FAFC}
+.card{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px}
+.card.blue{border-left:4px solid #3B82F6}
+.card.amber{border-left:4px solid #F59E0B}
+.card.green{border-left:4px solid #10B981}
+.card.indigo{border-left:4px solid #6366F1}
+.step{display:flex;gap:10px;align-items:flex-start;margin:8px 0;padding:8px 12px;background:#F8FAFC;border-radius:7px;border:1px solid #E2E8F0;font-size:13px}
+.num{background:#1A1D2E;color:#F59E0B;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px}
+.toc{background:#EFF6FF;border-left:4px solid #3B82F6;padding:14px 18px;margin:16px 20px;border-radius:6px}
+.toc a{display:block;color:#1D4ED8;font-size:13px;text-decoration:none;margin:3px 0}
+.badge{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-right:3px}
+.b-blue{background:#DBEAFE;color:#1E40AF}
+.b-amber{background:#FEF9C3;color:#854D0E}
+.b-green{background:#DCFCE7;color:#166534}
+.b-red{background:#FEE2E2;color:#991B1B}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <span style="font-size:22px;color:#F59E0B">📋</span>
+  <h1>ProjectBoard Help</h1>
+  <span class="ver">V41</span>
+</div>
+
+<div class="toc">
+  <strong style="font-size:12px;color:#1E40AF;font-weight:800;letter-spacing:.06em">CONTENTS</strong>
+  <a href="#daily">Daily routine</a>
+  <a href="#next">NEXT section</a>
+  <a href="#calendar">/c Calendar syntax</a>
+  <a href="#gcal">Google Calendar import</a>
+  <a href="#share">SHARE section</a>
+  <a href="#projects">Projects &amp; tasks</a>
+  <a href="#export">Export / Import</a>
+  <a href="#header">Header buttons</a>
+</div>
+
+<div class="sec" id="daily">
+  <h2>Daily Routine</h2>
+  <div class="step"><div class="num">1</div><div>Open the app in the morning. If Google Calendar is connected (📅 blue in header), today's and tomorrow's events are imported automatically into NEXT with a blue background.</div></div>
+  <div class="step"><div class="num">2</div><div>Review NEXT. Calendar events appear at the top. Tasks with ⚠ have multiple To Do items with no <code>*</code> priority set.</div></div>
+  <div class="step"><div class="num">3</div><div>Process SHARE inbox — links and text received from other apps. Tick items and Merge → Clipboard to copy as a formatted list.</div></div>
+  <div class="step"><div class="num">4</div><div>Mark tasks done with ✓. Add new tasks directly with + Next or inside a project.</div></div>
+</div>
+
+<div class="sec" id="next">
+  <h2>NEXT Section</h2>
+  <h3>Priority rule — the asterisk</h3>
+  <table>
+    <tr><th>Situation</th><th>What appears in NEXT</th></tr>
+    <tr><td>Project with 1 To Do task</td><td>Appears automatically</td></tr>
+    <tr><td>Project with multiple To Do tasks, one with <code>*</code></td><td>Only the starred ones (shown without *)</td></tr>
+    <tr><td>Project with multiple To Do tasks, none with <code>*</code></td><td>All shown with ⚠ warning</td></tr>
+  </table>
+  <p>Example: project "Vacation" has 3 tasks. Write <code>*Book flights</code> → only that task appears in NEXT.</p>
+
+  <h3>Reordering — multiple selection</h3>
+  <div class="step"><div class="num">1</div><div><strong>Long-press (500ms)</strong> on any NEXT task → selection mode activates. The pressed row is selected (blue highlight).</div></div>
+  <div class="step"><div class="num">2</div><div><strong>Tap</strong> other tasks to select/deselect them.</div></div>
+  <div class="step"><div class="num">3</div><div>Blue bar appears: <strong>↑ Top</strong> | <strong>↓ Bottom</strong> | <strong>✕ Cancel</strong></div></div>
+  <div class="step"><div class="num">4</div><div>↑ Top: selected tasks move to the beginning, keeping their relative order. ↓ Bottom: selected tasks move to the end.</div></div>
+
+  <div class="card amber">
+    <strong>Example:</strong> NEXT = [A, B, C, D, E]. Select B and D.<br/>
+    → ↑ Top: [B, D, A, C, E]<br/>
+    → ↓ Bottom: [A, C, E, B, D]
+  </div>
+
+  <h3>Individual reorder — drag</h3>
+  <p>Hold the <strong>⠿</strong> handle on the left of any row and drag up or down.</p>
+
+  <h3>Inline editing</h3>
+  <p><strong>Double-tap</strong> (or double-click on desktop) on any task text → editable field. <strong>Enter</strong> or tap outside saves. <strong>Escape</strong> cancels. Edits in NEXT sync back to the source project automatically.</p>
+
+  <h3>Promote free task to project — ⊞ button</h3>
+  <p>Free tasks (not linked to a project) show a <strong>⊞</strong> button. Tap → bottom sheet with all projects sorted alphabetically. Tap a project to add the task there, or type a new project name.</p>
+</div>
+
+<div class="sec" id="calendar">
+  <h2>/c Calendar Syntax</h2>
+  <p>Add a calendar date directly inside any task text using the <code>/c</code> command. Works in NEXT and WAITING.</p>
+
+  <table>
+    <tr><th>What you type</th><th>Meaning</th><th>After tapping 📅</th></tr>
+    <tr><td><code>Doctor /c5.5</code></td><td>May 5, 09:00 (default)</td><td><code>Doctor 📅 5.may 09:00</code></td></tr>
+    <tr><td><code>Doctor /c5.5 14:30</code></td><td>May 5, 14:30</td><td><code>Doctor 📅 5.may 14:30</code></td></tr>
+    <tr><td><code>Pills /c1.5rz 08:00</code></td><td>May 1, daily, 08:00</td><td><code>Pills 📅 1.may 08:00 (zil)</code></td></tr>
+    <tr><td><code>Meeting /c15.5rs 10:00</code></td><td>May 15, weekly, 10:00</td><td><code>Meeting 📅 15.may 10:00 (sapt)</code></td></tr>
+    <tr><td><code>Rent /c1.6rl</code></td><td>June 1, monthly, 09:00</td><td><code>Rent 📅 1.jun 09:00 (lunar)</code></td></tr>
+    <tr><td><code>Birthday /c15.7ra</code></td><td>July 15, yearly, 09:00</td><td><code>Birthday 📅 15.jul 09:00 (anual)</code></td></tr>
+  </table>
+
+  <div class="card green">
+    <strong>Repeat codes:</strong> <code>rz</code> = daily · <code>rs</code> = weekly · <code>rl</code> = monthly · <code>ra</code> = yearly · no code = one-time<br/>
+    <strong>Format:</strong> <code>/cDAY.MONTH[repeat][ HH:MM]</code> — space before time is optional<br/>
+    <strong>Default time:</strong> 09:00 if no time is specified<br/><br/>
+    <strong>Flow:</strong> type /c → 📅 button appears → tap 📅 → Google Calendar opens pre-filled → tap Save in Calendar → return to app. The task text updates to show the formatted date. The 📅 button stays active for changes.
+  </div>
+</div>
+
+<div class="sec" id="gcal">
+  <h2>Google Calendar Import</h2>
+  <div class="step"><div class="num">1</div><div>Tap the <strong>📅</strong> button in the header (grey = not connected).</div></div>
+  <div class="step"><div class="num">2</div><div>Google login page opens → sign in and authorize ProjectBoard.</div></div>
+  <div class="step"><div class="num">3</div><div>You return to the app. Today's and tomorrow's events are fetched automatically and appear at the top of NEXT with a blue background.</div></div>
+  <div class="step"><div class="num">4</div><div>Events are re-fetched once per day (first open of each day).</div></div>
+
+  <div class="card blue">
+    <strong>What appears:</strong> All events today and tomorrow, except daily recurring ones (e.g. alarms).<br/>
+    <strong>Multi-day events:</strong> Events that started before today but haven't ended yet (e.g. "Pay utilities 1–5 Apr") appear as <code>[ongoing 1-5 apr] Pay utilities</code>.<br/>
+    <strong>Token expires</strong> after 1 hour — tap 📅 again to reconnect.
+  </div>
+
+  <div class="card amber">
+    <strong>Note:</strong> The app is in "Testing" mode in Google Cloud Console. To use Google Calendar, your email must be added as a test user by the developer.
+  </div>
+</div>
+
+<div class="sec" id="share">
+  <h2>SHARE Section</h2>
+  <p>Everything shared from other Android apps (browser, YouTube, WhatsApp, etc.) lands here automatically.</p>
+
+  <h3>Merge — combine multiple items</h3>
+  <div class="step"><div class="num">1</div><div>Tick items with the green checkbox on the left of each row.</div></div>
+  <div class="step"><div class="num">2</div><div>Yellow bar appears: <strong>⧉ Merge → Clipboard</strong> | <strong>🗑 Delete from Share</strong></div></div>
+  <div class="step"><div class="num">3</div><div><strong>⧉ Merge</strong> → copies the concatenated text to clipboard (format: /c\n* item\n* item). Items stay in SHARE.</div></div>
+  <div class="step"><div class="num">4</div><div><strong>🗑 Delete from Share</strong> → original items are replaced by a single merged item.</div></div>
+
+  <table>
+    <tr><th>Action</th><th>How</th></tr>
+    <tr><td>Edit item text</td><td>Double-tap on text</td></tr>
+    <tr><td>Move to NEXT</td><td>→ Next button</td></tr>
+    <tr><td>Delete item</td><td>✕ button (logged in journal)</td></tr>
+    <tr><td>Add /c calendar date</td><td>Type /c in text, then tap 📅</td></tr>
+  </table>
+</div>
+
+<div class="sec" id="projects">
+  <h2>Projects &amp; Tasks</h2>
+  <h3>Board columns</h3>
+  <table>
+    <tr><th>Column</th><th>Meaning</th></tr>
+    <tr><td><strong>To Do</strong> ⚡</td><td>Active tasks. 1 task → auto-appears in NEXT. Multiple → use * to declare priority.</td></tr>
+    <tr><td><strong>Wait</strong> ⏳</td><td>Delegated or blocked tasks. Appear in WAITING section.</td></tr>
+    <tr><td><strong>Done</strong> ✅</td><td>Completed tasks. Project moves to EMPTY PROJECTS when no active tasks remain.</td></tr>
+  </table>
+
+  <h3>Drag tasks between columns</h3>
+  <p>Hold the task card and drag it left or right to change its column.</p>
+
+  <h3>Reorder projects</h3>
+  <p>Hold the <strong>⠿</strong> handle on the left of any project row and drag up or down. Same for section dividers.</p>
+
+  <h3>Empty Projects</h3>
+  <p>Projects with no active tasks appear in the EMPTY PROJECTS section. Tick the checkbox → confirm <strong>Yes</strong> to archive (removes from board, keeps in journal).</p>
+</div>
+
+<div class="sec" id="export">
+  <h2>Export / Import</h2>
+  <p>Access from the header: tap <strong>Data</strong>, <strong>Journal</strong>, or <strong>Clip</strong> to open the respective view with export buttons.</p>
+
+  <table>
+    <tr><th>Button</th><th>Full name</th><th>File produced</th></tr>
+    <tr><td><strong>EJD</strong></td><td>Export JSON with Date</td><td><code>pb-date-2026-04-01.json</code> — new file each time (history)</td></tr>
+    <tr><td><strong>EJ</strong></td><td>Export JSON fixed</td><td><code>pb-date.json</code> — overwrites previous (for Google Drive sync)</td></tr>
+    <tr><td><strong>ETD</strong></td><td>Export Text with Date</td><td><code>jurnal-2026-04-01.txt</code> — readable, no diacritics, searchable</td></tr>
+    <tr><td><strong>ET</strong></td><td>Export Text fixed</td><td><code>jurnal.txt</code> — overwrites</td></tr>
+    <tr><td><strong>I</strong></td><td>Import</td><td>Opens file picker for JSON (or JSON/TXT for Clipboard)</td></tr>
+  </table>
+
+  <div class="card blue">
+    <strong>Migrate to another device:</strong><br/>
+    1. On old device: Data view → <strong>EJ</strong> → save <code>pb-date.json</code><br/>
+    2. On new device: install PWA, Data view → <strong>I</strong> → import the file<br/>
+    3. Reconnect Google Calendar (📅) — token doesn't migrate
+  </div>
+
+  <div class="card green">
+    <strong>Overwrite (Chrome only):</strong> First export shows "Save as" dialog — choose location once. Subsequent exports in the same session overwrite directly. On other browsers, the file downloads normally (browser may add "(1)", "(2)" suffixes).
+  </div>
+</div>
+
+<div class="sec" id="header">
+  <h2>Header Buttons</h2>
+  <table>
+    <tr><th>Button</th><th>Action</th></tr>
+    <tr><td><strong>Data</strong></td><td>Open Data view — export/import all project data</td></tr>
+    <tr><td><strong>Journal</strong></td><td>Open Journal view — chronological log of all actions</td></tr>
+    <tr><td><strong>Clip</strong></td><td>Open Clipboard Journal — history of all Merge operations</td></tr>
+    <tr><td><strong>+ Sec</strong></td><td>Add a section divider to organize projects</td></tr>
+    <tr><td><strong>+ Proj</strong></td><td>Add a new project</td></tr>
+    <tr><td><strong>⚙</strong></td><td>Quick label settings — add/remove search labels</td></tr>
+    <tr><td><strong>📅</strong></td><td>Connect/disconnect Google Calendar. Grey = not connected. Blue ✓ = connected.</td></tr>
+    <tr><td><strong>?</strong></td><td>This help page</td></tr>
+    <tr><td><strong>#a #u #c</strong></td><td>Quick search labels — tap to search for all tasks containing this label</td></tr>
+  </table>
+
+  <h3>Labels in ⚙ Settings</h3>
+  <p>You can add any string as a label — not just <code>#</code> prefixed ones. Examples: <code>#urgent</code>, <code>/c</code>, <code>today</code>, <code>@home</code>. Tap a label in the header to instantly search for all tasks containing it.</p>
+</div>
+
+<div style="padding:20px;text-align:center;color:#94A3B8;font-size:11px;margin-top:20px">
+  ProjectBoard V41 · xpareto.github.io/kanban
+</div>
+
+</body>
+</html>
