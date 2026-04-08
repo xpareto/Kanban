@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V41</title>
+<title>Project Board V42</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -246,7 +246,7 @@ async function calFetchEvents(token){
   var now=new Date();
   var weekAgo=new Date(now.getFullYear(),now.getMonth(),now.getDate()-7,0,0,0);
   var tomorrowEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate()+2,0,0,0);
-  var todayStr=now.toISOString().slice(0,10);
+  var todayStr=calTodayStr(); // LOCAL timezone (nu toISOString care e UTC)
   var url='https://www.googleapis.com/calendar/v3/calendars/primary/events?'+
     'timeMin='+encodeURIComponent(weekAgo.toISOString())+
     '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
@@ -288,8 +288,9 @@ function calFmtTime(ev){
 // Determină dacă evenimentul e azi, mâine, sau în curs (a început deja)
 function calEvDay(ev){
   var now=new Date();
-  var today=now.toISOString().slice(0,10);
-  var tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1).toISOString().slice(0,10);
+  var today=calTodayStr();
+  var td1=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+  var tomorrow=td1.getFullYear()+'-'+String(td1.getMonth()+1).padStart(2,'0')+'-'+String(td1.getDate()).padStart(2,'0');
   var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
   var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
   if(evStart===today) return 'today';
@@ -1003,14 +1004,14 @@ function stripDiacritics(s){
 }
 // Descarcă un blob — încearcă File System Access API (overwrite real), fallback la <a download>
 // fileHandles păstrează handleurile per nume de fișier pentru sesiunea curentă
+// forceNew=true → ignoră handle salvat, deschide dialog (pentru "scrie peste" explicit)
 var _fsHandles={};
-async function dlBlob(content, filename, mime){
+async function dlBlob(content, filename, mime, forceNew){
   var blob=new Blob([content],{type:mime||'application/json'});
   // Încearcă File System Access API (Chrome desktop + Android Chrome 86+)
   if(window.showSaveFilePicker){
     try{
-      // Reutilizează handle-ul existent dacă avem deja unul pentru acest fișier
-      var handle=_fsHandles[filename];
+      var handle=forceNew?null:_fsHandles[filename];
       if(!handle){
         var ext=filename.split('.').pop().toLowerCase();
         var typeMap={json:{description:'JSON',accept:{'application/json':['.json']}},txt:{description:'Text',accept:{'text/plain':['.txt']}}};
@@ -1025,9 +1026,8 @@ async function dlBlob(content, filename, mime){
       await writable.close();
       return;
     }catch(err){
-      // Utilizatorul a anulat sau API indisponibil — fallback
       if(err.name==='AbortError') return;
-      delete _fsHandles[filename]; // resetează handle-ul dacă a expirat
+      delete _fsHandles[filename];
     }
   }
   // Fallback clasic
@@ -1049,7 +1049,9 @@ function doExp(withDate){
     waitOrder:S.waitOrder,waitFreeTasks:S.waitFreeTasks,shareTasks:S.shareTasks,
     shareJournal:S.shareJournal,labels:S.labels
   },null,2);
-  dlBlob(payload, withDate?'pb-date-'+todayStr()+'.json':'pb-date.json');
+  var fname=withDate?'pb-date-'+todayStr()+'.json':'pb-date.json';
+  if(!withDate && _fsHandles[fname]) delete _fsHandles[fname];
+  dlBlob(payload, fname);
 }
 // ── Import date complet JSON ──
 function doImp(e){
@@ -1108,14 +1110,16 @@ function doExpJournalTxt(withDate){
     else if(e.kind==='task-move') line='['+ds+'] MUTARE: '+e.taskName+': '+(CN2[e.fromCol]||e.fromCol)+' > '+(CN2[e.toCol]||e.toCol);
     else if(e.kind==='free-task-create') line='['+ds+'] NEXT LIBER: '+e.taskName;
     else if(e.kind==='free-task-delete') line='['+ds+'] STERS NEXT: '+e.taskName;
-    else if(e.kind==='share-receive') line='['+ds+'] SHARE PRIMIT: '+e.taskName;
-    else if(e.kind==='share-delete') line='['+ds+'] SHARE STERS: '+e.taskName;
     else if(e.kind==='project-create') line='['+ds+'] PROIECT NOU: '+e.projectName;
     else if(e.kind==='project-archive') line='['+ds+'] ARHIVAT: '+e.projectName;
     else line='['+ds+'] '+e.kind+': '+(e.taskName||e.projectName||'');
     lines.push(stripDiacritics(line));
   });
-  dlBlob(lines.join('\n'), withDate?'jurnal-'+todayStr()+'.txt':'jurnal.txt','text/plain');
+  var fname=withDate?'jurnal-'+todayStr()+'.txt':'jurnal.txt';
+  // withDate=false (fișier fix) → dacă avem deja handle, forțează dialog nou (overwrite explicit)
+  var forceNew=(!withDate && !!_fsHandles[fname]);
+  if(forceNew) delete _fsHandles[fname];
+  dlBlob(lines.join('\n'), fname,'text/plain');
 }
 // ── Export jurnal Clipboard JSON ──
 function doExpShareJournal(withDate){
@@ -1142,10 +1146,14 @@ function doExpShareJournalTxt(withDate){
   var lines=S.shareJournal.map(function(e){
     var d=new Date(e.ts);
     var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-    return stripDiacritics('['+ds+']\n'+e.text);
+    var prefix=e.kind==='share-receive'?'PRIMIT':e.kind==='share-delete'?'STERS':e.kind==='share-merge'?'MERGE':'LOG';
+    var body=e.text||'';
+    return stripDiacritics('['+ds+'] ['+prefix+']\n'+body);
   });
   if(!lines.length){alert('Jurnalul Clipboard e gol.');return;}
-  dlBlob(lines.join('\n\n'), withDate?'clipjurnal-'+todayStr()+'.txt':'clipjurnal.txt','text/plain');
+  var fname=withDate?'clipjurnal-'+todayStr()+'.txt':'clipjurnal.txt';
+  if(!withDate && _fsHandles[fname]) delete _fsHandles[fname];
+  dlBlob(lines.join('\n\n'), fname,'text/plain');
 }
 // ── Import jurnal Clipboard .txt (legacy) ──
 function doImpShareJournalTxt(e){
@@ -1221,6 +1229,8 @@ function rData(){
     buttons:[
       {lbl:'EJD',title:'Export JSON cu data (istoric)',fn:function(){doExp(true);}},
       {lbl:'EJ', title:'Export JSON fisier fix — pb-date.json (overwrite)',fn:function(){doExp(false);}},
+      {lbl:'ET', title:'Export jurnal TXT fisier fix — jurnal.txt (overwrite)',fn:function(){doExpJournalTxt(false);}},
+      {lbl:'ETD',title:'Export jurnal TXT cu data (istoric)',fn:function(){doExpJournalTxt(true);}},
       {lbl:'I',  title:'Import JSON date',fn:function(){impI2.click();}}
     ],
     backFn:function(){S.view='board';render();}
@@ -1345,9 +1355,13 @@ function rBoard(){
   const h=div('hdr');
   const hl=div('hdr-l');
   const htitle=mk('div','h1');htitle.textContent='Project Board';
-  // Data și ziua săptămânii în limba dispozitivului, cu majuscule
-  var locDate=new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'}).toUpperCase();
-  const hsub=mk('div','h2');hsub.textContent=pc+' projects · '+VERSION+' · '+locDate;
+  // Data și ziua săptămânii — pe aceeași linie, galben, majuscule
+  var locDate=new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}).toUpperCase();
+  const hdateSpan=mk('span','');
+  hdateSpan.textContent=' '+locDate;
+  hdateSpan.style.cssText='font-size:11px;font-weight:800;color:#F59E0B;letter-spacing:.04em;margin-left:7px;vertical-align:middle';
+  htitle.appendChild(hdateSpan);
+  const hsub=mk('div','h2');hsub.textContent=pc+' projects · '+VERSION;
   const htxt=div('');htxt.appendChild(htitle);htxt.appendChild(hsub);
   hl.appendChild(sp('logo','◈'));hl.appendChild(htxt);
   const hr=div('hdr-r');
@@ -2016,8 +2030,9 @@ function rBoard(){
       const xb=mk('button','ndel');xb.textContent='✕';
       function doDel(e){
         e.stopPropagation();
-        // A3: salvează în jurnal
-        je({kind:'share-delete',taskName:sname,ts:Date.now()});
+        // share-delete → NUMAI în shareJournal, NU în jurnalul principal
+        S.shareJournal.push({ts:Date.now(),kind:'share-delete',text:sname});
+        lw(SHJK,S.shareJournal);
         S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
         delete S.mergeFlags['s:'+sid];
         lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);render();
@@ -2344,8 +2359,8 @@ function doMerge(){
   var existing=localStorage.getItem(CK)||'';
   var newLog=existing+(existing?'\n':'')+result;
   localStorage.setItem(CK,newLog);
-  // Jurnal Share
-  S.shareJournal.push({ts:Date.now(),text:result});
+  // Jurnal Share — kind:'share-merge'
+  S.shareJournal.push({ts:Date.now(),kind:'share-merge',text:result});
   lw(SHJK,S.shareJournal);
 
   var total=allLines.length;
@@ -2375,9 +2390,14 @@ function doMergeDelete(){
   groups.forEach(function(g){allIds=allIds.concat(g.ids);});
   // Șterge itemurile originale din Share
   allIds.forEach(function(sid){
+    var item=S.shareTasks.find(function(x){return x.id===sid;});
+    if(item){
+      S.shareJournal.push({ts:Date.now(),kind:'share-delete',text:item.name});
+    }
     S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
     delete S.mergeFlags['s:'+sid];
   });
+  lw(SHJK,S.shareJournal);
   // A2: adaugă rezultatul concatenat ca item nou în Share (sus)
   var newItem={id:gid(),name:mergedText,ts:Date.now()};
   S.shareTasks=[newItem,...S.shareTasks];
@@ -2503,7 +2523,9 @@ function addToNext(taskText){
 function addToShare(taskText){
   if(!taskText||!taskText.trim())return;
   var st={id:gid(),name:taskText.trim(),ts:Date.now()};
-  je({kind:'share-receive',taskName:st.name,ts:st.ts});
+  // share-receive → NUMAI în shareJournal, NU în jurnalul principal
+  S.shareJournal.push({ts:st.ts,kind:'share-receive',text:st.name});
+  lw(SHJK,S.shareJournal);
   S.shareTasks=[st,...S.shareTasks];
   lw(SHK,S.shareTasks);
   render();
@@ -2554,7 +2576,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v41').then(function(cache){
+  caches.open('projectboard-v42').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
