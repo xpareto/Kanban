@@ -7,7 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V42</title>
+<title>Project Board V43</title>
+<!-- Firebase compat (no module, no bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -133,7 +137,191 @@ input{font-family:inherit;outline:none}
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 'use strict';
-const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V41';
+const VERSION=(document.title.match(/V(\d+)/)||['','?'])[0]||'V43';
+
+// ══════════════════════════════════════════════════════════════
+// ── Firebase Config + Init ─────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+const FB_CFG={
+  apiKey:"AIzaSyAPv2mBDPAcZ1isyR0FD4Vha7ymYRd6gaw",
+  authDomain:"project-board-1fe7c.firebaseapp.com",
+  projectId:"project-board-1fe7c",
+  storageBucket:"project-board-1fe7c.firebasestorage.app",
+  messagingSenderId:"435410220864",
+  appId:"1:435410220864:web:bd601ccad6e5e60ae96ca5"
+};
+var fbApp=null,fbAuth=null,fbDb=null,fbUser=null;
+function fbInit(){
+  try{
+    fbApp=firebase.initializeApp(FB_CFG);
+    fbAuth=firebase.auth();
+    fbDb=firebase.firestore();
+    // Ascultă schimbări de autentificare
+    fbAuth.onAuthStateChanged(function(user){
+      fbUser=user;
+      S.fbUser=user?{uid:user.uid,name:user.displayName,email:user.email,photo:user.photoURL}:null;
+      if(user){
+        // La login: încearcă să descarce date dacă remote e mai nou
+        fbPullIfNewer();
+      }
+      render();
+    });
+  }catch(e){console.warn('Firebase init error:',e);}
+}
+
+// ── Firebase Auth ──
+function fbLogin(){
+  if(!fbAuth) return;
+  var provider=new firebase.auth.GoogleAuthProvider();
+  fbAuth.signInWithPopup(provider).catch(function(e){
+    alert('Login error: '+e.message);
+  });
+}
+function fbLogout(){
+  if(!fbAuth) return;
+  fbAuth.signOut();
+}
+
+// ── Construiește payload pentru Firestore ──
+function fbPayloadData(){
+  return {
+    items:S.items,
+    nextOrder:S.nextOrder,
+    freeTasks:S.freeTasks,
+    waitOrder:S.waitOrder,
+    waitFreeTasks:S.waitFreeTasks,
+    labels:S.labels,
+    ts:Date.now()
+  };
+}
+function fbPayloadShare(){
+  return {shareTasks:S.shareTasks,mergeFlags:S.mergeFlags,ts:Date.now()};
+}
+function fbPayloadJournal(){
+  return {journal:S.journal,ts:Date.now()};
+}
+function fbPayloadShareJournal(){
+  return {shareJournal:S.shareJournal,ts:Date.now()};
+}
+
+// ── Push: scrie tot în Firestore ──
+async function fbPush(){
+  if(!fbDb||!fbUser) return false;
+  try{
+    var uid=fbUser.uid;
+    var base=fbDb.collection('users').doc(uid);
+    await Promise.all([
+      base.collection('docs').doc('data').set(fbPayloadData()),
+      base.collection('docs').doc('share').set(fbPayloadShare()),
+      base.collection('docs').doc('journal').set(fbPayloadJournal()),
+      base.collection('docs').doc('shareJournal').set(fbPayloadShareJournal())
+    ]);
+    return true;
+  }catch(e){console.warn('fbPush error:',e);return false;}
+}
+
+// ── Pull: citește din Firestore și merge inteligent ──
+async function fbPull(){
+  if(!fbDb||!fbUser) return false;
+  try{
+    var uid=fbUser.uid;
+    var base=fbDb.collection('users').doc(uid);
+    var snaps=await Promise.all([
+      base.collection('docs').doc('data').get(),
+      base.collection('docs').doc('share').get(),
+      base.collection('docs').doc('journal').get(),
+      base.collection('docs').doc('shareJournal').get()
+    ]);
+    var rData=snaps[0].exists?snaps[0].data():null;
+    var rShare=snaps[1].exists?snaps[1].data():null;
+    var rJournal=snaps[2].exists?snaps[2].data():null;
+    var rSJ=snaps[3].exists?snaps[3].data():null;
+
+    // Merge data — union pe id, câștigă obiectul cu ts mai mare
+    if(rData){
+      S.items=fbMergeById(S.items,rData.items||[]);
+      S.nextOrder=fbMergeOrder(S.nextOrder,rData.nextOrder||[]);
+      S.freeTasks=fbMergeById(S.freeTasks,rData.freeTasks||[]);
+      S.waitOrder=fbMergeOrder(S.waitOrder,rData.waitOrder||[]);
+      S.waitFreeTasks=fbMergeById(S.waitFreeTasks,rData.waitFreeTasks||[]);
+      S.labels=rData.labels||S.labels;
+      lw(SK,S.items);lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+      lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(LBLK,S.labels);
+    }
+    // Merge share
+    if(rShare){
+      S.shareTasks=fbMergeById(S.shareTasks,rShare.shareTasks||[]);
+      S.mergeFlags=Object.assign({},rShare.mergeFlags||{},S.mergeFlags);
+      lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+    }
+    // Merge journal — append, dedup după ts+kind
+    if(rJournal){
+      S.journal=fbMergeJournal(S.journal,rJournal.journal||[]);
+      lw(JK,S.journal);
+    }
+    // Merge shareJournal
+    if(rSJ){
+      S.shareJournal=fbMergeJournal(S.shareJournal,rSJ.shareJournal||[]);
+      lw(SHJK,S.shareJournal);
+    }
+    return true;
+  }catch(e){console.warn('fbPull error:',e);return false;}
+}
+
+// ── Pull doar dacă remote ts > local ts ──
+async function fbPullIfNewer(){
+  if(!fbDb||!fbUser) return;
+  try{
+    var uid=fbUser.uid;
+    var snap=await fbDb.collection('users').doc(uid).collection('docs').doc('data').get();
+    if(!snap.exists) return;
+    var remoteTs=snap.data().ts||0;
+    var localTs=ls('pb-sync-ts')||0;
+    if(remoteTs>localTs){
+      await fbPull();
+      lw('pb-sync-ts',remoteTs);
+      render();
+    }
+  }catch(e){console.warn('fbPullIfNewer error:',e);}
+}
+
+// ── Helpers merge ──
+function fbMergeById(local,remote){
+  // Union: toate obiectele din ambele, câștigă cel cu ts mai mare dacă același id
+  var map={};
+  local.forEach(function(x){if(x&&x.id)map[x.id]=x;});
+  remote.forEach(function(x){
+    if(!x||!x.id) return;
+    if(!map[x.id]||(x.ts||0)>(map[x.id].ts||0)) map[x.id]=x;
+  });
+  return Object.values(map);
+}
+function fbMergeOrder(local,remote){
+  // Ordinea locală câștigă; adaugă la final ce e în remote dar nu în local
+  var seen=new Set(local.map(function(x){return JSON.stringify(x);}));
+  var extra=remote.filter(function(x){return !seen.has(JSON.stringify(x));});
+  return local.concat(extra);
+}
+function fbMergeJournal(local,remote){
+  // Append + dedup după ts (timestamp unic per intrare)
+  var seen=new Set(local.map(function(x){return x.ts+'|'+(x.kind||'');}));
+  var extra=remote.filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''));});
+  return local.concat(extra).sort(function(a,b){return a.ts-b.ts;});
+}
+
+// ── Sync manual (buton ↑ Sync) ──
+async function fbSync(){
+  if(!fbUser){fbLogin();return;}
+  var dot=document.getElementById('sdot');
+  if(dot){dot.textContent='⟳';dot.style.color='#818CF8';}
+  var ok=await fbPush();
+  if(ok){
+    lw('pb-sync-ts',Date.now());
+    if(dot){dot.textContent='☁✓';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
+  } else {
+    if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},2500);}
+  }
+}
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
@@ -153,7 +341,7 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{}};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
@@ -286,6 +474,8 @@ async function calFetchEvents(token){
   // 4. Filtrare
   var events=allItems.filter(function(ev){
     if(!ev.summary||!ev.summary.trim()) return false;
+    // Ignoră evenimentele auto-generate de Google Tasks ("Tasks for ...")
+    if(/^Tasks for\b/i.test(ev.summary.trim())) return false;
     var endDate='';
     if(ev.end) endDate=(ev.end.date||ev.end.dateTime||'').slice(0,10);
     if(endDate && endDate < todayStr) return false;
@@ -1271,6 +1461,54 @@ function rData(){
     'Share inbox: <strong>'+S.shareTasks.length+'</strong> items<br>'+
     'Clipboard journal: <strong>'+S.shareJournal.length+'</strong> entries';
   root.appendChild(info);
+
+  // ── Panou Firebase Sync ──
+  var fbPanel=div('');
+  fbPanel.style.cssText='margin:0 12px 16px;border-radius:10px;overflow:hidden;border:1px solid #2D3048';
+  var fbHeader=div('');
+  fbHeader.style.cssText='background:#1E2130;padding:10px 14px;display:flex;align-items:center;gap:10px';
+  var fbIcon=sp('','☁');fbIcon.style.cssText='font-size:18px;color:#818CF8';
+  var fbTitle=sp('','Firebase Sync');fbTitle.style.cssText='font-size:13px;font-weight:700;color:#E2E8F0;flex:1';
+  fbHeader.appendChild(fbIcon);fbHeader.appendChild(fbTitle);
+
+  if(S.fbUser){
+    var fbUser=S.fbUser;
+    var fbInfo=div('');
+    fbInfo.style.cssText='background:#0F1117;padding:10px 14px;font-size:12px;color:#9CA3AF;line-height:1.8';
+    fbInfo.innerHTML='<span style="color:#34D399">● conectat</span> · '+fbUser.email;
+    var fbBtns=div('');fbBtns.style.cssText='background:#0F1117;padding:0 14px 12px;display:flex;gap:8px';
+    var bPush=mk('button','btn');bPush.textContent='↑ Push';bPush.title='Scrie local → Firebase';
+    bPush.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    bPush.addEventListener('click',function(){fbSync();S.view='board';render();});
+    bPush.addEventListener('touchend',function(e){e.preventDefault();fbSync();S.view='board';render();},{passive:false});
+    var bPull=mk('button','btn');bPull.textContent='↓ Pull';bPull.title='Citește Firebase → local';
+    bPull.style.cssText='background:#0F2A1A;color:#34D399;border:1px solid #10B981;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    bPull.addEventListener('click',async function(){
+      var ok=await fbPull();
+      if(ok){lw('pb-sync-ts',Date.now());alert('✓ Date descărcate din Firebase.');}
+      else alert('❌ Pull eșuat.');
+      render();
+    });
+    bPull.addEventListener('touchend',function(e){e.preventDefault();bPull.click();},{passive:false});
+    var bOut=mk('button','btn');bOut.textContent='Deconectare';
+    bOut.style.cssText='background:#1A0A0A;color:#F87171;border:1px solid #EF4444;border-radius:7px;padding:7px 14px;font-size:12px;cursor:pointer;touch-action:manipulation;margin-left:auto';
+    bOut.addEventListener('click',function(){fbLogout();});
+    bOut.addEventListener('touchend',function(e){e.preventDefault();fbLogout();},{passive:false});
+    fbBtns.appendChild(bPush);fbBtns.appendChild(bPull);fbBtns.appendChild(bOut);
+    fbPanel.appendChild(fbHeader);fbPanel.appendChild(fbInfo);fbPanel.appendChild(fbBtns);
+  } else {
+    var fbLogin2=div('');
+    fbLogin2.style.cssText='background:#0F1117;padding:12px 14px;display:flex;align-items:center;gap:10px';
+    var fbLoginTxt=sp('','Neconectat — apasă pentru Google Sign-In');
+    fbLoginTxt.style.cssText='font-size:12px;color:#6B7280;flex:1';
+    var fbLoginBtn=mk('button','btn');fbLoginBtn.textContent='Google Sign-In';
+    fbLoginBtn.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    fbLoginBtn.addEventListener('click',function(){fbLogin();});
+    fbLoginBtn.addEventListener('touchend',function(e){e.preventDefault();fbLogin();},{passive:false});
+    fbLogin2.appendChild(fbLoginTxt);fbLogin2.appendChild(fbLoginBtn);
+    fbPanel.appendChild(fbHeader);fbPanel.appendChild(fbLogin2);
+  }
+  root.appendChild(fbPanel);
   return root;
 }
 
@@ -1470,13 +1708,27 @@ function rBoard(){
   helpBtn.style.cssText='background:#374151;color:#9CA3AF;border:1px solid #4B5563;border-radius:7px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation';
   helpBtn.addEventListener('click',function(){window.open('help.html','_blank');});
   helpBtn.addEventListener('touchend',function(e){e.preventDefault();window.open('help.html','_blank');},{passive:false});
+  // Buton Firebase Sync
+  var fbBtn=mk('button','btn');
+  if(S.fbUser){
+    fbBtn.textContent='☁↑';
+    fbBtn.title='Sync → Firebase ('+S.fbUser.email+')';
+    fbBtn.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  } else {
+    fbBtn.textContent='☁';
+    fbBtn.title='Conectează Firebase (Google)';
+    fbBtn.style.cssText='background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
+  }
+  fbBtn.addEventListener('click',function(e){e.stopPropagation();fbSync();});
+  fbBtn.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();fbSync();},{passive:false});
+
   ap(hr, sdot,
     hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();}),
     hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();}),
     hbtn('bi','Clip','Vizualizare / export clipboard',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();}),
-    settBtn, calBtn, helpBtn, lblBtns);
+    settBtn, calBtn, fbBtn, helpBtn, lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
   // ── Panou Settings ──
@@ -2616,7 +2868,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v42').then(function(cache){
+  caches.open('projectboard-v43').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
@@ -2631,6 +2883,8 @@ function registerSW(){
 handleIncomingShare();
 // Procesează token OAuth dacă venim din redirect Google
 calHandleCallback();
+// Inițializează Firebase
+fbInit();
 render();
 registerSW();
 // Fetch calendar după render (async, nu blochează UI)
