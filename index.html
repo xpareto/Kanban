@@ -239,41 +239,66 @@ function calHandleCallback(){
   return true;
 }
 
-// Fetch evenimente calendar: azi + mâine + evenimente multi-zi în curs
-// timeMin = prima zi a lunii curente (prinde orice eveniment multi-zi lunar)
-// Filtrare post-fetch: păstrează doar cele care nu s-au terminat încă
+// Fetch evenimente din TOATE calendarele (primary + Nozbe + orice altul)
+// timeMin = prima zi a lunii curente — prinde evenimente multi-zi lunare (ex: Rl9z)
 async function calFetchEvents(token){
   var now=new Date();
-  // Prima zi a lunii curente — prinde Rl9z și orice eveniment multi-zi lunar
   var monthStart=new Date(now.getFullYear(),now.getMonth(),1,0,0,0);
   var tomorrowEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate()+2,0,0,0);
-  var todayStr=calTodayStr(); // LOCAL timezone (nu toISOString care e UTC)
-  var url='https://www.googleapis.com/calendar/v3/calendars/primary/events?'+
-    'timeMin='+encodeURIComponent(monthStart.toISOString())+
-    '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
-    '&singleEvents=true&orderBy=startTime&maxResults=100';
-  var resp=await fetch(url,{headers:{Authorization:'Bearer '+token}});
-  if(resp.status===401){calClearToken();return null;}
-  if(!resp.ok) return null;
-  var data=await resp.json();
-  var events=(data.items||[]).filter(function(ev){
-    // Ignoră recurente zilnice
-    if(ev.recurrence){
-      var hasDaily=ev.recurrence.some(function(r){return r.indexOf('FREQ=DAILY')>=0;});
-      if(hasDaily) return false;
+  var todayStr=calTodayStr();
+  var headers={Authorization:'Bearer '+token};
+
+  // 1. Obține lista tuturor calendarelor accesibile
+  var calIds=['primary']; // fallback dacă calendarList eșuează
+  try{
+    var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
+    if(listResp.status===401){calClearToken();return null;}
+    if(listResp.ok){
+      var listData=await listResp.json();
+      calIds=(listData.items||[]).map(function(c){return c.id;});
+      if(!calIds.length) calIds=['primary'];
     }
-    // Ignoră fără titlu
+  }catch(_){}
+
+  // 2. Fetch events din fiecare calendar, în paralel
+  function fetchCal(calId){
+    var url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?'+
+      'timeMin='+encodeURIComponent(monthStart.toISOString())+
+      '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
+      '&singleEvents=true&orderBy=startTime&maxResults=100';
+    return fetch(url,{headers:headers}).then(function(r){
+      if(!r.ok) return [];
+      return r.json().then(function(d){return d.items||[];});
+    }).catch(function(){return [];});
+  }
+
+  var allArrays=await Promise.all(calIds.map(fetchCal));
+
+  // 3. Aplatizează + deduplicare după ev.id
+  var seen={};
+  var allItems=[];
+  allArrays.forEach(function(arr){
+    arr.forEach(function(ev){
+      if(!seen[ev.id]){seen[ev.id]=true;allItems.push(ev);}
+    });
+  });
+
+  // 4. Filtrare
+  var events=allItems.filter(function(ev){
     if(!ev.summary||!ev.summary.trim()) return false;
-    // Păstrează doar evenimentele care nu s-au terminat încă (end >= azi)
     var endDate='';
-    if(ev.end){
-      endDate=(ev.end.date||ev.end.dateTime||'').slice(0,10);
-    }
-    // end.date pentru all-day e ziua DUPĂ ultima zi (Google Calendar convenție)
-    // deci end.date > today înseamnă că evenimentul include azi sau e în viitor
+    if(ev.end) endDate=(ev.end.date||ev.end.dateTime||'').slice(0,10);
     if(endDate && endDate < todayStr) return false;
     return true;
   });
+
+  // Sortare după startTime (fetch din mai multe calendare poate fi neordonat)
+  events.sort(function(a,b){
+    var sa=(a.start&&(a.start.dateTime||a.start.date))||'';
+    var sb=(b.start&&(b.start.dateTime||b.start.date))||'';
+    return sa<sb?-1:sa>sb?1:0;
+  });
+
   return events;
 }
 
@@ -1371,7 +1396,8 @@ function rBoard(){
   // Data galbenă — element separat, aliniat centrat vertical în dreapta titlului
   const hdateEl=mk('div','');
   hdateEl.textContent=locDate;
-  hdateEl.style.cssText='font-size:17px;font-weight:800;color:#F59E0B;letter-spacing:.04em;line-height:1;display:flex;align-items:center;padding-left:10px;align-self:center;white-space:nowrap';
+  // font-size = h1(15px) + h2(10px) + margin(1px) = 26px — ocupă tot spațiul vertical al titlului+sub
+  hdateEl.style.cssText='font-size:26px;font-weight:800;color:#F59E0B;letter-spacing:.03em;line-height:1;display:flex;align-items:center;padding-left:12px;align-self:stretch;white-space:nowrap;justify-content:center';
   const htxt=div('');
   htxt.style.cssText='display:flex;align-items:center;gap:0';
   const htitleWrap=div('');htitleWrap.appendChild(htitle);htitleWrap.appendChild(hsub);
