@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V43b</title>
+<title>Project Board V43c</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -227,6 +227,10 @@ function fbPayloadShareJournal(){
 // ── Push: scrie tot în Firestore ──
 async function fbPush(){
   if(!fbDb||!fbUser) return {ok:false,err:'not authenticated'};
+  // Refuză push cu date demo — protecție împotriva suprascrierii accidentale
+  if(!fbIsRealData(S.items,S.freeTasks)){
+    return {ok:false,err:'Date demo detectate — push anulat pentru protecție'};
+  }
   try{
     var uid=fbUser.uid;
     var col=fbDb.collection('users');
@@ -240,7 +244,28 @@ async function fbPush(){
   }catch(e){console.warn('fbPush error:',e);return {ok:false,err:e.message||String(e)};}
 }
 
-// ── Pull: citește din Firestore și merge inteligent ──
+// ── Validare: datele sunt reale (nu demo) ──
+var DEMO_IDS=['id_demo_p1','id_demo_p2','id_demo_f1','id_demo_f2','id_demo_s1','id_demo_s2'];
+function fbIsRealData(items,freeTasks){
+  // Sunt reale dacă există cel puțin un item cu id care nu e demo
+  var allIds=(items||[]).map(function(x){return x.id;})
+    .concat((freeTasks||[]).map(function(x){return x.id;}));
+  return allIds.some(function(id){return DEMO_IDS.indexOf(id)<0;});
+}
+
+// ── Backup local înainte de Pull ──
+function fbBackupLocal(){
+  var backup={
+    items:S.items,nextOrder:S.nextOrder,freeTasks:S.freeTasks,
+    waitOrder:S.waitOrder,waitFreeTasks:S.waitFreeTasks,
+    shareTasks:S.shareTasks,labels:S.labels,ts:Date.now()
+  };
+  lw('pb-fb-backup',backup);
+}
+
+// ── Pull: last-write-wins pe document întreg ──
+// Strategia: ts-ul documentului Firestore decide cine câștigă
+// Journal: întotdeauna append+dedup (nu se pierd intrări)
 async function fbPull(){
   if(!fbDb||!fbUser) return false;
   try{
@@ -257,32 +282,45 @@ async function fbPull(){
     var rJournal=snaps[2].exists?snaps[2].data():null;
     var rSJ=snaps[3].exists?snaps[3].data():null;
 
-    // Merge data — union pe id, câștigă obiectul cu ts mai mare
+    // Backup local înainte de orice modificare
+    fbBackupLocal();
+
     if(rData){
-      S.items=fbMergeById(S.items,rData.items||[]);
-      S.nextOrder=fbMergeOrder(S.nextOrder,rData.nextOrder||[]);
-      S.freeTasks=fbMergeById(S.freeTasks,rData.freeTasks||[]);
-      S.waitOrder=fbMergeOrder(S.waitOrder,rData.waitOrder||[]);
-      S.waitFreeTasks=fbMergeById(S.waitFreeTasks,rData.waitFreeTasks||[]);
-      S.labels=rData.labels||S.labels;
+      var remoteItems=rData.items||[];
+      var remoteTs=rData.ts||0;
+      var localTs=ls('pb-last-push-ts')||0;
+      // Câștigă setul cu ts mai mare — last-write-wins
+      if(remoteTs>=localTs && fbIsRealData(remoteItems,rData.freeTasks)){
+        S.items=remoteItems;
+        S.nextOrder=rData.nextOrder||S.nextOrder;
+        S.freeTasks=rData.freeTasks||S.freeTasks;
+        S.waitOrder=rData.waitOrder||S.waitOrder;
+        S.waitFreeTasks=rData.waitFreeTasks||S.waitFreeTasks;
+        S.labels=rData.labels||S.labels;
+      } else if(remoteTs>=localTs && !fbIsRealData(remoteItems,rData.freeTasks)){
+        // Remote are doar date demo — nu suprascrie localul
+        console.log('fbPull: remote has only demo data, skipping items overwrite');
+      }
+      // Dacă localTs > remoteTs — localul e mai nou, nu suprascrie
       lw(SK,S.items);lw(NK,S.nextOrder);lw(FK,S.freeTasks);
       lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(LBLK,S.labels);
     }
-    // Merge share
-    if(rShare){
-      S.shareTasks=fbMergeById(S.shareTasks,rShare.shareTasks||[]);
-      S.mergeFlags=Object.assign({},rShare.mergeFlags||{},S.mergeFlags);
+    // Share: last-write-wins simplu
+    if(rShare&&(rShare.ts||0)>=(ls('pb-last-push-ts')||0)){
+      S.shareTasks=rShare.shareTasks||S.shareTasks;
+      S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
       lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
     }
-    // Merge journal — append, dedup după ts+kind
+    // Journal: întotdeauna append+dedup — nu se pierd intrări niciodată
     if(rJournal){
-      S.journal=fbMergeJournal(S.journal,rJournal.journal||[]);
-      lw(JK,S.journal);
+      var seen=new Set(S.journal.map(function(x){return x.ts+'|'+(x.kind||'');}));
+      var extra=(rJournal.journal||[]).filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''));});
+      if(extra.length){S.journal=S.journal.concat(extra).sort(function(a,b){return a.ts-b.ts;});lw(JK,S.journal);}
     }
-    // Merge shareJournal
     if(rSJ){
-      S.shareJournal=fbMergeJournal(S.shareJournal,rSJ.shareJournal||[]);
-      lw(SHJK,S.shareJournal);
+      var seen2=new Set(S.shareJournal.map(function(x){return x.ts+'|'+(x.kind||'');}));
+      var extra2=(rSJ.shareJournal||[]).filter(function(x){return !seen2.has(x.ts+'|'+(x.kind||''));});
+      if(extra2.length){S.shareJournal=S.shareJournal.concat(extra2).sort(function(a,b){return a.ts-b.ts;});lw(SHJK,S.shareJournal);}
     }
     return true;
   }catch(e){console.warn('fbPull error:',e);alert('Pull error: '+(e.message||e));return false;}
@@ -295,48 +333,21 @@ async function fbPullIfNewer(){
     var uid=fbUser.uid;
     var snap=await fbDb.collection('users').doc(uid+'-data').get();
     if(!snap.exists){
-      // Prima dată pe acest cont — push datele locale
-      console.log('fbPullIfNewer: no remote data, pushing local');
-      fbSync();
+      // Prima dată pe acest cont — push datele locale dacă sunt reale
+      if(fbIsRealData(S.items,S.freeTasks)){
+        console.log('fbPullIfNewer: first time, pushing local data');
+        fbSync();
+      }
       return;
     }
     var remoteTs=snap.data().ts||0;
     var lastPushTs=ls('pb-last-push-ts')||0;
-    console.log('fbPullIfNewer: remoteTs='+remoteTs+' lastPushTs='+lastPushTs);
-    if(remoteTs > lastPushTs){
-      // Remote e mai nou decât ultimul meu push → trag datele
-      console.log('fbPullIfNewer: pulling newer remote data');
+    if(remoteTs>lastPushTs){
       await fbPull();
-      lw('pb-last-push-ts', remoteTs);
+      lw('pb-last-push-ts',remoteTs);
       render();
-    } else {
-      console.log('fbPullIfNewer: local is up to date');
     }
   }catch(e){console.warn('fbPullIfNewer error:',e);}
-}
-
-// ── Helpers merge ──
-function fbMergeById(local,remote){
-  // Union: toate obiectele din ambele, câștigă cel cu ts mai mare dacă același id
-  var map={};
-  local.forEach(function(x){if(x&&x.id)map[x.id]=x;});
-  remote.forEach(function(x){
-    if(!x||!x.id) return;
-    if(!map[x.id]||(x.ts||0)>(map[x.id].ts||0)) map[x.id]=x;
-  });
-  return Object.values(map);
-}
-function fbMergeOrder(local,remote){
-  // Ordinea locală câștigă; adaugă la final ce e în remote dar nu în local
-  var seen=new Set(local.map(function(x){return JSON.stringify(x);}));
-  var extra=remote.filter(function(x){return !seen.has(JSON.stringify(x));});
-  return local.concat(extra);
-}
-function fbMergeJournal(local,remote){
-  // Append + dedup după ts (timestamp unic per intrare)
-  var seen=new Set(local.map(function(x){return x.ts+'|'+(x.kind||'');}));
-  var extra=remote.filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''));});
-  return local.concat(extra).sort(function(a,b){return a.ts-b.ts;});
 }
 
 // ── Sync manual (buton ↑ Sync) ──
@@ -1532,7 +1543,24 @@ function rData(){
     bOut.style.cssText='background:#1A0A0A;color:#F87171;border:1px solid #EF4444;border-radius:7px;padding:7px 14px;font-size:12px;cursor:pointer;touch-action:manipulation;margin-left:auto';
     bOut.addEventListener('click',function(){fbLogout();});
     bOut.addEventListener('touchend',function(e){e.preventDefault();fbLogout();},{passive:false});
-    fbBtns.appendChild(bPush);fbBtns.appendChild(bPull);fbBtns.appendChild(bOut);
+    // Buton restore backup local (salvat înainte de Pull)
+    var bRestore=mk('button','btn');bRestore.textContent='↩ Restore backup';
+    bRestore.title='Restaurează datele locale de dinaintea ultimului Pull';
+    bRestore.style.cssText='background:#1A1A0A;color:#FCD34D;border:1px solid #F59E0B;border-radius:7px;padding:7px 14px;font-size:11px;cursor:pointer;touch-action:manipulation';
+    bRestore.addEventListener('click',function(){
+      var bk=ls('pb-fb-backup');
+      if(!bk){alert('Nu există backup salvat.');return;}
+      if(!confirm('Restaurezi datele de la '+new Date(bk.ts).toLocaleString('ro-RO')+'?')) return;
+      S.items=bk.items||S.items;S.nextOrder=bk.nextOrder||S.nextOrder;
+      S.freeTasks=bk.freeTasks||S.freeTasks;S.waitOrder=bk.waitOrder||S.waitOrder;
+      S.waitFreeTasks=bk.waitFreeTasks||S.waitFreeTasks;
+      S.shareTasks=bk.shareTasks||S.shareTasks;S.labels=bk.labels||S.labels;
+      lw(SK,S.items);lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+      lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(SHK,S.shareTasks);lw(LBLK,S.labels);
+      alert('✓ Backup restaurat.');S.view='board';render();
+    });
+    bRestore.addEventListener('touchend',function(e){e.preventDefault();bRestore.click();},{passive:false});
+    fbBtns.appendChild(bPush);fbBtns.appendChild(bPull);fbBtns.appendChild(bRestore);fbBtns.appendChild(bOut);
     fbPanel.appendChild(fbHeader);fbPanel.appendChild(fbInfo);fbPanel.appendChild(fbBtns);
   } else {
     var fbLogin2=div('');
@@ -2925,7 +2953,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v43b').then(function(cache){
+  caches.open('projectboard-v43c').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
