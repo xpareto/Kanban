@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V43c</title>
+<title>Project Board V43d</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -263,10 +263,10 @@ function fbBackupLocal(){
   lw('pb-fb-backup',backup);
 }
 
-// ── Pull: last-write-wins pe document întreg ──
-// Strategia: ts-ul documentului Firestore decide cine câștigă
-// Journal: întotdeauna append+dedup (nu se pierd intrări)
-async function fbPull(){
+// ── Pull: citește din Firestore și actualizează local ──
+// forceOverwrite=true  → Pull manual: suprascrie întotdeauna dacă date reale
+// forceOverwrite=false → Pull automat: compară ts, câștigă cel mai recent
+async function fbPull(forceOverwrite){
   if(!fbDb||!fbUser) return false;
   try{
     var uid=fbUser.uid;
@@ -289,27 +289,34 @@ async function fbPull(){
       var remoteItems=rData.items||[];
       var remoteTs=rData.ts||0;
       var localTs=ls('pb-last-push-ts')||0;
-      // Câștigă setul cu ts mai mare — last-write-wins
-      if(remoteTs>=localTs && fbIsRealData(remoteItems,rData.freeTasks)){
+      var shouldOverwrite=forceOverwrite
+        ? fbIsRealData(remoteItems,rData.freeTasks)          // manual: suprascrie dacă date reale
+        : (remoteTs>localTs && fbIsRealData(remoteItems,rData.freeTasks)); // auto: doar dacă remote mai nou
+      if(shouldOverwrite){
         S.items=remoteItems;
         S.nextOrder=rData.nextOrder||S.nextOrder;
         S.freeTasks=rData.freeTasks||S.freeTasks;
         S.waitOrder=rData.waitOrder||S.waitOrder;
         S.waitFreeTasks=rData.waitFreeTasks||S.waitFreeTasks;
         S.labels=rData.labels||S.labels;
-      } else if(remoteTs>=localTs && !fbIsRealData(remoteItems,rData.freeTasks)){
-        // Remote are doar date demo — nu suprascrie localul
-        console.log('fbPull: remote has only demo data, skipping items overwrite');
+        lw('pb-last-push-ts',remoteTs); // actualizează ts după pull reușit
+      } else if(!fbIsRealData(remoteItems,rData.freeTasks)){
+        console.log('fbPull: remote has only demo data, skipping');
+      } else {
+        console.log('fbPull: local is newer (localTs='+localTs+' remoteTs='+remoteTs+'), skipping');
       }
-      // Dacă localTs > remoteTs — localul e mai nou, nu suprascrie
       lw(SK,S.items);lw(NK,S.nextOrder);lw(FK,S.freeTasks);
       lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(LBLK,S.labels);
     }
-    // Share: last-write-wins simplu
-    if(rShare&&(rShare.ts||0)>=(ls('pb-last-push-ts')||0)){
-      S.shareTasks=rShare.shareTasks||S.shareTasks;
-      S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
-      lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+    // Share: forceOverwrite sau remote mai nou
+    if(rShare){
+      var rShareTs=rShare.ts||0;
+      var localTs2=ls('pb-last-push-ts')||0;
+      if(forceOverwrite||rShareTs>localTs2){
+        S.shareTasks=rShare.shareTasks||S.shareTasks;
+        S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
+        lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+      }
     }
     // Journal: întotdeauna append+dedup — nu se pierd intrări niciodată
     if(rJournal){
@@ -343,7 +350,7 @@ async function fbPullIfNewer(){
     var remoteTs=snap.data().ts||0;
     var lastPushTs=ls('pb-last-push-ts')||0;
     if(remoteTs>lastPushTs){
-      await fbPull();
+      await fbPull(false); // auto pull — compară ts
       lw('pb-last-push-ts',remoteTs);
       render();
     }
@@ -1533,8 +1540,8 @@ function rData(){
     var bPull=mk('button','btn');bPull.textContent='↓ Pull';bPull.title='Citește Firebase → local';
     bPull.style.cssText='background:#0F2A1A;color:#34D399;border:1px solid #10B981;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
     bPull.addEventListener('click',async function(){
-      var ok=await fbPull();
-      if(ok){lw('pb-sync-ts',Date.now());alert('✓ Date descărcate din Firebase.');}
+      var ok=await fbPull(true); // forceOverwrite=true — Pull manual suprascrie întotdeauna
+      if(ok){alert('✓ Date descărcate din Firebase.');}
       else alert('❌ Pull eșuat.');
       render();
     });
@@ -1792,8 +1799,8 @@ function rBoard(){
     fbLpTimer=setTimeout(function(){
       fbLpTimer=null;
       // Pull manual
-      fbPull().then(function(ok){
-        if(ok){lw('pb-last-push-ts',ls('pb-last-push-ts')||0);render();
+      fbPull(true).then(function(ok){ // tap lung = forceOverwrite
+        if(ok){render();
           var t=document.createElement('div');t.textContent='☁↓ Pull complet';
           t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#0F2A1A;color:#34D399;border:1px solid #10B981;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none';
           document.body.appendChild(t);setTimeout(function(){t.parentNode&&t.parentNode.removeChild(t);},2500);
@@ -2953,7 +2960,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v43c').then(function(cache){
+  caches.open('projectboard-v43d').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
