@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V43d</title>
+<title>Project Board V43e</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -350,32 +350,77 @@ async function fbPullIfNewer(){
     var remoteTs=snap.data().ts||0;
     var lastPushTs=ls('pb-last-push-ts')||0;
     if(remoteTs>lastPushTs){
-      await fbPull(false); // auto pull — compară ts
-      lw('pb-last-push-ts',remoteTs);
-      render();
+      var ok=await fbPull(false); // auto pull la lansare
+      if(ok){
+        lw('pb-last-push-ts',remoteTs);
+        var d=new Date(remoteTs);
+        var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+        fbToast('☁↓ Sync automat: date din '+ds,'#0F2A1A','#10B981',3000);
+        render();
+      }
     }
   }catch(e){console.warn('fbPullIfNewer error:',e);}
 }
 
 // ── Sync manual (buton ↑ Sync) ──
+// ── Helper toast ──
+function fbToast(msg,color,border,duration){
+  var t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:'+color+';color:#fff;border:1px solid '+border+';border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none;max-width:90vw;text-align:center;word-break:break-word';
+  document.body.appendChild(t);
+  setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},duration||3000);
+}
+
+// ── Smart Sync: compară ts remote vs local, decide Push sau Pull ──
 async function fbSync(){
   if(!fbUser){fbLogin();return;}
+  if(!fbDb) return;
   var dot=document.getElementById('sdot');
   if(dot){dot.textContent='⟳';dot.style.color='#818CF8';}
-  var res=await fbPush();
-  if(res.ok){
-    var nowTs=Date.now();
-    lw('pb-last-push-ts', nowTs);
-    lw('pb-sync-ts', nowTs);
-    if(dot){dot.textContent='☁✓';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
-  } else {
+  try{
+    // Citește ts-ul din Firestore (rapid, un singur document)
+    var uid=fbUser.uid;
+    var snap=await fbDb.collection('users').doc(uid+'-data').get();
+    var remoteTs=snap.exists?(snap.data().ts||0):0;
+    var localTs=ls('pb-last-push-ts')||0;
+
+    if(!snap.exists || localTs>=remoteTs){
+      // Local mai nou sau Firestore gol → PUSH
+      if(!fbIsRealData(S.items,S.freeTasks)){
+        if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+        fbToast('⚠ Date demo — push anulat','#1A0A0A','#EF4444',5000);
+        return;
+      }
+      var res=await fbPush();
+      if(res.ok){
+        var nowTs=Date.now();
+        lw('pb-last-push-ts',nowTs);
+        var pc=S.items.filter(function(x){return x.type==='project';}).length;
+        var tc=S.items.reduce(function(a,x){return a+(x.tasks?x.tasks.length:0);},0);
+        if(dot){dot.textContent='☁↑';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
+        fbToast('☁↑ Push: '+pc+' proj, '+tc+' tasks','#0F2A1A','#10B981',3000);
+      } else {
+        if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+        fbToast('Firebase error: '+(res.err||'unknown'),'#1A0A0A','#EF4444',6000);
+      }
+    } else {
+      // Remote mai nou → PULL
+      var ok=await fbPull(true);
+      if(ok){
+        lw('pb-last-push-ts',remoteTs);
+        var d=new Date(remoteTs);
+        var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+        if(dot){dot.textContent='☁↓';dot.style.color='#34D399';setTimeout(function(){dot.textContent='';},2500);}
+        fbToast('☁↓ Pull: date din '+ds,'#0F2A1A','#10B981',3000);
+        render();
+      } else {
+        if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+      }
+    }
+  }catch(e){
     if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
-    // Toast cu eroarea exactă
-    var toast=document.createElement('div');
-    toast.textContent='Firebase error: '+(res.err||'unknown');
-    toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1A0A0A;color:#F87171;border:1px solid #EF4444;border-radius:9px;padding:9px 16px;font-size:11px;font-weight:600;z-index:9999;pointer-events:none;max-width:90vw;text-align:center;word-break:break-word';
-    document.body.appendChild(toast);
-    setTimeout(function(){if(toast.parentNode)toast.parentNode.removeChild(toast);},6000);
+    fbToast('Sync error: '+e.message,'#1A0A0A','#EF4444',6000);
   }
 }
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
@@ -1784,35 +1829,16 @@ function rBoard(){
   // Buton Firebase Sync
   var fbBtn=mk('button','btn');
   if(S.fbUser){
-    fbBtn.textContent='☁↑';
-    fbBtn.title='↑ Push date → Firebase | Tap lung = ↓ Pull de pe Firebase ('+S.fbUser.email+')';
+    fbBtn.textContent='☁';
+    fbBtn.title='Smart Sync: compară cu Firestore și face Push sau Pull automat ('+S.fbUser.email+')';
     fbBtn.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
   } else {
     fbBtn.textContent='☁';
     fbBtn.title='Conectează Firebase (Google Sign-In)';
     fbBtn.style.cssText='background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
   }
-  // Tap scurt = Push | Tap lung = Pull
-  var fbLpTimer=null;
-  fbBtn.addEventListener('touchstart',function(e){
-    e.stopPropagation();
-    fbLpTimer=setTimeout(function(){
-      fbLpTimer=null;
-      // Pull manual
-      fbPull(true).then(function(ok){ // tap lung = forceOverwrite
-        if(ok){render();
-          var t=document.createElement('div');t.textContent='☁↓ Pull complet';
-          t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#0F2A1A;color:#34D399;border:1px solid #10B981;border-radius:9px;padding:9px 18px;font-size:12px;font-weight:700;z-index:9999;pointer-events:none';
-          document.body.appendChild(t);setTimeout(function(){t.parentNode&&t.parentNode.removeChild(t);},2500);
-        }
-      });
-    },600);
-  },{passive:false});
-  fbBtn.addEventListener('touchend',function(e){
-    e.preventDefault();e.stopPropagation();
-    if(fbLpTimer){clearTimeout(fbLpTimer);fbLpTimer=null;fbSync();}
-  },{passive:false});
   fbBtn.addEventListener('click',function(e){e.stopPropagation();fbSync();});
+  fbBtn.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();fbSync();},{passive:false});
 
   ap(hr, sdot,
     hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();}),
@@ -2960,7 +2986,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v43d').then(function(cache){
+  caches.open('projectboard-v43e').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
