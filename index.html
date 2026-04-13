@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V43e</title>
+<title>Project Board V44</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -1442,7 +1442,7 @@ function doExpJournalTxt(withDate){
 // ── Export jurnal Clipboard JSON ──
 function doExpShareJournal(withDate){
   dlBlob(JSON.stringify({shareJournal:S.shareJournal},null,2),
-    withDate?'pb-clipjurnal-'+todayStr()+'.json':'pb-clipjurnal.json');
+    withDate?'pb-sharejurnal-'+todayStr()+'.json':'pb-sharejurnal.json');
 }
 // ── Import jurnal Clipboard JSON ──
 function doImpShareJournal(e){
@@ -1469,7 +1469,7 @@ function doExpShareJournalTxt(withDate){
     return stripDiacritics('['+ds+'] ['+prefix+']\n'+body);
   });
   if(!lines.length){alert('Jurnalul Clipboard e gol.');return;}
-  var fname=withDate?'clipjurnal-'+todayStr()+'.txt':'clipjurnal.txt';
+  var fname=withDate?'sharejurnal-'+todayStr()+'.txt':'sharejurnal.txt';
   if(!withDate && _fsHandles[fname]) delete _fsHandles[fname];
   dlBlob(lines.join('\n\n'), fname,'text/plain');
 }
@@ -1630,6 +1630,19 @@ function rData(){
   return root;
 }
 
+// ── Golire jurnal principal ──
+function doClrJournal(){
+  if(!confirm('Have you exported the journal to disk first?\nThis will permanently delete all journal entries.')) return;
+  S.journal=[];lw(JK,S.journal);
+  render();
+}
+// ── Golire jurnal Share ──
+function doClrShareJournal(){
+  if(!confirm('Have you exported the Share journal to disk first?\nThis will permanently delete all Share journal entries.')) return;
+  S.shareJournal=[];lw(SHJK,S.shareJournal);
+  render();
+}
+
 function rJournal(){
   var impJ2=mk('input','');impJ2.type='file';impJ2.accept='.json';impJ2.style.display='none';
   impJ2.addEventListener('change',doImpJournal);document.body.appendChild(impJ2);
@@ -1648,7 +1661,8 @@ function rJournal(){
       {lbl:'EJ', title:'Export JSON fisier fix — pb-jurnal.json',fn:function(){doExpJournal(false);}},
       {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpJournalTxt(true);}},
       {lbl:'ET', title:'Export TXT fisier fix — jurnal.txt',fn:function(){doExpJournalTxt(false);}},
-      {lbl:'I',  title:'Import JSON jurnal',fn:function(){impJ2.click();}}
+      {lbl:'I',  title:'Import JSON jurnal',fn:function(){impJ2.click();}},
+      {lbl:'🗑 CLR',title:'Șterge tot jurnalul (ireversibil)',fn:function(){doClrJournal();}}
     ],
     backFn:function(){S.view='board';render();}
   }));
@@ -1662,7 +1676,7 @@ function rJournal(){
     else if(e.kind==='task-move'){const d=div('jmove');d.innerHTML='↔ <strong>'+e.taskName+'</strong>: '+CN[e.fromCol]+' → '+CN[e.toCol]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='free-task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> [Next liber]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='free-task-delete'){el.style.background='#FEF2F2';const d=div('jtask');d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Next liber șters]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
-    else if(e.kind==='share-receive'||e.kind==='share-delete'){return;} // share → doar în Clipboard Journal
+    else if(e.kind==='share-receive'||e.kind==='share-delete'){return;} // share → doar în Share Journal
     else if(e.kind==='project-create'){el.style.background='#F0FDF4';const d=div('jtask');d.innerHTML='⊞ Proiect nou: <strong>'+e.projectName+'</strong>'+(e.fromFree!==e.projectName?' [from: '+e.fromFree+']':'')+'<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     jd.appendChild(el);
   });
@@ -1680,19 +1694,20 @@ function rClipJournal(){
   const root=div('');
   const h=div('hdr');
   const jhl=div('hdr-l');
-  const jtitle=mk('div','h1');jtitle.textContent='Clipboard Journal';
+  const jtitle=mk('div','h1');jtitle.textContent='Share Journal';
   jhl.appendChild(sp('logo','◈'));jhl.appendChild(jtitle);
   h.appendChild(jhl);
   h.appendChild(bt('bg','← Board',()=>{S.view='board';render();}));
   root.appendChild(h);
   root.appendChild(mkExportBar({
-    color:'#818CF8',label:'CLIPBOARD',
+    color:'#818CF8',label:'SHARE JOURNAL',
     buttons:[
       {lbl:'EJD',title:'Export JSON cu data',fn:function(){doExpShareJournal(true);}},
-      {lbl:'EJ', title:'Export JSON fisier fix — pb-clipjurnal.json',fn:function(){doExpShareJournal(false);}},
+      {lbl:'EJ', title:'Export JSON fisier fix — pb-sharejurnal.json',fn:function(){doExpShareJournal(false);}},
       {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpShareJournalTxt(true);}},
-      {lbl:'ET', title:'Export TXT fisier fix — clipjurnal.txt',fn:function(){doExpShareJournalTxt(false);}},
-      {lbl:'I',  title:'Import JSON sau TXT',fn:function(){impSHJ.click();}}
+      {lbl:'ET', title:'Export TXT fisier fix — sharejurnal.txt',fn:function(){doExpShareJournalTxt(false);}},
+      {lbl:'I',  title:'Import JSON sau TXT',fn:function(){impSHJ.click();}},
+      {lbl:'🗑 CLR',title:'Șterge tot Share Journal (ireversibil)',fn:function(){doClrShareJournal();}}
     ],
     backFn:function(){S.view='board';render();}
   }));
@@ -1843,7 +1858,7 @@ function rBoard(){
   ap(hr, sdot,
     hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();}),
     hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();}),
-    hbtn('bi','Clip','Vizualizare / export clipboard',function(){S.view='clipjournal';render();}),
+    hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();}),
     settBtn, calBtn, fbBtn, helpBtn, lblBtns);
@@ -2986,7 +3001,7 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v43e').then(function(cache){
+  caches.open('projectboard-v44').then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
