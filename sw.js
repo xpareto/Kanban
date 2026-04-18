@@ -1,5 +1,5 @@
-//v46
-var CACHE = 'projectboard-v46';
+//v47
+var CACHE = 'projectboard-v47';
 var FILES = [
   '/index.html',
   '/manifest.json',
@@ -37,6 +37,7 @@ self.addEventListener('fetch', function(e) {
         if (resp && resp.status === 200 && resp.type === 'basic') {
           var clone = resp.clone();
     
+
       caches.open(CACHE).then(function(cache) {
             cache.put(e.request, clone);
           });
@@ -48,5 +49,6 @@ self.addEventListener('fetch', function(e) {
     })
   );
 });
+
 
 

@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V44</title>
+<title>Project Board V47</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -125,12 +125,28 @@ input{font-family:inherit;outline:none}
 .sri{padding:8px 13px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;gap:7px;font-size:12px}
 .sbg{font-size:9px;font-weight:700;border-radius:3px;padding:1px 5px;flex-shrink:0}
 #top-btn{position:fixed;bottom:22px;right:16px;z-index:500;background:#1A1D2E;color:#F59E0B;border:2px solid #F59E0B;border-radius:50%;width:46px;height:46px;font-size:20px;font-weight:700;cursor:pointer;touch-action:manipulation;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;line-height:1}
+#fab-add{position:fixed;bottom:22px;right:68px;z-index:500;background:#1A1D2E;color:#10B981;border:2px solid #10B981;border-radius:50%;width:46px;height:46px;font-size:24px;font-weight:700;cursor:pointer;touch-action:manipulation;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;line-height:1}
+#fab-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:600;align-items:flex-end;justify-content:center;padding-bottom:80px}
+#fab-dialog{background:#1E2130;border:1px solid #374151;border-radius:14px;padding:16px;width:min(92vw,380px);display:flex;flex-direction:column;gap:10px}
+#fab-inp{background:#111827;color:#F1F5F9;border:1px solid #4B5563;border-radius:8px;padding:9px 12px;font-size:14px;outline:none;width:100%;box-sizing:border-box}
+#fab-inp:focus{border-color:#10B981}
 </style>
 </head>
 <body>
 <div id="ghost"></div>
 <div id="app"></div>
 <button id="top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<button id="fab-add" title="Adaugă task rapid la începutul Next">+</button>
+<div id="fab-overlay">
+  <div id="fab-dialog">
+    <div style="font-size:12px;font-weight:700;color:#10B981;letter-spacing:.05em">+ TASK RAPID ÎN NEXT</div>
+    <input id="fab-inp" placeholder="Nume task..." autocomplete="off" autocorrect="off" spellcheck="false"/>
+    <div style="display:flex;gap:8px">
+      <button id="fab-ok" style="flex:1;background:#10B981;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">✓ Adaugă</button>
+      <button id="fab-cancel" style="background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">✕</button>
+    </div>
+  </div>
+</div>
 <!-- Firebase compat — încărcat înainte de scriptul aplicației -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -225,6 +241,59 @@ function fbPayloadShareJournal(){
 }
 
 // ── Push: scrie tot în Firestore ──
+
+// ── Merge per-item cu modifiedTs + tombstones ──
+// Merges two arrays by id: winner = item cu modifiedTs mai mare.
+// Tombstone: {id, _deleted:true, modifiedTs} — câștigă dacă e mai recent.
+function mergeItemArray(localArr, remoteArr){
+  var map={};
+  (localArr||[]).forEach(function(x){map[x.id]=x;});
+  (remoteArr||[]).forEach(function(x){
+    var l=map[x.id];
+    if(!l){map[x.id]=x;} // nou în remote — adaugă
+    else{
+      var lt=l.modifiedTs||l.ts||0;
+      var rt=x.modifiedTs||x.ts||0;
+      if(rt>lt) map[x.id]=x; // remote mai recent — câștigă
+      // altfel local rămâne
+    }
+  });
+  // Filtrează tombstone-urile (eliminate din array — nu le afișăm)
+  return Object.values(map).filter(function(x){return !x._deleted;});
+}
+// Merge tasks în interiorul unui proiect
+function mergeProjectTasks(localTasks, remoteTasks){
+  return mergeItemArray(localTasks||[], remoteTasks||[]);
+}
+// Merge array de proiecte/secțiuni, inclusiv tasks-urile din fiecare proiect
+function mergeProjects(localItems, remoteItems){
+  var map={};
+  (localItems||[]).forEach(function(x){map[x.id]=x;});
+  (remoteItems||[]).forEach(function(x){
+    var l=map[x.id];
+    if(!l){map[x.id]=x;}
+    else{
+      var lt=l.modifiedTs||0;
+      var rt=x.modifiedTs||0;
+      if(x._deleted){
+        if(rt>lt) map[x.id]=x; // ștergere remote mai recentă
+      } else if(l._deleted){
+        if(lt>rt) {} // local șters mai recent — rămâne
+        else map[x.id]=x;
+      } else {
+        // Niciuna nu e ștearsă — merge la nivel de proiect
+        var winner=rt>lt?x:l;
+        // tasks: merge independent indiferent de câștigătorul proiectului
+        if(l.type==='project'&&x.type==='project'){
+          winner=Object.assign({},winner,{tasks:mergeProjectTasks(l.tasks,x.tasks)});
+        }
+        map[x.id]=winner;
+      }
+    }
+  });
+  return Object.values(map).filter(function(x){return !x._deleted;});
+}
+
 async function fbPush(){
   if(!fbDb||!fbUser) return {ok:false,err:'not authenticated'};
   // Refuză push cu date demo — protecție împotriva suprascrierii accidentale
@@ -266,8 +335,15 @@ function fbBackupLocal(){
 // ── Pull: citește din Firestore și actualizează local ──
 // forceOverwrite=true  → Pull manual: suprascrie întotdeauna dacă date reale
 // forceOverwrite=false → Pull automat: compară ts, câștigă cel mai recent
-async function fbPull(forceOverwrite){
+// ── Pull: citește din Firestore și actualizează local ──
+// mode='overwrite' → suprascrie tot (Pull manual clasic)
+// mode='merge'     → merge per-item cu modifiedTs (conflict resolution)
+// mode='auto'      → compară ts, suprascrie doar dacă remote mai nou
+async function fbPull(mode){
   if(!fbDb||!fbUser) return false;
+  // compatibilitate cu vechile apeluri boolean
+  if(mode===true) mode='overwrite';
+  if(mode===false) mode='auto';
   try{
     var uid=fbUser.uid;
     var col=fbDb.collection('users');
@@ -289,36 +365,61 @@ async function fbPull(forceOverwrite){
       var remoteItems=rData.items||[];
       var remoteTs=rData.ts||0;
       var localTs=ls('pb-last-push-ts')||0;
-      var shouldOverwrite=forceOverwrite
-        ? fbIsRealData(remoteItems,rData.freeTasks)          // manual: suprascrie dacă date reale
-        : (remoteTs>localTs && fbIsRealData(remoteItems,rData.freeTasks)); // auto: doar dacă remote mai nou
-      if(shouldOverwrite){
-        S.items=remoteItems;
-        S.nextOrder=rData.nextOrder||S.nextOrder;
-        S.freeTasks=rData.freeTasks||S.freeTasks;
-        S.waitOrder=rData.waitOrder||S.waitOrder;
-        S.waitFreeTasks=rData.waitFreeTasks||S.waitFreeTasks;
+
+      if(mode==='merge' && fbIsRealData(remoteItems,rData.freeTasks)){
+        // ── MERGE per-item: combină local + remote, câștigă modifiedTs mai mare ──
+        S.items=mergeProjects(S.items, remoteItems);
+        S.freeTasks=mergeItemArray(S.freeTasks, rData.freeTasks||[]);
+        // nextOrder: union dedup
+        var knownIds=new Set((S.freeTasks).map(function(x){return x.id;}));
+        S.items.forEach(function(it){if(it.type==='project')(it.tasks||[]).forEach(function(t){knownIds.add(t.id);});});
+        var seenOrd=new Set();
+        var mergedOrd=[];
+        (S.nextOrder||[]).concat(rData.nextOrder||[]).forEach(function(e){
+          var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
+          if(!seenOrd.has(key)&&knownIds.has(e.type==='free'?e.id:e.taskId)){seenOrd.add(key);mergedOrd.push(e);}
+        });
+        S.nextOrder=mergedOrd;
         S.labels=rData.labels||S.labels;
-        lw('pb-last-push-ts',remoteTs); // actualizează ts după pull reușit
-      } else if(!fbIsRealData(remoteItems,rData.freeTasks)){
-        console.log('fbPull: remote has only demo data, skipping');
+        lw('pb-last-push-ts',Date.now());
+        lw('pb-local-dirty-ts',0);
       } else {
-        console.log('fbPull: local is newer (localTs='+localTs+' remoteTs='+remoteTs+'), skipping');
+        var shouldOverwrite=(mode==='overwrite')
+          ? fbIsRealData(remoteItems,rData.freeTasks)
+          : (remoteTs>localTs && fbIsRealData(remoteItems,rData.freeTasks));
+        if(shouldOverwrite){
+          S.items=remoteItems;
+          S.nextOrder=rData.nextOrder||S.nextOrder;
+          S.freeTasks=rData.freeTasks||S.freeTasks;
+          S.waitOrder=rData.waitOrder||S.waitOrder;
+          S.waitFreeTasks=rData.waitFreeTasks||S.waitFreeTasks;
+          S.labels=rData.labels||S.labels;
+          lw('pb-last-push-ts',remoteTs);
+          lw('pb-local-dirty-ts',0);
+        } else if(!fbIsRealData(remoteItems,rData.freeTasks)){
+          console.log('fbPull: remote has only demo data, skipping');
+        } else {
+          console.log('fbPull: local is newer (localTs='+localTs+' remoteTs='+remoteTs+'), skipping');
+        }
       }
       lw(SK,S.items);lw(NK,S.nextOrder);lw(FK,S.freeTasks);
       lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(LBLK,S.labels);
     }
-    // Share: forceOverwrite sau remote mai nou
+    // Share: merge per-item
     if(rShare){
       var rShareTs=rShare.ts||0;
       var localTs2=ls('pb-last-push-ts')||0;
-      if(forceOverwrite||rShareTs>localTs2){
-        S.shareTasks=rShare.shareTasks||S.shareTasks;
-        S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
+      if(mode==='merge'||mode==='overwrite'||rShareTs>localTs2){
+        if(mode==='merge'){
+          S.shareTasks=mergeItemArray(S.shareTasks, rShare.shareTasks||[]);
+        } else {
+          S.shareTasks=rShare.shareTasks||S.shareTasks;
+          S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
+        }
         lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
       }
     }
-    // Journal: întotdeauna append+dedup — nu se pierd intrări niciodată
+    // Journal: întotdeauna append+dedup
     if(rJournal){
       var seen=new Set(S.journal.map(function(x){return x.ts+'|'+(x.kind||'');}));
       var extra=(rJournal.journal||[]).filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''));});
@@ -349,10 +450,19 @@ async function fbPullIfNewer(){
     }
     var remoteTs=snap.data().ts||0;
     var lastPushTs=ls('pb-last-push-ts')||0;
+    var dirtyTs=ls('pb-local-dirty-ts')||0;
+    // Dacă există modificări locale nepublicate (dirtyTs > lastPushTs), nu face Pull automat
+    if(dirtyTs>lastPushTs && dirtyTs>0){
+      var dd=new Date(dirtyTs);
+      var dds=dd.toLocaleDateString('ro-RO')+' '+dd.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+      fbToast('⚠ Modificări locale din '+dds+' nesincronizate — apasă Sync!','#3B1500','#F59E0B',6000);
+      return;
+    }
     if(remoteTs>lastPushTs){
       var ok=await fbPull(false); // auto pull la lansare
       if(ok){
         lw('pb-last-push-ts',remoteTs);
+        lw('pb-local-dirty-ts',0);
         var d=new Date(remoteTs);
         var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
         fbToast('☁↓ Sync automat: date din '+ds,'#0F2A1A','#10B981',3000);
@@ -396,6 +506,7 @@ async function fbSync(){
       if(res.ok){
         var nowTs=Date.now();
         lw('pb-last-push-ts',nowTs);
+        lw('pb-local-dirty-ts',0); // local e în sync cu remote
         var pc=S.items.filter(function(x){return x.type==='project';}).length;
         var tc=S.items.reduce(function(a,x){return a+(x.tasks?x.tasks.length:0);},0);
         if(dot){dot.textContent='☁↑';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
@@ -405,17 +516,32 @@ async function fbSync(){
         fbToast('Firebase error: '+(res.err||'unknown'),'#1A0A0A','#EF4444',6000);
       }
     } else {
-      // Remote mai nou → PULL
-      var ok=await fbPull(true);
-      if(ok){
-        lw('pb-last-push-ts',remoteTs);
-        var d=new Date(remoteTs);
-        var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-        if(dot){dot.textContent='☁↓';dot.style.color='#34D399';setTimeout(function(){dot.textContent='';},2500);}
-        fbToast('☁↓ Pull: date din '+ds,'#0F2A1A','#10B981',3000);
-        render();
-      } else {
-        if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+      // Remote mai nou — verifică dacă există și modificări locale nepublicate
+      var dirtyTs=ls('pb-local-dirty-ts')||0;
+      var lastPushTs2=ls('pb-last-push-ts')||0;
+      if(dirtyTs>lastPushTs2 && dirtyTs>0){
+        // CONFLICT: remote mai nou DAR există modificări locale nesincronizate
+        // → Merge automat per-item: modifiedTs decide câștigătorul fiecărui item
+        if(dot){dot.textContent='☁⟳';dot.style.color='#F59E0B';setTimeout(function(){dot.textContent='';},5000);}
+        var okM=await fbPull('merge');
+        if(okM){
+          var resM=await fbPush();
+          if(resM.ok){
+            var nowTsM=Date.now();
+            lw('pb-last-push-ts',nowTsM);
+            lw('pb-local-dirty-ts',0);
+            var d2=new Date(remoteTs);
+            var ds2=d2.toLocaleDateString('ro-RO')+' '+d2.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+            if(dot){dot.textContent='☁⟳';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
+            fbToast('☁⟳ Merge automat cu remote din '+ds2,'#0F2A1A','#10B981',4000);
+            render();
+          } else {
+            if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+            fbToast('Merge ok, push error: '+(resM.err||'unknown'),'#1A0A0A','#EF4444',6000);
+          }
+        } else {
+          if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+        }
       }
     }
   }catch(e){
@@ -468,7 +594,7 @@ function init(){
   S.labels=ls(LBLK)||['#a','#u','#c'];S.shareJournal=ls(SHJK)||[];
 }
 let saveT=null;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);lw('pb-local-dirty-ts',Date.now());const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
 
 // ══════════════════════════════════════════════════════════════
 // ── Google Calendar OAuth + Fetch ──────────────────────────
@@ -698,7 +824,7 @@ function calLogout(){
   render();
 }
 // ══════════════════════════════════════════════════════════════
-function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);lw(LBLK,S.labels);lw(SHJK,S.shareJournal);}
+function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);lw(LBLK,S.labels);lw(SHJK,S.shareJournal);lw('pb-local-dirty-ts',Date.now());}
 function je(e){S.journal.push(e);lw(JK,S.journal);}
 
 // ── Next rows ──
@@ -984,7 +1110,7 @@ function delTask(pid,tid){
 }
 function addWaitFree(){
   const name=S.wfree.trim();if(!name)return;
-  const ft={id:gid(),name,ts:Date.now()};
+  const ft={id:gid(),name,ts:Date.now(),modifiedTs:Date.now()};
   je({kind:'free-task-create',taskName:name,section:'wait',ts:ft.ts});
   S.waitFreeTasks=[...S.waitFreeTasks,ft];
   S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
@@ -999,7 +1125,7 @@ function delWaitFree(id){
 }
 function addTask(pid,status){
   const key=pid+'_'+status,name=(S.nt[key]||'').trim();if(!name)return;
-  const nt={id:gid(),name,status};
+  const nt={id:gid(),name,status,modifiedTs:Date.now()};
   je({kind:'task-create',taskName:name,colId:status,projectId:pid,ts:Date.now()});
   if(status==='next'){S.nextOrder=[...S.nextOrder,{type:'proj',projectId:pid,taskId:nt.id}];lw(NK,S.nextOrder);}
   S.items=S.items.map(x=>x.id===pid?{...x,tasks:[...x.tasks,nt]}:x);S.nt[key]='';save();render();
@@ -1013,6 +1139,45 @@ function addFree(){
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   S.nfree='';S.showFree=false;render();
 }
+// ── /w command — mută task din Next în Wait ──
+// Funcționează pentru: free tasks din Next și task-uri de proiect din Next
+function moveToWait(taskId, projectId){
+  if(projectId){
+    // Task de proiect — schimbă status în proiect și mută în waitOrder
+    var proj=S.items.find(function(x){return x.id===projectId;});
+    if(!proj) return;
+    var task=proj.tasks.find(function(t){return t.id===taskId;});
+    if(!task) return;
+    je({kind:'task-move',taskName:task.name,fromCol:'next',toCol:'wait',projectId:projectId,ts:Date.now()});
+    task.status='wait';
+    task.modifiedTs=Date.now();
+    S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='proj'&&x.projectId===projectId&&x.taskId===taskId);});
+    S.waitOrder=[...S.waitOrder,{type:'proj',projectId:projectId,taskId:taskId}];
+    lw(NK,S.nextOrder);lw(WK,S.waitOrder);
+    save();render();
+  } else {
+    // Free task — mută din freeTasks/nextOrder în waitFreeTasks/waitOrder
+    var ft=S.freeTasks.find(function(x){return x.id===taskId;});
+    if(!ft) return;
+    je({kind:'task-move',taskName:ft.name,fromCol:'next',toCol:'wait',projectId:null,ts:Date.now()});
+    S.freeTasks=S.freeTasks.filter(function(x){return x.id!==taskId;});
+    S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===taskId);});
+    var wft={id:ft.id,name:ft.name,ts:ft.ts,modifiedTs:Date.now()};
+    S.waitFreeTasks=[...S.waitFreeTasks,wft];
+    S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
+    render();
+  }
+}
+// Detectează /w la salvarea unui task și îl mută în wait
+function checkSlashW(name, taskId, projectId){
+  if(/^\s*\/w\s*$/i.test(name)||/\/w\s*$/i.test(name)){
+    moveToWait(taskId, projectId);
+    return true;
+  }
+  return false;
+}
+
 function delFree(id){
   const f=S.freeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,ts:Date.now()});
   S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
@@ -1021,7 +1186,7 @@ function delFree(id){
 }
 function confAdd(){
   if(!S.addName.trim()||!S.showAdd)return;
-  const ni=S.showAdd==='section'?{type:'section',id:gid(),name:S.addName.trim()}:{type:'project',id:gid(),name:S.addName.trim(),tasks:[]};
+  const now_=Date.now();const ni=S.showAdd==='section'?{type:'section',id:gid(),name:S.addName.trim(),modifiedTs:now_}:{type:'project',id:gid(),name:S.addName.trim(),tasks:[],modifiedTs:now_};
   S.items=[...S.items,ni];S.addName='';S.showAdd=null;save();render();
 }
 function doSearch(){
@@ -1038,8 +1203,10 @@ function doSearch(){
       if(t.name.toLowerCase().indexOf(q)>=0) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status});
     });
   });
-  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fn',name:f.name});});
-  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fw',name:f.name});});
+  // Free tasks din Next — cu id pentru navigare și editare
+  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fn',name:f.name,id:f.id});});
+  // Free tasks din Wait — cu id
+  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fw',name:f.name,id:f.id});});
   S.shareTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'sh',name:f.name,id:f.id});});
   S.sr=res;render();
 }
@@ -1060,7 +1227,7 @@ function markDone(projectId, taskId, fromSection){
   // Mută task-ul în done
   S.items = S.items.map(it=>{
     if(it.type!=='project'||it.id!==projectId) return it;
-    return {...it, tasks: it.tasks.map(t=> t.id===taskId ? {...t, status:'done'} : t)};
+    return {...it, tasks: it.tasks.map(t=> t.id===taskId ? {...t, status:'done', modifiedTs:Date.now()} : t)};
   });
   save(); render();
 }
@@ -1524,9 +1691,7 @@ function mkExportBar(cfg){
     bar.appendChild(btn);
   });
   if(cfg.impInput) bar.appendChild(cfg.impInput);
-  var back=mk('button','btn bg');back.textContent='← Board';back.style.marginLeft='auto';
-  back.addEventListener('click',cfg.backFn);
-  bar.appendChild(back);
+  // ← Board button removed from export bar (kept only in header)
   return bar;
 }
 
@@ -1546,7 +1711,6 @@ function rData(){
     color:'#9CA3AF',label:'DATA',
     buttons:[
       {lbl:'EJD',title:'Export JSON cu data (istoric)',fn:function(){doExp(true);}},
-      {lbl:'EJ', title:'Export JSON fisier fix — pb-date.json (overwrite)',fn:function(){doExp(false);}},
       {lbl:'I',  title:'Import JSON date',fn:function(){impI2.click();}}
     ],
     backFn:function(){S.view='board';render();}
@@ -1658,7 +1822,6 @@ function rJournal(){
     color:'#A5B4FC',label:'JOURNAL',
     buttons:[
       {lbl:'EJD',title:'Export JSON cu data',fn:function(){doExpJournal(true);}},
-      {lbl:'EJ', title:'Export JSON fisier fix — pb-jurnal.json',fn:function(){doExpJournal(false);}},
       {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpJournalTxt(true);}},
       {lbl:'ET', title:'Export TXT fisier fix — jurnal.txt',fn:function(){doExpJournalTxt(false);}},
       {lbl:'I',  title:'Import JSON jurnal',fn:function(){impJ2.click();}},
@@ -1703,7 +1866,6 @@ function rClipJournal(){
     color:'#818CF8',label:'SHARE JOURNAL',
     buttons:[
       {lbl:'EJD',title:'Export JSON cu data',fn:function(){doExpShareJournal(true);}},
-      {lbl:'EJ', title:'Export JSON fisier fix — pb-sharejurnal.json',fn:function(){doExpShareJournal(false);}},
       {lbl:'ETD',title:'Export TXT cu data (fara diacritice)',fn:function(){doExpShareJournalTxt(true);}},
       {lbl:'ET', title:'Export TXT fisier fix — sharejurnal.txt',fn:function(){doExpShareJournalTxt(false);}},
       {lbl:'I',  title:'Import JSON sau TXT',fn:function(){impSHJ.click();}},
@@ -1948,38 +2110,155 @@ function rBoard(){
     } else {
       var SC={next:'#F59E0B',wait:'#6366F1',done:'#10B981'};
       var SL={next:'To Do',wait:'Wait',done:'Done'};
+      // Hint editare
+      var hint=div('');
+      hint.style.cssText='padding:3px 13px 5px;font-size:10px;color:#6B7280;font-style:italic';
+      hint.textContent='1-click → navighează · dublu-click → editează';
+      srp.appendChild(hint);
       S.sr.forEach(function(r){
         var row=div('sri');
+        row.style.cursor='pointer';
+        // targetId pentru navigare
         var targetId=null;
         if(r.k==='proj') targetId=r.id;
         else if(r.k==='task') targetId=r.projectId;
         else if(r.k==='sec') targetId=r.id;
-        // fn și fw nu au targetId — nu se poate naviga la ele
-        if(r.k==='sec'){var bs=sp('sbg','SECT.');bs.style.cssText='background:#F0EDFF;color:#4338CA';row.appendChild(bs);row.appendChild(sp('',r.name));}
-        else if(r.k==='proj'){var bp=sp('sbg','PROJECT');bp.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bp);row.appendChild(sp('',r.name));}
-        else if(r.k==='task'){
-          var bt=sp('sbg','TASK');bt.style.cssText='background:#F0F9FF;color:#0369A1';row.appendChild(bt);
-          var td=div('');td.style.flex='1';
-          var tn=document.createElement('div');tn.textContent=r.tn;tn.style.fontWeight='600';
-          var ts=document.createElement('div');ts.textContent=r.pn;ts.style.cssText='font-size:10px;color:#9CA3AF';
-          td.appendChild(tn);td.appendChild(ts);row.appendChild(td);
-          var st=sp('',SL[r.st]||r.st);st.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
-          row.appendChild(st);
+        else if(r.k==='fn'||r.k==='fw'||r.k==='sh') targetId=r.id||null;
+
+        // Construiește conținut rând
+        var nameSpan=document.createElement('span');
+        nameSpan.style.cssText='flex:1;font-size:12px;font-weight:600;min-width:0;word-break:break-word';
+        if(r.k==='sec'){
+          var bs=sp('sbg','SECT.');bs.style.cssText='background:#F0EDFF;color:#4338CA';row.appendChild(bs);
+          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+        } else if(r.k==='proj'){
+          var bp=sp('sbg','PROJECT');bp.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bp);
+          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+        } else if(r.k==='task'){
+          var btag=sp('sbg','TASK');btag.style.cssText='background:#F0F9FF;color:#0369A1';row.appendChild(btag);
+          var td=div('');td.style.cssText='flex:1;min-width:0';
+          var tnEl=document.createElement('div');tnEl.textContent=r.tn;tnEl.style.fontWeight='600';tnEl.style.fontSize='12px';
+          var tsEl=document.createElement('div');tsEl.textContent=r.pn;tsEl.style.cssText='font-size:10px;color:#9CA3AF';
+          td.appendChild(tnEl);td.appendChild(tsEl);row.appendChild(td);
+          var stTag=sp('',SL[r.st]||r.st);
+          stTag.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
+          row.appendChild(stTag);
+        } else if(r.k==='fn'){
+          var bn=sp('sbg','NEXT');bn.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bn);
+          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+        } else if(r.k==='fw'){
+          var bw=sp('sbg','WAIT');bw.style.cssText='background:#F0F0FF;color:#3730A3';row.appendChild(bw);
+          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+        } else if(r.k==='sh'){
+          var bsh=sp('sbg','SHARE');bsh.style.cssText='background:#ECFDF5;color:#065F46';row.appendChild(bsh);
+          nameSpan.textContent=r.name;row.appendChild(nameSpan);
         }
-        else if(r.k==='fn'){var bn=sp('sbg','NEXT');bn.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bn);row.appendChild(sp('',r.name));}
-        else if(r.k==='fw'){var bw=sp('sbg','WAIT');bw.style.cssText='background:#F0F0FF;color:#3730A3';row.appendChild(bw);row.appendChild(sp('',r.name));}
-        else if(r.k==='sh'){var bs=sp('sbg','SHARE');bs.style.cssText='background:#ECFDF5;color:#065F46';row.appendChild(bs);row.appendChild(sp('',r.name));}
-        // Buton navigare — apare pentru orice rezultat cu targetId
-        if(targetId){
-          var gb=document.createElement('button');
-          gb.textContent='▶';
-          gb.style.cssText='margin-left:auto;background:#6366F1;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:36px;min-height:36px';
-          (function(tid){
-            gb.addEventListener('click',function(e){e.stopPropagation();navigateTo(tid);});
-            gb.addEventListener('touchend',function(e){e.stopPropagation();e.preventDefault();navigateTo(tid);},{passive:false});
-          })(targetId);
-          row.appendChild(gb);
-        }
+
+        // ── 1-click → navigare ──
+        (function(res,tid){
+          function doNav(){
+            if(tid){
+              // fn/fw → scroll la secțiunea next/wait
+              if(res.k==='fn'){
+                S.sq='';S.sr=null;render();
+                setTimeout(function(){
+                  var el=document.querySelector('[data-fid="'+res.id+'"]');
+                  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='#FEF9C3';setTimeout(function(){el.style.background='';},1200);}
+                  else {var nd=document.querySelector('.sdiv');if(nd)nd.scrollIntoView({behavior:'smooth',block:'start'});}
+                },80);
+              } else if(res.k==='fw'){
+                S.sq='';S.sr=null;render();
+                setTimeout(function(){
+                  var el=document.querySelector('[data-fwid="'+res.id+'"]');
+                  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='#F0F0FF';setTimeout(function(){el.style.background='';},1200);}
+                  else {var wd=document.querySelector('.sdiv-wait');if(wd)wd.scrollIntoView({behavior:'smooth',block:'start'});}
+                },80);
+              } else if(res.k==='sh'){
+                S.sq='';S.sr=null;render();
+                setTimeout(function(){
+                  var el=document.querySelector('[data-shid="'+res.id+'"]');
+                  if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='#D1FAE5';setTimeout(function(){el.style.background='';},1200);}
+                  else {var sd=document.querySelector('.sdiv-share');if(sd)sd.scrollIntoView({behavior:'smooth',block:'start'});}
+                },80);
+              } else {
+                navigateTo(tid);
+              }
+            }
+          }
+          // ── Dublu-click / dublu-tap → editare inline ──
+          function doEdit(e){
+            if(e.target&&e.target.tagName==='INPUT') return;
+            e.stopPropagation();
+            // Construiește input inline în rând
+            var currentName=res.k==='task'?res.tn:res.name;
+            var inp=document.createElement('input');
+            inp.value=currentName;
+            inp.style.cssText='flex:1;font-size:12px;border:1px solid #6366F1;border-radius:5px;padding:3px 6px;outline:none;min-width:0;width:100%';
+            // Înlocuiește conținutul rândului cu inputul
+            while(row.firstChild) row.removeChild(row.firstChild);
+            row.appendChild(inp);
+            inp.focus();inp.select();
+            function commitEdit(){
+              var v=inp.value.trim();
+              if(!v){render();return;}
+              // /w din editare search result
+              if(/^\/w\s*$/i.test(v)||/\/w\s*$/i.test(v)){
+                if(res.k==='fn') moveToWait(res.id,null);
+                else if(res.k==='task') moveToWait(res.taskId,res.projectId);
+                return;
+              }
+              if(res.k==='proj'){
+                var it=S.items.find(function(x){return x.id===res.id;});
+                if(it){it.name=v;it.modifiedTs=Date.now();save();}
+              } else if(res.k==='task'){
+                var pr=S.items.find(function(x){return x.id===res.projectId;});
+                if(pr){var tk=pr.tasks.find(function(t){return t.id===res.taskId;});if(tk){tk.name=v;tk.modifiedTs=Date.now();save();}}
+                res.tn=v;
+              } else if(res.k==='fn'){
+                var ft=S.freeTasks.find(function(x){return x.id===res.id;});
+                if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
+                res.name=v;
+              } else if(res.k==='fw'){
+                var wft=S.waitFreeTasks.find(function(x){return x.id===res.id;});
+                if(wft){wft.name=v;wft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+                res.name=v;
+              } else if(res.k==='sh'){
+                var st=S.shareTasks.find(function(x){return x.id===res.id;});
+                if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}
+                res.name=v;
+              }
+              render();
+            }
+            inp.addEventListener('keydown',function(e){
+              if(e.key==='Enter'){e.preventDefault();commitEdit();}
+              if(e.key==='Escape'){render();}
+            });
+            inp.addEventListener('blur',commitEdit);
+          }
+          // click simplu → nav (cu protecție anti-dublu)
+          var lastClick=0;
+          row.addEventListener('click',function(e){
+            if(e.target&&e.target.tagName==='INPUT') return;
+            var now=Date.now();
+            if(now-lastClick<350){lastClick=0;return;} // al doilea click din dublu-click — ignoră
+            lastClick=now;
+            setTimeout(function(){if(Date.now()-lastClick>=340) doNav();},350);
+          });
+          row.addEventListener('dblclick',doEdit);
+          // touch dublu-tap
+          var lastTap=0;
+          row.addEventListener('touchstart',function(e){
+            if(e.target&&e.target.tagName==='INPUT') return;
+            var now=Date.now();
+            if(now-lastTap<350){e.preventDefault();e.stopPropagation();doEdit(e);lastTap=0;return;}
+            lastTap=now;
+          },{passive:false});
+          row.addEventListener('touchend',function(e){
+            if(e.target&&e.target.tagName==='INPUT') return;
+            // single tap nav — handled via click event on desktop; on touch use touchend
+          },{passive:true});
+        })(r, targetId);
+
         srp.appendChild(row);
       });
     }
@@ -2056,6 +2335,7 @@ function rBoard(){
     if(isSel) r.classList.add('sel-on');
     if(isCalEv&&!isSel) r.classList.add('cal-ev');
     r.dataset.nidx=idx;
+    if(row.isFree&&row.id&&!isCalEv) r.dataset.fid=row.id;
     if(row.warn&&!isSel&&!isCalEv) r.style.background='#FFFBEB';
 
     // Long-press → selectMode; dublu-tap → editare — un singur touchstart {passive:false}
@@ -2140,15 +2420,22 @@ function rBoard(){
         function saveEditTask(){
           var newTitle=inp.value.trim()||titleLine;
           var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
+          // /w → mută în Wait
+          if(/^\/w\s*$/i.test(newTitle)||/\/w\s*$/i.test(newTitle)){
+            var tid=rowSnap.isFree?rowSnap.id:rowSnap.taskId;
+            var pid=rowSnap.isFree?null:rowSnap.projectId;
+            moveToWait(tid,pid);
+            return;
+          }
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
-            if(ft){ft.name=newName;lw(FK,S.freeTasks);}
+            if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
           } else {
             // Sync înapoi în proiect
             var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
             if(proj){
               var task=proj.tasks.find(function(t){return t.id===rowSnap.taskId;});
-              if(task){task.name=newName;save();}
+              if(task){task.name=newName;task.modifiedTs=Date.now();save();}
             }
           }
           render();
@@ -2246,6 +2533,7 @@ function rBoard(){
   wr.forEach((row,idx)=>{
     const r=div('nrow');
     r.dataset.widx=idx;
+    if(row.isFree&&row.id) r.dataset.fwid=row.id;
     // Buton Done — doar pentru task-uri cu proiect
     if(!row.isFree){
       (function(pid,tid){
@@ -2365,6 +2653,7 @@ function rBoard(){
   }
   S.shareTasks.forEach(function(item){
     const r=div('srow-share');
+    r.dataset.shid=item.id;
     var sk='s:'+item.id;
     if(S.mergeFlags[sk]) r.style.background='#ECFDF5';
     // ── Toggle merge ──
@@ -2407,7 +2696,7 @@ function rBoard(){
           var newTitle=inp.value.trim()||titleLine;
           var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
           var st=S.shareTasks.find(function(x){return x.id===sid;});
-          if(st){st.name=newName;lw(SHK,S.shareTasks);}
+          if(st){st.name=newName;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}
           render();
         }
         inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveEdit();}if(e.key==='Escape'){render();}});
@@ -2635,7 +2924,18 @@ function rBoard(){
           ei.style.fontSize='11px';
           function saveTaskEdit(){
             const v=ei.value.trim();
-            if(v&&v!==task.name){S.items=S.items.map(x=>x.id===item.id?{...x,tasks:x.tasks.map(t=>t.id===task.id?{...t,name:v}:t)}:x);save();}
+            if(v){
+              // /w → mută task-ul în Wait
+              if(/^\/w\s*$/i.test(v)||/\/w\s*$/i.test(v)){
+                S.editTid=null;
+                moveToWait(task.id,item.id);
+                return;
+              }
+              if(v!==task.name){
+                S.items=S.items.map(x=>x.id===item.id?{...x,tasks:x.tasks.map(t=>t.id===task.id?{...t,name:v,modifiedTs:Date.now()}:t)}:x);
+                save();
+              }
+            }
             S.editTid=null;render();
           }
           ei.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveTaskEdit();}if(e.key==='Escape'){S.editTid=null;render();}});
@@ -2718,7 +3018,67 @@ function render(){
 }
 
 init();
-window.addEventListener('beforeunload',saveAll);
+// ── FAB+ quick-add task la începutul Next ──
+(function(){
+  var fabBtn=document.getElementById('fab-add');
+  var overlay=document.getElementById('fab-overlay');
+  var inp=document.getElementById('fab-inp');
+  var okBtn=document.getElementById('fab-ok');
+  var cancelBtn=document.getElementById('fab-cancel');
+  if(!fabBtn||!overlay) return;
+
+  function openFab(){
+    overlay.style.display='flex';
+    inp.value='';
+    setTimeout(function(){inp.focus();},80);
+  }
+  function closeFab(){
+    overlay.style.display='none';
+    inp.value='';
+  }
+  function commitFab(){
+    var name=inp.value.trim();
+    if(!name){closeFab();return;}
+    var ft={id:gid(),name:name,ts:Date.now(),modifiedTs:Date.now()};
+    je({kind:'free-task-create',taskName:name,ts:ft.ts});
+    S.freeTasks=[...S.freeTasks,ft];
+    // unshift — adaugă la ÎNCEPUTUL next
+    S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    lw('pb-local-dirty-ts',Date.now());
+    closeFab();
+    render();
+    // scroll la primul element din next
+    setTimeout(function(){
+      var el=document.querySelector('.nrow');
+      if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+    },80);
+  }
+
+  fabBtn.addEventListener('click',openFab);
+  fabBtn.addEventListener('touchend',function(e){e.preventDefault();openFab();},{passive:false});
+  okBtn.addEventListener('click',commitFab);
+  okBtn.addEventListener('touchend',function(e){e.preventDefault();commitFab();},{passive:false});
+  cancelBtn.addEventListener('click',closeFab);
+  cancelBtn.addEventListener('touchend',function(e){e.preventDefault();closeFab();},{passive:false});
+  inp.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();commitFab();}
+    if(e.key==='Escape'){closeFab();}
+  });
+  // click pe fundal închide
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeFab();});
+  overlay.addEventListener('touchend',function(e){if(e.target===overlay){e.preventDefault();closeFab();}},{passive:false});
+})();
+
+window.addEventListener('beforeunload',function(){
+  saveAll();
+  // Auto-push la închidere dacă există modificări nesincronizate
+  var dirtyTs=ls('pb-local-dirty-ts')||0;
+  var lastPushTs=ls('pb-last-push-ts')||0;
+  if(dirtyTs>lastPushTs && dirtyTs>0 && fbUser && fbDb && fbIsRealData(S.items,S.freeTasks)){
+    fbPush(); // fire-and-forget — nu garantat pe Android dar funcționează în majoritatea cazurilor
+  }
+});
 
 // ── Extrage textul afișabil dintr-un task (titlu + url dacă există) ──
 function getTaskDisplayText(tname){
