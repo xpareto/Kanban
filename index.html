@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V47</title>
+<title>Project Board V48</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -1171,7 +1171,7 @@ function moveToWait(taskId, projectId){
 }
 // Detectează /w la salvarea unui task și îl mută în wait
 function checkSlashW(name, taskId, projectId){
-  if(/^\s*\/w\s*$/i.test(name)||/\/w\s*$/i.test(name)){
+  if(/\/w(?:\s|$)/i.test(name)){
     moveToWait(taskId, projectId);
     return true;
   }
@@ -1198,9 +1198,13 @@ function doSearch(){
       if(item.name.toLowerCase().indexOf(q)>=0) res.push({k:'sec',name:item.name,id:item.id});
       return;
     }
-    if(item.name.toLowerCase().indexOf(q)>=0) res.push({k:'proj',name:item.name,id:item.id});
+    var projMatch=item.name.toLowerCase().indexOf(q)>=0;
+    if(projMatch) res.push({k:'proj',name:item.name,id:item.id});
     (item.tasks||[]).forEach(function(t){
-      if(t.name.toLowerCase().indexOf(q)>=0) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status});
+      // Include task-ul dacă: (a) conține șirul SAU (b) proiectul părintele conține șirul și task-ul e next/wait
+      var taskMatch=t.name.toLowerCase().indexOf(q)>=0;
+      var includeByProj=projMatch&&(t.status==='next'||t.status==='wait');
+      if(taskMatch||includeByProj) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,byProj:!taskMatch});
     });
   });
   // Free tasks din Next — cu id pentru navigare și editare
@@ -2137,8 +2141,11 @@ function rBoard(){
         } else if(r.k==='task'){
           var btag=sp('sbg','TASK');btag.style.cssText='background:#F0F9FF;color:#0369A1';row.appendChild(btag);
           var td=div('');td.style.cssText='flex:1;min-width:0';
-          var tnEl=document.createElement('div');tnEl.textContent=r.tn;tnEl.style.fontWeight='600';tnEl.style.fontSize='12px';
-          var tsEl=document.createElement('div');tsEl.textContent=r.pn;tsEl.style.cssText='font-size:10px;color:#9CA3AF';
+          var tnEl=document.createElement('div');tnEl.textContent=r.tn;
+          tnEl.style.fontWeight=r.byProj?'400':'600';
+          tnEl.style.fontSize='12px';
+          tnEl.style.color=r.byProj?'#9CA3AF':'';
+          var tsEl=document.createElement('div');tsEl.textContent=r.pn+(r.byProj?' (din proiect)':'');tsEl.style.cssText='font-size:10px;color:#9CA3AF';
           td.appendChild(tnEl);td.appendChild(tsEl);row.appendChild(td);
           var stTag=sp('',SL[r.st]||r.st);
           stTag.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
@@ -2202,7 +2209,7 @@ function rBoard(){
               var v=inp.value.trim();
               if(!v){render();return;}
               // /w din editare search result
-              if(/^\/w\s*$/i.test(v)||/\/w\s*$/i.test(v)){
+              if(/\/w(?:\s|$)/i.test(v)){
                 if(res.k==='fn') moveToWait(res.id,null);
                 else if(res.k==='task') moveToWait(res.taskId,res.projectId);
                 return;
@@ -2229,34 +2236,53 @@ function rBoard(){
               }
               render();
             }
+            var editDone=false;
+            function finishEdit(doCommit){
+              if(editDone) return;
+              editDone=true;
+              inEditMode=false;
+              if(doCommit) commitEdit(); else render();
+            }
             inp.addEventListener('keydown',function(e){
-              if(e.key==='Enter'){e.preventDefault();commitEdit();}
-              if(e.key==='Escape'){render();}
+              if(e.key==='Enter'){e.preventDefault();finishEdit(true);}
+              if(e.key==='Escape'){e.preventDefault();finishEdit(false);}
             });
-            inp.addEventListener('blur',commitEdit);
+            inp.addEventListener('blur',function(){finishEdit(true);});
           }
-          // click simplu → nav (cu protecție anti-dublu)
-          var lastClick=0;
+          // ── Click simplu → nav | Dublu-click → edit ──
+          // Folosim flag inEditMode pentru a bloca nav când inputul e activ
+          var inEditMode=false;
           row.addEventListener('click',function(e){
             if(e.target&&e.target.tagName==='INPUT') return;
-            var now=Date.now();
-            if(now-lastClick<350){lastClick=0;return;} // al doilea click din dublu-click — ignoră
-            lastClick=now;
-            setTimeout(function(){if(Date.now()-lastClick>=340) doNav();},350);
+            if(inEditMode) return;
+            doNav();
           });
-          row.addEventListener('dblclick',doEdit);
-          // touch dublu-tap
+          row.addEventListener('dblclick',function(e){
+            if(e.target&&e.target.tagName==='INPUT') return;
+            inEditMode=true;
+            doEdit(e);
+          });
+          // ── Touch: tap simplu → nav, dublu-tap (<350ms) → edit ──
           var lastTap=0;
+          var tapTimer=null;
           row.addEventListener('touchstart',function(e){
             if(e.target&&e.target.tagName==='INPUT') return;
+            if(inEditMode) return;
             var now=Date.now();
-            if(now-lastTap<350){e.preventDefault();e.stopPropagation();doEdit(e);lastTap=0;return;}
+            if(now-lastTap<350){
+              // dublu-tap → edit
+              clearTimeout(tapTimer);tapTimer=null;
+              e.preventDefault();e.stopPropagation();
+              inEditMode=true;
+              doEdit(e);lastTap=0;return;
+            }
             lastTap=now;
+            // tap simplu → nav după scurtă pauză (în caz că urmează al doilea tap)
+            tapTimer=setTimeout(function(){
+              tapTimer=null;
+              if(!inEditMode) doNav();
+            },360);
           },{passive:false});
-          row.addEventListener('touchend',function(e){
-            if(e.target&&e.target.tagName==='INPUT') return;
-            // single tap nav — handled via click event on desktop; on touch use touchend
-          },{passive:true});
         })(r, targetId);
 
         srp.appendChild(row);
@@ -2421,7 +2447,7 @@ function rBoard(){
           var newTitle=inp.value.trim()||titleLine;
           var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
           // /w → mută în Wait
-          if(/^\/w\s*$/i.test(newTitle)||/\/w\s*$/i.test(newTitle)){
+          if(/\/w(?:\s|$)/i.test(newTitle)){
             var tid=rowSnap.isFree?rowSnap.id:rowSnap.taskId;
             var pid=rowSnap.isFree?null:rowSnap.projectId;
             moveToWait(tid,pid);
@@ -2926,7 +2952,7 @@ function rBoard(){
             const v=ei.value.trim();
             if(v){
               // /w → mută task-ul în Wait
-              if(/^\/w\s*$/i.test(v)||/\/w\s*$/i.test(v)){
+              if(/\/w(?:\s|$)/i.test(v)){
                 S.editTid=null;
                 moveToWait(task.id,item.id);
                 return;
