@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V48</title>
+<title>Project Board V49</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -185,7 +185,11 @@ function fbInitCore(){
   fbAuth.onAuthStateChanged(function(user){
     fbUser=user;
     S.fbUser=user?{uid:user.uid,name:user.displayName,email:user.email,photo:user.photoURL}:null;
-    if(user) fbPullIfNewer();
+    if(user){
+      fbPullIfNewer();
+      // Calendar auto la prima lansare zilnică — după auth Firebase
+      calCheckAndFetch();
+    }
     render();
   });
 }
@@ -435,6 +439,7 @@ async function fbPull(mode){
 }
 
 // ── Pull automat la deschidere — compară ts remote cu ts ultimului push local ──
+// ── Sync automat la startup: push dacă dirty + pull dacă remote mai nou ──
 async function fbPullIfNewer(){
   if(!fbDb||!fbUser) return;
   try{
@@ -443,32 +448,50 @@ async function fbPullIfNewer(){
     if(!snap.exists){
       // Prima dată pe acest cont — push datele locale dacă sunt reale
       if(fbIsRealData(S.items,S.freeTasks)){
-        console.log('fbPullIfNewer: first time, pushing local data');
-        fbSync();
+        console.log('fbStartupSync: first time, pushing local data');
+        var r=await fbPush();
+        if(r.ok){lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);}
       }
       return;
     }
     var remoteTs=snap.data().ts||0;
     var lastPushTs=ls('pb-last-push-ts')||0;
     var dirtyTs=ls('pb-local-dirty-ts')||0;
-    // Dacă există modificări locale nepublicate (dirtyTs > lastPushTs), nu face Pull automat
-    if(dirtyTs>lastPushTs && dirtyTs>0){
-      var dd=new Date(dirtyTs);
-      var dds=dd.toLocaleDateString('ro-RO')+' '+dd.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-      fbToast('⚠ Modificări locale din '+dds+' nesincronizate — apasă Sync!','#3B1500','#F59E0B',6000);
-      return;
-    }
-    if(remoteTs>lastPushTs){
-      var ok=await fbPull(false); // auto pull la lansare
+    var hasDirty=dirtyTs>lastPushTs && dirtyTs>0 && fbIsRealData(S.items,S.freeTasks);
+    var hasRemoteNew=remoteTs>lastPushTs;
+
+    if(hasDirty && hasRemoteNew){
+      // Ambele au date noi → merge automat
+      var okM=await fbPull('merge');
+      if(okM){
+        var resM=await fbPush();
+        if(resM.ok){
+          lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);
+          var d2=new Date(remoteTs);
+          var ds2=d2.toLocaleDateString('ro-RO')+' '+d2.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+          fbToast('☁⟳ Merge automat la lansare (remote din '+ds2+')','#0F2A1A','#10B981',4000);
+          render();
+        }
+      }
+    } else if(hasDirty){
+      // Doar local dirty → push
+      var res=await fbPush();
+      if(res.ok){
+        lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);
+        fbToast('☁↑ Push automat la lansare','#0F2A1A','#10B981',3000);
+      }
+    } else if(hasRemoteNew){
+      // Doar remote mai nou → pull
+      var ok=await fbPull('auto');
       if(ok){
-        lw('pb-last-push-ts',remoteTs);
-        lw('pb-local-dirty-ts',0);
+        lw('pb-last-push-ts',remoteTs);lw('pb-local-dirty-ts',0);
         var d=new Date(remoteTs);
         var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-        fbToast('☁↓ Sync automat: date din '+ds,'#0F2A1A','#10B981',3000);
+        fbToast('☁↓ Pull automat la lansare: date din '+ds,'#0F2A1A','#10B981',3000);
         render();
       }
     }
+    // dacă nimic nu e nou — tăcere, nu afișăm nimic
   }catch(e){console.warn('fbPullIfNewer error:',e);}
 }
 
@@ -799,13 +822,17 @@ function calInjectEvents(events){
 }
 
 // Verifică dacă e prima rulare a zilei și dacă avem token
+var _calFetchInProgress=false;
 async function calCheckAndFetch(){
   var lastDay=localStorage.getItem(CAL_DK)||'';
   var today=calTodayStr();
   if(lastDay===today) return; // deja colectat azi
+  if(_calFetchInProgress) return; // fetch în curs — evităm dublu-apel
+  _calFetchInProgress=true;
   var token=calGetToken();
   if(!token) return; // nu suntem autentificați
   var events=await calFetchEvents(token);
+  _calFetchInProgress=false;
   if(events===null) return; // eroare sau token expirat
   calInjectEvents(events);
   render();
