@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V49</title>
+<title>Project Board V50</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -565,6 +565,21 @@ async function fbSync(){
         } else {
           if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
         }
+      } else {
+        // Remote mai nou, fără modificări locale → Pull pur
+        if(dot){dot.textContent='☁↓';dot.style.color='#818CF8';setTimeout(function(){dot.textContent='';},5000);}
+        var okP=await fbPull('overwrite');
+        if(okP){
+          lw('pb-last-push-ts',remoteTs);lw('pb-local-dirty-ts',0);
+          var dP=new Date(remoteTs);
+          var dsP=dP.toLocaleDateString('ro-RO')+' '+dP.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
+          if(dot){dot.textContent='☁↓';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
+          fbToast('☁↓ Pull: date din '+dsP,'#0F2A1A','#10B981',3000);
+          render();
+        } else {
+          if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+          fbToast('Pull error','#1A0A0A','#EF4444',5000);
+        }
       }
     }
   }catch(e){
@@ -830,7 +845,7 @@ async function calCheckAndFetch(){
   if(_calFetchInProgress) return; // fetch în curs — evităm dublu-apel
   _calFetchInProgress=true;
   var token=calGetToken();
-  if(!token) return; // nu suntem autentificați
+  if(!token){_calFetchInProgress=false;return;} // nu suntem autentificați
   var events=await calFetchEvents(token);
   _calFetchInProgress=false;
   if(events===null) return; // eroare sau token expirat
@@ -2279,13 +2294,19 @@ function rBoard(){
           // ── Click simplu → nav | Dublu-click → edit ──
           // Folosim flag inEditMode pentru a bloca nav când inputul e activ
           var inEditMode=false;
+          var navTimer=null;
           row.addEventListener('click',function(e){
             if(e.target&&e.target.tagName==='INPUT') return;
             if(inEditMode) return;
-            doNav();
+            // Întârziem navigarea — dblclick o va anula
+            clearTimeout(navTimer);
+            navTimer=setTimeout(function(){
+              if(!inEditMode) doNav();
+            },300);
           });
           row.addEventListener('dblclick',function(e){
             if(e.target&&e.target.tagName==='INPUT') return;
+            clearTimeout(navTimer);navTimer=null;
             inEditMode=true;
             doEdit(e);
           });
@@ -2296,12 +2317,13 @@ function rBoard(){
             if(e.target&&e.target.tagName==='INPUT') return;
             if(inEditMode) return;
             var now=Date.now();
-            if(now-lastTap<350){
+            if(now-lastTap<350&&lastTap>0){
               // dublu-tap → edit
               clearTimeout(tapTimer);tapTimer=null;
+              lastTap=0;
               e.preventDefault();e.stopPropagation();
               inEditMode=true;
-              doEdit(e);lastTap=0;return;
+              doEdit(e);return;
             }
             lastTap=now;
             // tap simplu → nav după scurtă pauză (în caz că urmează al doilea tap)
@@ -2398,16 +2420,16 @@ function rBoard(){
       if(e.target&&(e.target.tagName==='BUTTON'||e.target.tagName==='A')) return;
       var now=Date.now();
       // Dublu-tap (<350ms între atingeri) → editare, anulează long-press
-      if(now-lastTapTs<350){
+      if(now-lastTapTs<350&&lastTapTs>0){
         if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}
+        lastTapTs=0;
         e.preventDefault();e.stopPropagation();
         // declanșează editare direct
         r.dispatchEvent(new CustomEvent('dbl-tap-edit',{bubbles:false}));
-        lastTapTs=0;
         return;
       }
       lastTapTs=now;
-      // Long-press (500ms)
+      // Long-press (500ms) — pornit doar după primul tap
       lpTimer=setTimeout(function(){
         lpTimer=null;
         lastTapTs=0;
