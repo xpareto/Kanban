@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V50</title>
+<title>Project Board V51</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -130,6 +130,16 @@ input{font-family:inherit;outline:none}
 #fab-dialog{background:#1E2130;border:1px solid #374151;border-radius:14px;padding:16px;width:min(92vw,380px);display:flex;flex-direction:column;gap:10px}
 #fab-inp{background:#111827;color:#F1F5F9;border:1px solid #4B5563;border-radius:8px;padding:9px 12px;font-size:14px;outline:none;width:100%;box-sizing:border-box}
 #fab-inp:focus{border-color:#10B981}
+/* ── Note button ── */
+.note-btn{background:none;border:1px solid #D1D5DB;border-radius:6px;padding:4px 7px;font-size:13px;color:#9CA3AF;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:30px;min-height:30px;line-height:1;transition:background .12s,border-color .12s}
+.note-btn.has-note{border-color:#F59E0B;color:#F59E0B;background:#FFF8EC}
+/* ── Note overlay ── */
+.note-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:800;display:flex;align-items:flex-end;justify-content:center}
+.note-card{background:#1A1D2E;border-radius:14px 14px 0 0;padding:14px 14px 28px;width:100%;max-width:520px;display:flex;flex-direction:column;gap:10px;max-height:70vh}
+.note-title{font-size:11px;font-weight:700;color:#6B7280;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.note-ta{background:#0F1117;color:#E2E8F0;border:1px solid #374151;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6;resize:none;outline:none;flex:1;min-height:120px;font-family:inherit}
+.note-ta:focus{border-color:#F59E0B}
+.note-btns{display:flex;gap:8px}
 </style>
 </head>
 <body>
@@ -1243,16 +1253,17 @@ function doSearch(){
     var projMatch=item.name.toLowerCase().indexOf(q)>=0;
     if(projMatch) res.push({k:'proj',name:item.name,id:item.id});
     (item.tasks||[]).forEach(function(t){
-      // Include task-ul dacă: (a) conține șirul SAU (b) proiectul părintele conține șirul și task-ul e next/wait
+      // Include task-ul dacă: (a) conține șirul SAU (b) proiectul părintele conține șirul și task-ul e next/wait SAU (c) nota conține șirul
       var taskMatch=t.name.toLowerCase().indexOf(q)>=0;
+      var noteMatch=!!(t.note&&t.note.toLowerCase().indexOf(q)>=0);
       var includeByProj=projMatch&&(t.status==='next'||t.status==='wait');
-      if(taskMatch||includeByProj) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,byProj:!taskMatch});
+      if(taskMatch||includeByProj||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,byProj:!taskMatch&&!noteMatch,hasNote:noteMatch});
     });
   });
   // Free tasks din Next — cu id pentru navigare și editare
-  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fn',name:f.name,id:f.id});});
+  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0||(f.note&&f.note.toLowerCase().indexOf(q)>=0)) res.push({k:'fn',name:f.name,id:f.id});});
   // Free tasks din Wait — cu id
-  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'fw',name:f.name,id:f.id});});
+  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0||(f.note&&f.note.toLowerCase().indexOf(q)>=0)) res.push({k:'fw',name:f.name,id:f.id});});
   S.shareTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'sh',name:f.name,id:f.id});});
   S.sr=res;render();
 }
@@ -1853,6 +1864,57 @@ function doClrShareJournal(){
   render();
 }
 
+// ── Note overlay — editare notă atașată unui task ──
+// saveFn(newNote) — callback care salvează nota în obiectul corect
+function showNoteOverlay(taskTitle, currentNote, saveFn){
+  var ov=document.createElement('div');
+  ov.className='note-ov';
+  var card=document.createElement('div');
+  card.className='note-card';
+
+  var titleEl=document.createElement('div');
+  titleEl.className='note-title';
+  titleEl.textContent='✎ Notă · '+(taskTitle.length>60?taskTitle.slice(0,60)+'…':taskTitle);
+
+  var ta=document.createElement('textarea');
+  ta.className='note-ta';
+  ta.value=currentNote||'';
+  ta.placeholder='Scrie orice notă, link, detalii…';
+  ta.rows=6;
+
+  var btns=document.createElement('div');
+  btns.className='note-btns';
+
+  var bSave=document.createElement('button');
+  bSave.textContent='✓ Save';
+  bSave.style.cssText='flex:1;background:#F59E0B;color:#1A1D2E;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:800;cursor:pointer;touch-action:manipulation';
+
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕';
+  bCancel.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation';
+
+  function doSave(){
+    saveFn(ta.value); // poate fi gol — ștergere notă
+    document.body.removeChild(ov);
+  }
+  function doCancel(){document.body.removeChild(ov);}
+
+  bSave.addEventListener('click',doSave);
+  bSave.addEventListener('touchend',function(e){e.preventDefault();doSave();},{passive:false});
+  bCancel.addEventListener('click',doCancel);
+  bCancel.addEventListener('touchend',function(e){e.preventDefault();doCancel();},{passive:false});
+
+  // Tap pe fundal → cancel
+  ov.addEventListener('click',function(e){if(e.target===ov)doCancel();});
+  ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
+
+  btns.appendChild(bSave);btns.appendChild(bCancel);
+  card.appendChild(titleEl);card.appendChild(ta);card.appendChild(btns);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
+}
+
 function rJournal(){
   var impJ2=mk('input','');impJ2.type='file';impJ2.accept='.json';impJ2.style.display='none';
   impJ2.addEventListener('change',doImpJournal);document.body.appendChild(impJ2);
@@ -2192,6 +2254,7 @@ function rBoard(){
           var stTag=sp('',SL[r.st]||r.st);
           stTag.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
           row.appendChild(stTag);
+          if(r.hasNote){var nm=sp('','✎');nm.style.cssText='font-size:10px;color:#F59E0B;flex-shrink:0;margin-left:2px';row.appendChild(nm);}
         } else if(r.k==='fn'){
           var bn=sp('sbg','NEXT');bn.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bn);
           nameSpan.textContent=r.name;row.appendChild(nameSpan);
@@ -2238,19 +2301,20 @@ function rBoard(){
           function doEdit(e){
             if(e.target&&e.target.tagName==='INPUT') return;
             e.stopPropagation();
-            // Construiește input inline în rând
             var currentName=res.k==='task'?res.tn:res.name;
             var inp=document.createElement('input');
             inp.value=currentName;
             inp.style.cssText='flex:1;font-size:12px;border:1px solid #6366F1;border-radius:5px;padding:3px 6px;outline:none;min-width:0;width:100%';
-            // Înlocuiește conținutul rândului cu inputul
             while(row.firstChild) row.removeChild(row.firstChild);
             row.appendChild(inp);
-            inp.focus();inp.select();
+            // Cursor la sfârșit, fără selecție forțată (select() blochează tastatura Android)
+            inp.focus();
+            var len=inp.value.length;
+            inp.setSelectionRange(len,len);
+            var blurTimer=null;
             function commitEdit(){
               var v=inp.value.trim();
               if(!v){render();return;}
-              // /w din editare search result
               if(/\/w(?:\s|$)/i.test(v)){
                 if(res.k==='fn') moveToWait(res.id,null);
                 else if(res.k==='task') moveToWait(res.taskId,res.projectId);
@@ -2276,20 +2340,29 @@ function rBoard(){
                 if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}
                 res.name=v;
               }
+              // Re-render rezultatele și navighează la element
               render();
+              setTimeout(function(){doNav();},80);
             }
             var editDone=false;
             function finishEdit(doCommit){
               if(editDone) return;
               editDone=true;
               inEditMode=false;
+              clearTimeout(blurTimer);
               if(doCommit) commitEdit(); else render();
             }
             inp.addEventListener('keydown',function(e){
               if(e.key==='Enter'){e.preventDefault();finishEdit(true);}
               if(e.key==='Escape'){e.preventDefault();finishEdit(false);}
             });
-            inp.addEventListener('blur',function(){finishEdit(true);});
+            // blur întârziat — Android trimite blur spurios la deschiderea tastaturii
+            inp.addEventListener('blur',function(){
+              blurTimer=setTimeout(function(){finishEdit(true);},200);
+            });
+            inp.addEventListener('focus',function(){
+              clearTimeout(blurTimer);
+            });
           }
           // ── Click simplu → nav | Dublu-click → edit ──
           // Folosim flag inEditMode pentru a bloca nav când inputul e activ
@@ -2542,6 +2615,27 @@ function rBoard(){
           render();
         });
       })(row.projectId, row.taskId, row.tname);
+      // Buton Note — task din proiect în NEXT
+      (function(pid,tid,tname){
+        var proj0=S.items.find(function(x){return x.id===pid;});
+        var task0=proj0&&proj0.tasks&&proj0.tasks.find(function(t){return t.id===tid;});
+        var hasNote=!!(task0&&task0.note&&task0.note.trim());
+        var nb=mk('button','note-btn'+(hasNote?' has-note':''));
+        nb.textContent='✎';nb.title=hasNote?'Editează nota':'Adaugă notă';
+        function doNote(e){
+          e.stopPropagation();e.preventDefault();
+          var pr=S.items.find(function(x){return x.id===pid;});
+          var tk=pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});
+          showNoteOverlay(tname, tk?tk.note||'':'', function(newNote){
+            var pr2=S.items.find(function(x){return x.id===pid;});
+            if(pr2){var tk2=pr2.tasks.find(function(t){return t.id===tid;});if(tk2){tk2.note=newNote;tk2.modifiedTs=Date.now();save();}}
+            render();
+          });
+        }
+        nb.addEventListener('click',doNote);
+        nb.addEventListener('touchend',function(e){e.preventDefault();doNote(e);},{passive:false});
+        r.appendChild(nb);
+      })(row.projectId, row.taskId, row.tname);
       (function(pid){
         const gb=document.createElement('button');
         gb.textContent='▶';
@@ -2560,6 +2654,25 @@ function rBoard(){
             if(ft){ft.name=newName;lw(FK,S.freeTasks);}
             render();
           });
+        })(row.id, row.tname);
+        // Buton Note — free task în NEXT
+        (function(fid,fname){
+          var ft0=S.freeTasks.find(function(x){return x.id===fid;});
+          var hasNote=!!(ft0&&ft0.note&&ft0.note.trim());
+          var nb=mk('button','note-btn'+(hasNote?' has-note':''));
+          nb.textContent='✎';nb.title=hasNote?'Editează nota':'Adaugă notă';
+          function doNote(e){
+            e.stopPropagation();e.preventDefault();
+            var ft=S.freeTasks.find(function(x){return x.id===fid;});
+            showNoteOverlay(fname, ft?ft.note||'':'', function(newNote){
+              var ft2=S.freeTasks.find(function(x){return x.id===fid;});
+              if(ft2){ft2.note=newNote;ft2.modifiedTs=Date.now();lw(FK,S.freeTasks);}
+              render();
+            });
+          }
+          nb.addEventListener('click',doNote);
+          nb.addEventListener('touchend',function(e){e.preventDefault();doNote(e);},{passive:false});
+          r.appendChild(nb);
         })(row.id, row.tname);
         (function(fid,fname){
           // Buton promovare
@@ -2643,6 +2756,27 @@ function rBoard(){
           render();
         });
       })(row.projectId, row.taskId, row.tname);
+      // Buton Note — task din proiect în WAIT
+      (function(pid,tid,tname){
+        var proj0=S.items.find(function(x){return x.id===pid;});
+        var task0=proj0&&proj0.tasks&&proj0.tasks.find(function(t){return t.id===tid;});
+        var hasNote=!!(task0&&task0.note&&task0.note.trim());
+        var nb=mk('button','note-btn'+(hasNote?' has-note':''));
+        nb.textContent='✎';nb.title=hasNote?'Editează nota':'Adaugă notă';
+        function doNote(e){
+          e.stopPropagation();e.preventDefault();
+          var pr=S.items.find(function(x){return x.id===pid;});
+          var tk=pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});
+          showNoteOverlay(tname, tk?tk.note||'':'', function(newNote){
+            var pr2=S.items.find(function(x){return x.id===pid;});
+            if(pr2){var tk2=pr2.tasks.find(function(t){return t.id===tid;});if(tk2){tk2.note=newNote;tk2.modifiedTs=Date.now();save();}}
+            render();
+          });
+        }
+        nb.addEventListener('click',doNote);
+        nb.addEventListener('touchend',function(e){e.preventDefault();doNote(e);},{passive:false});
+        r.appendChild(nb);
+      })(row.projectId, row.taskId, row.tname);
       (function(pid){
         const gb=document.createElement('button');
         gb.textContent='▶';
@@ -2660,6 +2794,25 @@ function rBoard(){
           if(ft){ft.name=newName;lw(WFK,S.waitFreeTasks);}
           render();
         });
+      })(row.id, row.tname);
+      // Buton Note — free task în WAIT
+      (function(fid,fname){
+        var ft0=S.waitFreeTasks.find(function(x){return x.id===fid;});
+        var hasNote=!!(ft0&&ft0.note&&ft0.note.trim());
+        var nb=mk('button','note-btn'+(hasNote?' has-note':''));
+        nb.textContent='✎';nb.title=hasNote?'Editează nota':'Adaugă notă';
+        function doNote(e){
+          e.stopPropagation();e.preventDefault();
+          var ft=S.waitFreeTasks.find(function(x){return x.id===fid;});
+          showNoteOverlay(fname, ft?ft.note||'':'', function(newNote){
+            var ft2=S.waitFreeTasks.find(function(x){return x.id===fid;});
+            if(ft2){ft2.note=newNote;ft2.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+            render();
+          });
+        }
+        nb.addEventListener('click',doNote);
+        nb.addEventListener('touchend',function(e){e.preventDefault();doNote(e);},{passive:false});
+        r.appendChild(nb);
       })(row.id, row.tname);
       const xb=mk('button','ndel');xb.textContent='✕';
       xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delWaitFree(row.id);},{passive:false});
