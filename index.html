@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V51</title>
+<title>Project Board V52</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -664,11 +664,12 @@ function calGetToken(){
     return t.access_token;
   }catch(_){return null;}
 }
-function calSaveToken(access_token, expires_in){
+function calSaveToken(access_token, expires_in, email){
   localStorage.setItem(CAL_CK,JSON.stringify({
     access_token:access_token,
     expires_at:Date.now()+parseInt(expires_in||3600)*1000
   }));
+  if(email) localStorage.setItem('pb-cal-email',email);
 }
 function calClearToken(){localStorage.removeItem(CAL_CK);}
 
@@ -676,15 +677,22 @@ function calClearToken(){localStorage.removeItem(CAL_CK);}
 function calLogin(){
   var state=Math.random().toString(36).substr(2,10);
   sessionStorage.setItem('cal_oauth_state',state);
-  var params=new URLSearchParams({
+  var savedEmail=localStorage.getItem('pb-cal-email')||'';
+  var p={
     client_id:GCAL_CLIENT_ID,
     redirect_uri:GCAL_REDIRECT,
     response_type:'token',
     scope:GCAL_SCOPE,
-    state:state,
-    prompt:'select_account'
-  });
-  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+params.toString();
+    state:state
+  };
+  // Dacă avem email memorat → pre-selectează contul, fără ecran de selecție
+  if(savedEmail){
+    p.login_hint=savedEmail;
+    p.prompt='none'; // încearcă silent; dacă eșuează Google va afișa oricum UI
+  } else {
+    p.prompt='select_account';
+  }
+  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
 
 // Procesează token-ul din URL hash după redirect OAuth
@@ -695,10 +703,14 @@ function calHandleCallback(){
   var token=params.get('access_token');
   var expiresIn=params.get('expires_in')||3600;
   var state=params.get('state');
-  // Curăță hash din URL
   history.replaceState({},'',window.location.pathname+window.location.search);
   if(!token) return false;
   calSaveToken(token,expiresIn);
+  // Fetch email din tokeninfo — îl salvăm pentru login_hint la re-autorizare
+  fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
+    .then(function(r){return r.json();})
+    .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
+    .catch(function(){});
   return true;
 }
 
@@ -867,6 +879,7 @@ async function calCheckAndFetch(){
 function calLogout(){
   calClearToken();
   localStorage.removeItem(CAL_DK);
+  localStorage.removeItem('pb-cal-email');
   // Șterge evenimentele de calendar din NEXT
   S.freeTasks=S.freeTasks.filter(function(f){return !f.id.startsWith('cal::');});
   S.nextOrder=S.nextOrder.filter(function(x){
@@ -1265,6 +1278,16 @@ function doSearch(){
   // Free tasks din Wait — cu id
   S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0||(f.note&&f.note.toLowerCase().indexOf(q)>=0)) res.push({k:'fw',name:f.name,id:f.id});});
   S.shareTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'sh',name:f.name,id:f.id});});
+  // Jurnal principal
+  S.journal.forEach(function(e){
+    var txt=(e.taskName||e.projectName||'').toLowerCase();
+    if(txt.indexOf(q)>=0) res.push({k:'jrn',ts:e.ts,kind:e.kind,label:(e.taskName||e.projectName||''),date:fmt(e.ts)});
+  });
+  // Share Journal
+  S.shareJournal.forEach(function(e){
+    var txt=(e.text||'').toLowerCase();
+    if(txt.indexOf(q)>=0) res.push({k:'sjrn',ts:e.ts,kind:e.kind||'share-merge',text:e.text||'',date:fmt(e.ts)});
+  });
   S.sr=res;render();
 }
 function markDone(projectId, taskId, fromSection){
@@ -1942,6 +1965,7 @@ function rJournal(){
   const jd=div('');jd.style.paddingBottom='40px';
   [...S.journal].reverse().forEach(e=>{
     const el=div('je');
+    el.dataset.jts=e.ts;
     if(e.kind==='project-archive'){el.style.cssText='background:#FFF8EC;border-left:4px solid #F59E0B';el.innerHTML='<div><span style="font-weight:700;font-size:13px">📁 '+e.projectName+'</span><span class="jdate">arhivat '+fmt(e.ts)+'</span></div>';(e.tasks||[]).forEach(t=>{const d=div('jtask');d.textContent='• '+t.name+' ['+CN[t.status]+']';el.appendChild(d);});}
     else if(e.kind==='task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> → '+CN[e.colId]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='task-move'){const d=div('jmove');d.innerHTML='↔ <strong>'+e.taskName+'</strong>: '+CN[e.fromCol]+' → '+CN[e.toCol]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
@@ -1994,6 +2018,7 @@ function rClipJournal(){
     var isReceive=kind==='share-receive';
     var isDelete=kind==='share-delete';
     const el=div('je');
+    el.dataset.sjts=e.ts;
     var bgCol=isMerge?'#0F1A2E':isReceive?'#0A1F0A':'#1A0A0A';
     el.style.cssText='border-bottom:1px solid #1E2130;background:'+bgCol+';padding:10px 13px';
     var dt=new Date(e.ts);
@@ -2264,6 +2289,45 @@ function rBoard(){
         } else if(r.k==='sh'){
           var bsh=sp('sbg','SHARE');bsh.style.cssText='background:#ECFDF5;color:#065F46';row.appendChild(bsh);
           nameSpan.textContent=r.name;row.appendChild(nameSpan);
+        } else if(r.k==='jrn'){
+          var bjrn=sp('sbg','JURNAL');bjrn.style.cssText='background:#EFF6FF;color:#1D4ED8';row.appendChild(bjrn);
+          var jd2=div('');jd2.style.cssText='flex:1;min-width:0';
+          var jln=document.createElement('div');jln.textContent=r.label;jln.style.cssText='font-size:12px;font-weight:600;word-break:break-word';
+          var jdt=document.createElement('div');jdt.textContent=r.date;jdt.style.cssText='font-size:10px;color:#9CA3AF';
+          jd2.appendChild(jln);jd2.appendChild(jdt);row.appendChild(jd2);
+          // Jurnal results nu se editează — doar navigare
+          row.addEventListener('click',function(){
+            S.sq='';S.sr=null;S.view='journal';render();
+            setTimeout(function(){
+              var el=document.querySelector('[data-jts="'+r.ts+'"]');
+              if(el){el.scrollIntoView({behavior:'smooth',block:'center'});
+                el.style.outline='2px solid #6366F1';el.style.background='#EFF6FF';
+                setTimeout(function(){el.style.outline='';el.style.background='';},1800);}
+            },120);
+          });
+          row.addEventListener('touchend',function(e){e.preventDefault();row.click();},{passive:false});
+          srp.appendChild(row);
+          return; // skip blocul click/dblclick de mai jos
+        } else if(r.k==='sjrn'){
+          var bsjrn=sp('sbg','SHARE-J');bsjrn.style.cssText='background:#F0FDF4;color:#065F46';row.appendChild(bsjrn);
+          var sjd=div('');sjd.style.cssText='flex:1;min-width:0';
+          var sjln=document.createElement('div');
+          var sjPreview=(r.text||'').replace(/\n/g,' ').slice(0,60)+(r.text&&r.text.length>60?'…':'');
+          sjln.textContent=sjPreview;sjln.style.cssText='font-size:12px;font-weight:600;word-break:break-word';
+          var sjdt=document.createElement('div');sjdt.textContent=r.date;sjdt.style.cssText='font-size:10px;color:#9CA3AF';
+          sjd.appendChild(sjln);sjd.appendChild(sjdt);row.appendChild(sjd);
+          row.addEventListener('click',function(){
+            S.sq='';S.sr=null;S.view='clipjournal';render();
+            setTimeout(function(){
+              var el=document.querySelector('[data-sjts="'+r.ts+'"]');
+              if(el){el.scrollIntoView({behavior:'smooth',block:'center'});
+                el.style.outline='2px solid #10B981';
+                setTimeout(function(){el.style.outline='';},1800);}
+            },120);
+          });
+          row.addEventListener('touchend',function(e){e.preventDefault();row.click();},{passive:false});
+          srp.appendChild(row);
+          return; // skip blocul click/dblclick de mai jos
         }
 
         // ── 1-click → navigare ──
