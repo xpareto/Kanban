@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V54</title>
+<title>Project Board V55</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -872,7 +872,18 @@ async function calCheckAndFetch(){
   if(_calFetchInProgress) return;
   _calFetchInProgress=true;
   var token=calGetToken();
-  if(!token){_calFetchInProgress=false;return;}
+  if(!token){
+    _calFetchInProgress=false;
+    // Mesaj discret doar la prima lansare a zilei (nu la fiecare render)
+    var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
+    if(shownToday!==today){
+      localStorage.setItem('pb-cal-info-shown',today);
+      setTimeout(function(){
+        fbToast('📅 Calendar Google nedconectat. Apasă 📅 din meniu pentru a conecta.','#1E2130','#6B7280',4000);
+      },1200);
+    }
+    return;
+  }
   var events=await calFetchEvents(token);
   _calFetchInProgress=false;
   if(events===null) return; // eroare sau token expirat — NU scriem CAL_DK
@@ -1924,9 +1935,9 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   titleEl.className='note-title';
   titleEl.textContent='✎ Notă · '+(taskTitle.length>60?taskTitle.slice(0,60)+'…':taskTitle);
 
-  // Dacă nota e goală și task-ul are text → afișăm 3 opțiuni
-  var hasTaskText=!!(taskText&&taskText.trim()&&taskText.trim()!==taskTitle.trim());
+  // Dacă nota e goală → arată picker (chiar dacă taskText = taskTitle)
   var noteEmpty=!(currentNote&&currentNote.trim());
+  var hasTaskText=!!(taskText&&taskText.trim());
   if(noteEmpty&&hasTaskText){
     // ── Picker inițial ──
     card.appendChild(titleEl);
