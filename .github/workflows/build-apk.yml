@@ -25,35 +25,33 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Init Bubblewrap project non-interactive
+      - name: Init and Build TWA
         run: |
           mkdir twa-build && cd twa-build
+
+          # Scrie config JDK pentru Bubblewrap (~/.bubblewrap/config.json)
+          mkdir -p ~/.bubblewrap
+          cat > ~/.bubblewrap/config.json << 'EOF'
+          {
+            "jdkPath": "/usr/lib/jvm/temurin-17-jdk-amd64",
+            "androidSdkPath": "/usr/local/lib/android/sdk"
+          }
+          EOF
+
+          # Init proiect
           bubblewrap init \
             --manifest "https://xpareto.github.io/Kanban/manifest.json" \
             --directory "." \
-            --skipPwaValidation \
-            --jdkPath "/usr/lib/jvm/temurin-17-jdk-amd64" \
-            --packageId "com.xpareto.kanban" \
-            --name "Project Board" \
-            --themeColor "#1A1D2E" \
-            --backgroundColor "#1A1D2E" \
-            --startUrl "/Kanban/" \
-            --iconUrl "https://xpareto.github.io/Kanban/icon-512.png" \
-            --maskableIconUrl "https://xpareto.github.io/Kanban/icon-512.png" \
-            --appVersion "55.0" \
-            --appVersionCode "55" \
-            --signingMode "skip" || true
+            --skipPwaValidation
 
-      - name: Build APK with gradle
-        working-directory: twa-build
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          # Build
+          bubblewrap build --skipPwaValidation
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ProjectBoard-V55
-          path: twa-build/app/build/outputs/apk/release/*.apk
+          path: twa-build/app-release-unsigned.apk
           if-no-files-found: warn
           retention-days: 30
+          
