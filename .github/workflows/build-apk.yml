@@ -7,71 +7,53 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-      - name: Create twa-manifest.json
+
+      - name: Init Bubblewrap project non-interactive
         run: |
-          mkdir twa-build
-          cat > twa-build/twa-manifest.json << 'EOF'
-          {
-            "packageId": "com.xpareto.Kanban",
-            "host": "xpareto.github.io",
-            "name": "Project Board",
-            "launcherName": "Project Board",
-            "display": "standalone",
-            "orientation": "portrait",
-            "themeColor": "#1A1D2E",
-            "navigationColor": "#1A1D2E",
-            "navigationColorDark": "#1A1D2E",
-            "navigationDividerColor": "#1A1D2E",
-            "navigationDividerColorDark": "#1A1D2E",
-            "backgroundColor": "#1A1D2E",
-            "enableNotifications": false,
-            "startUrl": "/kanban/",
-            "iconUrl": "https://xpareto.github.io/Kanban/icon-512.png",
-            "maskableIconUrl": "https://xpareto.github.io/Kanban/icon-512.png",
-            "monochromeIconUrl": "https://xpareto.github.io/Kanban/icon-192.png",
-            "appVersion": "55.0",
-            "appVersionCode": 55,
-            "signingMode": "skip",
-            "generatorApp": "bubblewrap-cli",
-            "webManifestUrl": "https://xpareto.github.io/Kanban/manifest.json",
-            "fallbackType": "customtabs",
-            "features": {
-              "locationDelegation": { "enabled": false },
-              "playBilling": { "enabled": false }
-            },
-            "alphaDependencies": { "enabled": false },
-            "enableSiteSettingsShortcut": true,
-            "isChromeOSOnly": false,
-            "isMetaQuest": false,
-            "fullScopeUrl": "https://xpareto.github.io/Kanban/",
-            "minSdkVersion": 21,
-            "fingerprints": []
-          }
-          EOF
-      - name: Build APK with Bubblewrap
+          mkdir twa-build && cd twa-build
+          bubblewrap init \
+            --manifest "https://xpareto.github.io/Kanban/manifest.json" \
+            --directory "." \
+            --skipPwaValidation \
+            --jdkPath "/usr/lib/jvm/temurin-17-jdk-amd64" \
+            --packageId "com.xpareto.kanban" \
+            --name "Project Board" \
+            --themeColor "#1A1D2E" \
+            --backgroundColor "#1A1D2E" \
+            --startUrl "/Kanban/" \
+            --iconUrl "https://xpareto.github.io/Kanban/icon-512.png" \
+            --maskableIconUrl "https://xpareto.github.io/Kanban/icon-512.png" \
+            --appVersion "55.0" \
+            --appVersionCode "55" \
+            --signingMode "skip" || true
+
+      - name: Build APK with gradle
         working-directory: twa-build
         run: |
-          JAVA_PATH=$(dirname $(dirname $(readlink -f $(which java))))
-          printf "n\n${JAVA_PATH}\n" | bubblewrap build --skipPwaValidation
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ProjectBoard-V55
-          path: |
-            twa-build/app-release-unsigned.apk
-            twa-build/app-release-signed.apk
+          path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
