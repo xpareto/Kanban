@@ -20,10 +20,47 @@ jobs:
         run: npm install -g @bubblewrap/cli
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-      - name: Create build directory with config
+      - name: Create twa-manifest.json
         run: |
           mkdir twa-build
-          cp twa-manifest.json twa-build/twa-manifest.json
+          cat > twa-build/twa-manifest.json << 'EOF'
+          {
+            "packageId": "com.xpareto.kanban",
+            "host": "xpareto.github.io",
+            "name": "Project Board",
+            "launcherName": "Project Board",
+            "display": "standalone",
+            "orientation": "portrait",
+            "themeColor": "#1A1D2E",
+            "navigationColor": "#1A1D2E",
+            "navigationColorDark": "#1A1D2E",
+            "navigationDividerColor": "#1A1D2E",
+            "navigationDividerColorDark": "#1A1D2E",
+            "backgroundColor": "#1A1D2E",
+            "enableNotifications": false,
+            "startUrl": "/kanban/",
+            "iconUrl": "https://xpareto.github.io/kanban/icon-512.png",
+            "maskableIconUrl": "https://xpareto.github.io/kanban/icon-512.png",
+            "monochromeIconUrl": "https://xpareto.github.io/kanban/icon-192.png",
+            "appVersion": "55.0",
+            "appVersionCode": 55,
+            "signingMode": "skip",
+            "generatorApp": "bubblewrap-cli",
+            "webManifestUrl": "https://xpareto.github.io/kanban/manifest.json",
+            "fallbackType": "customtabs",
+            "features": {
+              "locationDelegation": { "enabled": false },
+              "playBilling": { "enabled": false }
+            },
+            "alphaDependencies": { "enabled": false },
+            "enableSiteSettingsShortcut": true,
+            "isChromeOSOnly": false,
+            "isMetaQuest": false,
+            "fullScopeUrl": "https://xpareto.github.io/kanban/",
+            "minSdkVersion": 21,
+            "fingerprints": []
+          }
+          EOF
       - name: Build APK with Bubblewrap
         working-directory: twa-build
         run: bubblewrap build --skipPwaValidation
@@ -36,4 +73,5 @@ jobs:
             twa-build/app-release-signed.apk
           if-no-files-found: warn
           retention-days: 30
-       
+          
+          
