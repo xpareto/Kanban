@@ -25,7 +25,7 @@ jobs:
           mkdir twa-build
           cat > twa-build/twa-manifest.json << 'EOF'
           {
-            "packageId": "com.xpareto.kanban",
+            "packageId": "com.xpareto.Kanban",
             "host": "xpareto.github.io",
             "name": "Project Board",
             "launcherName": "Project Board",
@@ -39,14 +39,14 @@ jobs:
             "backgroundColor": "#1A1D2E",
             "enableNotifications": false,
             "startUrl": "/kanban/",
-            "iconUrl": "https://xpareto.github.io/kanban/icon-512.png",
-            "maskableIconUrl": "https://xpareto.github.io/kanban/icon-512.png",
-            "monochromeIconUrl": "https://xpareto.github.io/kanban/icon-192.png",
+            "iconUrl": "https://xpareto.github.io/Kanban/icon-512.png",
+            "maskableIconUrl": "https://xpareto.github.io/Kanban/icon-512.png",
+            "monochromeIconUrl": "https://xpareto.github.io/Kanban/icon-192.png",
             "appVersion": "55.0",
             "appVersionCode": 55,
             "signingMode": "skip",
             "generatorApp": "bubblewrap-cli",
-            "webManifestUrl": "https://xpareto.github.io/kanban/manifest.json",
+            "webManifestUrl": "https://xpareto.github.io/Kanban/manifest.json",
             "fallbackType": "customtabs",
             "features": {
               "locationDelegation": { "enabled": false },
@@ -56,16 +56,16 @@ jobs:
             "enableSiteSettingsShortcut": true,
             "isChromeOSOnly": false,
             "isMetaQuest": false,
-            "fullScopeUrl": "https://xpareto.github.io/kanban/",
+            "fullScopeUrl": "https://xpareto.github.io/Kanban/",
             "minSdkVersion": 21,
             "fingerprints": []
           }
           EOF
       - name: Build APK with Bubblewrap
         working-directory: twa-build
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
-        run: echo "n" | bubblewrap build --skipPwaValidation
+        run: |
+          JAVA_PATH=$(dirname $(dirname $(readlink -f $(which java))))
+          printf "n\n${JAVA_PATH}\n" | bubblewrap build --skipPwaValidation
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
