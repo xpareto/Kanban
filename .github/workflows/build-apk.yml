@@ -57,4 +57,3 @@ jobs:
           path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
-
