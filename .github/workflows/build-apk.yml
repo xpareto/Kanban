@@ -1,3 +1,4 @@
+# ProjectBoard TWA Build - versiunea 6 (fix AndroidX + comentariu versiune)
 name: Build Android APK (TWA)
 on:
   workflow_dispatch:
@@ -20,7 +21,6 @@ jobs:
       - name: Create TWA Android project
         run: |
           mkdir -p twa-build/app/src/main/res/values
-          mkdir -p twa-build/app/src/main/res/xml
           mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
 
           # settings.gradle
@@ -41,6 +41,13 @@ jobs:
           }
           rootProject.name = "ProjectBoard"
           include ':app'
+          EOF
+
+          # gradle.properties - fix AndroidX
+          cat > twa-build/gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m
           EOF
 
           # build.gradle (root)
@@ -134,3 +141,4 @@ jobs:
           path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
+          
