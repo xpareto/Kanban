@@ -14,44 +14,123 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli
-
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Init and Build TWA
+      - name: Create TWA Android project
         run: |
-          mkdir twa-build && cd twa-build
+          mkdir -p twa-build/app/src/main/res/values
+          mkdir -p twa-build/app/src/main/res/xml
+          mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
 
-          # Scrie config JDK pentru Bubblewrap (~/.bubblewrap/config.json)
-          mkdir -p ~/.bubblewrap
-          cat > ~/.bubblewrap/config.json << 'EOF'
-          {
-            "jdkPath": "/usr/lib/jvm/temurin-17-jdk-amd64",
-            "androidSdkPath": "/usr/local/lib/android/sdk"
+          # settings.gradle
+          cat > twa-build/settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ProjectBoard"
+          include ':app'
+          EOF
+
+          # build.gradle (root)
+          cat > twa-build/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application' version '8.2.0' apply false
           }
           EOF
 
-          # Init proiect
-          bubblewrap init \
-            --manifest "https://xpareto.github.io/Kanban/manifest.json" \
-            --directory "." \
-            --skipPwaValidation
+          # app/build.gradle
+          cat > twa-build/app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.xpareto.kanban'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.xpareto.kanban'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 55
+                  versionName '55.0'
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+          }
+          dependencies {
+              implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+          }
+          EOF
 
-          # Build
-          bubblewrap build --skipPwaValidation
+          # AndroidManifest.xml
+          cat > twa-build/app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:label="Project Board"
+                  android:theme="@style/AppTheme"
+                  android:allowBackup="true">
+                  <activity
+                      android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+                      android:exported="true">
+                      <meta-data
+                          android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                          android:value="https://xpareto.github.io/Kanban/"/>
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.VIEW"/>
+                          <category android:name="android.intent.category.DEFAULT"/>
+                          <category android:name="android.intent.category.BROWSABLE"/>
+                          <data android:scheme="https"
+                              android:host="xpareto.github.io"
+                              android:pathPrefix="/Kanban/"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # styles.xml
+          cat > twa-build/app/src/main/res/values/styles.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.NoTitleBar">
+                  <item name="android:windowBackground">#1A1D2E</item>
+                  <item name="android:statusBarColor">#1A1D2E</item>
+              </style>
+          </resources>
+          EOF
+
+          # gradle wrapper
+          cd twa-build
+          gradle wrapper --gradle-version 8.4
+
+      - name: Build APK
+        working-directory: twa-build
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ProjectBoard-V55
-          path: twa-build/app-release-unsigned.apk
+          path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
-          
