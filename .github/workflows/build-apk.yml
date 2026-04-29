@@ -1,4 +1,4 @@
-# ProjectBoard TWA Build - versiunea 6 (fix AndroidX + comentariu versiune)
+# ProjectBoard TWA Build - versiunea 7 (signing cu keytool)
 name: Build Android APK (TWA)
 on:
   workflow_dispatch:
@@ -23,7 +23,6 @@ jobs:
           mkdir -p twa-build/app/src/main/res/values
           mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
 
-          # settings.gradle
           cat > twa-build/settings.gradle << 'EOF'
           pluginManagement {
               repositories {
@@ -43,21 +42,18 @@ jobs:
           include ':app'
           EOF
 
-          # gradle.properties - fix AndroidX
           cat > twa-build/gradle.properties << 'EOF'
           android.useAndroidX=true
           android.enableJetifier=true
           org.gradle.jvmargs=-Xmx2048m
           EOF
 
-          # build.gradle (root)
           cat > twa-build/build.gradle << 'EOF'
           plugins {
               id 'com.android.application' version '8.2.0' apply false
           }
           EOF
 
-          # app/build.gradle
           cat > twa-build/app/build.gradle << 'EOF'
           plugins {
               id 'com.android.application'
@@ -75,6 +71,7 @@ jobs:
               buildTypes {
                   release {
                       minifyEnabled false
+                      signingConfig signingConfigs.getByName("debug")
                   }
               }
           }
@@ -83,7 +80,6 @@ jobs:
           }
           EOF
 
-          # AndroidManifest.xml
           cat > twa-build/app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -115,7 +111,6 @@ jobs:
           </manifest>
           EOF
 
-          # styles.xml
           cat > twa-build/app/src/main/res/values/styles.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
@@ -126,7 +121,6 @@ jobs:
           </resources>
           EOF
 
-          # gradle wrapper
           cd twa-build
           gradle wrapper --gradle-version 8.4
 
@@ -141,4 +135,3 @@ jobs:
           path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
-          
