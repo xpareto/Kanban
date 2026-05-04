@@ -7,7 +7,15 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V55</title>
+<title>Project Board V57</title>
+<meta property="og:title" content="Project Board"/>
+<meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
+<meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
+<meta property="og:url" content="https://xpareto.github.io/Kanban/"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
+<link rel="apple-touch-icon" href="https://xpareto.github.io/Kanban/icon-192.png"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans','Segoe UI',sans-serif;background:#F7F8FA;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -143,6 +151,11 @@ input{font-family:inherit;outline:none}
 .note-ta{background:#0F1117;color:#E2E8F0;border:1px solid #374151;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6;resize:none;outline:none;flex:1;min-height:120px;font-family:inherit}
 .note-ta:focus{border-color:#F59E0B}
 .note-btns{display:flex;gap:8px}
+.note-links{margin-top:8px;padding-top:8px;border-top:1px solid #2D3048;display:flex;flex-direction:column;gap:5px}
+.note-link-item{display:flex;align-items:center;gap:6px;background:#0F1117;border-radius:6px;padding:6px 9px;text-decoration:none;color:#60A5FA;font-size:12px;font-family:inherit;overflow:hidden}
+.note-link-item:active{background:#1A2035}
+.note-link-icon{font-size:13px;flex-shrink:0}
+.note-link-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 </style>
 </head>
 <body>
@@ -869,6 +882,12 @@ async function calCheckAndFetch(){
   // Dacă ziua e marcată ca colectată, dar nu există niciun eveniment cal:: → nu a reușit de fapt
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs) return; // deja colectat cu succes azi
+  // Zi nouă: șterge evenimentele de calendar din ziua precedentă
+  if(lastDay!==today && lastDay!==''){
+    S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
+    S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  }
   if(_calFetchInProgress) return;
   _calFetchInProgress=true;
   var token=calGetToken();
@@ -1925,6 +1944,54 @@ function doClrShareJournal(){
 
 // ── Note overlay — editare notă atașată unui task ──
 // saveFn(newNote) — callback care salvează nota în obiectul corect
+
+function extractLinks(text){
+  if(!text) return {plain:'',links:[]};
+  var urlRe=/(https?:\/\/[^\s]+)/g;
+  var links=[];var m;
+  while((m=urlRe.exec(text))!==null) links.push(m[1]);
+  var plain=text.replace(urlRe,'').replace(/\n{3,}/g,'\n\n').trim();
+  return {plain:plain,links:links};
+}
+
+function truncateUrl(url,max){
+  max=max||55;
+  if(url.length<=max) return url;
+  return url.slice(0,max)+'…';
+}
+
+function renderNotePreview(container, noteText){
+  // Clear previous preview
+  var old=container.querySelector('.note-preview-area');
+  if(old) old.remove();
+  if(!noteText||!noteText.trim()) return;
+  var parsed=extractLinks(noteText);
+  var area=document.createElement('div');
+  area.className='note-preview-area';
+  area.style.cssText='margin-top:8px;padding:8px 10px;background:#0F1117;border-radius:8px;border:1px solid #2D3048;font-size:12px;color:#CBD5E1;line-height:1.6;word-break:break-word;max-height:100px;overflow-y:auto';
+  if(parsed.plain){
+    var pt=document.createElement('div');
+    pt.style.cssText='white-space:pre-wrap;margin-bottom:'+(parsed.links.length?'6px':'0');
+    pt.textContent=parsed.plain.length>120?parsed.plain.slice(0,120)+'…':parsed.plain;
+    area.appendChild(pt);
+  }
+  if(parsed.links.length){
+    var lc=document.createElement('div');
+    lc.className='note-links';
+    parsed.links.forEach(function(url){
+      var a=document.createElement('a');
+      a.className='note-link-item';
+      a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+      var ic=document.createElement('span');ic.className='note-link-icon';ic.textContent='🔗';
+      var ut=document.createElement('span');ut.className='note-link-url';ut.textContent=truncateUrl(url);
+      a.appendChild(ic);a.appendChild(ut);
+      lc.appendChild(a);
+    });
+    area.appendChild(lc);
+  }
+  container.appendChild(area);
+}
+
 function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   var ov=document.createElement('div');
   ov.className='note-ov';
@@ -1983,6 +2050,12 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ta.placeholder='Scrie orice notă, link, detalii…';
   ta.rows=6;
 
+  // Live preview area
+  var previewArea=document.createElement('div');
+  previewArea.id='note-preview-live';
+  renderNotePreview(previewArea, ta.value);
+  ta.addEventListener('input',function(){renderNotePreview(previewArea,ta.value);});
+
   var btns=document.createElement('div');
   btns.className='note-btns';
 
@@ -2005,7 +2078,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
 
   btns.appendChild(bSave);btns.appendChild(bCancel);
-  card.appendChild(titleEl);card.appendChild(ta);card.appendChild(btns);
+  card.appendChild(titleEl);card.appendChild(ta);card.appendChild(previewArea);card.appendChild(btns);
   ov.appendChild(card);
   document.body.appendChild(ov);
   setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
