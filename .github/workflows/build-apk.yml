@@ -1,4 +1,4 @@
-# ProjectBoard TWA Build - versiunea 7 (signing cu keytool)
+# ProjectBoard TWA Build - versiunea 8 (iconite incluse in APK)
 name: Build Android APK (TWA)
 on:
   workflow_dispatch:
@@ -20,8 +20,27 @@ jobs:
 
       - name: Create TWA Android project
         run: |
+          mkdir -p twa-build/app/src/main/res/mipmap-hdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-mdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xhdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xxhdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xxxhdpi
           mkdir -p twa-build/app/src/main/res/values
           mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
+
+          # Descarcă iconițele din GitHub Pages
+          curl -L "https://xpareto.github.io/Kanban/icon-512.png" -o /tmp/icon-512.png
+          curl -L "https://xpareto.github.io/Kanban/icon-192.png" -o /tmp/icon-192.png
+
+          # Instalează ImageMagick pentru resize
+          sudo apt-get install -y imagemagick -q
+
+          # Generează toate dimensiunile necesare
+          convert /tmp/icon-512.png -resize 48x48   twa-build/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert /tmp/icon-512.png -resize 72x72   twa-build/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert /tmp/icon-512.png -resize 96x96   twa-build/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert /tmp/icon-512.png -resize 144x144 twa-build/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert /tmp/icon-512.png -resize 192x192 twa-build/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
           cat > twa-build/settings.gradle << 'EOF'
           pluginManagement {
@@ -65,8 +84,8 @@ jobs:
                   applicationId 'com.xpareto.kanban'
                   minSdk 21
                   targetSdk 34
-                  versionCode 55
-                  versionName '55.0'
+                  versionCode 57
+                  versionName '57.0'
               }
               buildTypes {
                   release {
@@ -86,6 +105,8 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET"/>
               <application
                   android:label="Project Board"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher"
                   android:theme="@style/AppTheme"
                   android:allowBackup="true">
                   <activity
@@ -131,7 +152,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ProjectBoard-V55
+          name: ProjectBoard-V57
           path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
