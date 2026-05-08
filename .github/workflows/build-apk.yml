@@ -1,4 +1,4 @@
-# ProjectBoard TWA Build - versiunea 8 (iconite incluse in APK)
+# ProjectBoard TWA Build - versiunea 9 (iconite din repo)
 name: Build Android APK (TWA)
 on:
   workflow_dispatch:
@@ -18,29 +18,28 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
+      - name: Install ImageMagick
+        run: sudo apt-get install -y imagemagick -q
+
       - name: Create TWA Android project
         run: |
-          mkdir -p twa-build/app/src/main/res/mipmap-hdpi
           mkdir -p twa-build/app/src/main/res/mipmap-mdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-hdpi
           mkdir -p twa-build/app/src/main/res/mipmap-xhdpi
           mkdir -p twa-build/app/src/main/res/mipmap-xxhdpi
           mkdir -p twa-build/app/src/main/res/mipmap-xxxhdpi
           mkdir -p twa-build/app/src/main/res/values
           mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
 
-          # Descarcă iconițele din GitHub Pages
-          curl -L "https://xpareto.github.io/Kanban/icon-512.png" -o /tmp/icon-512.png
-          curl -L "https://xpareto.github.io/Kanban/icon-192.png" -o /tmp/icon-192.png
+          # Iconite din repo (nu download)
+          convert icon-512.png -resize 48x48   twa-build/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert icon-512.png -resize 72x72   twa-build/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert icon-512.png -resize 96x96   twa-build/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert icon-512.png -resize 144x144 twa-build/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert icon-512.png -resize 192x192 twa-build/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
-          # Instalează ImageMagick pentru resize
-          sudo apt-get install -y imagemagick -q
-
-          # Generează toate dimensiunile necesare
-          convert /tmp/icon-512.png -resize 48x48   twa-build/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          convert /tmp/icon-512.png -resize 72x72   twa-build/app/src/main/res/mipmap-hdpi/ic_launcher.png
-          convert /tmp/icon-512.png -resize 96x96   twa-build/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          convert /tmp/icon-512.png -resize 144x144 twa-build/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-          convert /tmp/icon-512.png -resize 192x192 twa-build/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          # Verificare
+          ls -la twa-build/app/src/main/res/mipmap-xxxhdpi/
 
           cat > twa-build/settings.gradle << 'EOF'
           pluginManagement {
@@ -84,8 +83,8 @@ jobs:
                   applicationId 'com.xpareto.kanban'
                   minSdk 21
                   targetSdk 34
-                  versionCode 57
-                  versionName '57.0'
+                  versionCode 58
+                  versionName '58.0'
               }
               buildTypes {
                   release {
@@ -152,7 +151,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ProjectBoard-V57
+          name: ProjectBoard-V58
           path: twa-build/app/build/outputs/apk/release/*.apk
           if-no-files-found: warn
           retention-days: 30
