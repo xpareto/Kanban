@@ -1,4 +1,4 @@
-# ProjectBoard TWA Build - versiunea 9 (iconite din repo)
+# ProjectBoard TWA Build - versiunea 9 (iconite aduse din repo)
 name: Build Android APK (TWA)
 on:
   workflow_dispatch:
