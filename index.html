@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V57</title>
+<title>Project Board V58</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -151,11 +151,6 @@ input{font-family:inherit;outline:none}
 .note-ta{background:#0F1117;color:#E2E8F0;border:1px solid #374151;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.6;resize:none;outline:none;flex:1;min-height:120px;font-family:inherit}
 .note-ta:focus{border-color:#F59E0B}
 .note-btns{display:flex;gap:8px}
-.note-links{margin-top:8px;padding-top:8px;border-top:1px solid #2D3048;display:flex;flex-direction:column;gap:5px}
-.note-link-item{display:flex;align-items:center;gap:6px;background:#0F1117;border-radius:6px;padding:6px 9px;text-decoration:none;color:#60A5FA;font-size:12px;font-family:inherit;overflow:hidden}
-.note-link-item:active{background:#1A2035}
-.note-link-icon{font-size:13px;flex-shrink:0}
-.note-link-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 </style>
 </head>
 <body>
@@ -615,6 +610,7 @@ async function fbSync(){
 }
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
+const CAL_PREF_KEY='pb-cal-pref-id';
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
 const CAL_CK='pb-cal-token-v1',CAL_DK='pb-cal-day-v1',CAL_EK='pb-cal-events-v1';
 const GCAL_CLIENT_ID='679630226914-8sftsbf2gqu7hhv82jn8rc9q51j94pha.apps.googleusercontent.com';
@@ -740,14 +736,26 @@ async function calFetchEvents(token){
   var headers={Authorization:'Bearer '+token};
 
   // 1. Obține lista tuturor calendarelor accesibile
-  var calIds=['primary']; // fallback dacă calendarList eșuează
+  var calIds=['primary']; // fallback
+  var allCalItems=[];
   try{
     var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
     if(listResp.status===401){calClearToken();return null;}
     if(listResp.ok){
       var listData=await listResp.json();
-      calIds=(listData.items||[]).map(function(c){return c.id;});
-      if(!calIds.length) calIds=['primary'];
+      allCalItems=(listData.items||[]);
+      // Verifică dacă există preferință salvată
+      var prefId=localStorage.getItem(CAL_PREF_KEY);
+      if(prefId && allCalItems.find(function(x){return x.id===prefId;})){
+        calIds=[prefId]; // folosește doar calendarul preferat
+      } else {
+        calIds=allCalItems.map(function(x){return x.id;});
+        if(!calIds.length) calIds=['primary'];
+        // Salvează primul calendar non-holidays ca preferință implicită
+        var firstPref=allCalItems.find(function(x){return x.id!=='#holidays@group.v.calendar.google.com' && x.id!=='primary';});
+        if(!firstPref) firstPref=allCalItems[0];
+        if(firstPref) localStorage.setItem(CAL_PREF_KEY, firstPref.id);
+      }
     }
   }catch(_){}
 
@@ -898,7 +906,7 @@ async function calCheckAndFetch(){
     if(shownToday!==today){
       localStorage.setItem('pb-cal-info-shown',today);
       setTimeout(function(){
-        fbToast('📅 Calendar Google nedconectat. Apasă 📅 din meniu pentru a conecta.','#1E2130','#6B7280',4000);
+        fbToast('📅 Calendar Google neconectat. Apasă 📅 din meniu pentru a conecta.','#1E2130','#6B7280',4000);
       },1200);
     }
     return;
@@ -1206,6 +1214,9 @@ function archProj(id){
 }
 function delSec(id){S.items=S.items.filter(x=>x.id!==id);save();render();}
 function delTask(pid,tid){
+  const proj=S.items.find(x=>x.id===pid);
+  const task=proj?(proj.tasks||[]).find(t=>t.id===tid):null;
+  if(task) je({kind:'task-delete',taskName:task.name,projectName:proj?proj.name:'',note:task.note||'',pid:pid,tid:tid,taskSnap:JSON.stringify(task),ts:Date.now()});
   S.nextOrder=S.nextOrder.filter(x=>!(x.type==='proj'&&x.projectId===pid&&x.taskId===tid));lw(NK,S.nextOrder);
   S.waitOrder=S.waitOrder.filter(x=>!(x.type==='proj'&&x.projectId===pid&&x.taskId===tid));lw(WK,S.waitOrder);
   S.items=S.items.map(x=>x.id===pid?{...x,tasks:x.tasks.filter(t=>t.id!==tid)}:x);save();render();
@@ -1281,7 +1292,7 @@ function checkSlashW(name, taskId, projectId){
 }
 
 function delFree(id){
-  const f=S.freeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,ts:Date.now()});
+  const f=S.freeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,note:f.note||'',ts:Date.now()});
   S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
   S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
@@ -1944,54 +1955,6 @@ function doClrShareJournal(){
 
 // ── Note overlay — editare notă atașată unui task ──
 // saveFn(newNote) — callback care salvează nota în obiectul corect
-
-function extractLinks(text){
-  if(!text) return {plain:'',links:[]};
-  var urlRe=/(https?:\/\/[^\s]+)/g;
-  var links=[];var m;
-  while((m=urlRe.exec(text))!==null) links.push(m[1]);
-  var plain=text.replace(urlRe,'').replace(/\n{3,}/g,'\n\n').trim();
-  return {plain:plain,links:links};
-}
-
-function truncateUrl(url,max){
-  max=max||55;
-  if(url.length<=max) return url;
-  return url.slice(0,max)+'…';
-}
-
-function renderNotePreview(container, noteText){
-  // Clear previous preview
-  var old=container.querySelector('.note-preview-area');
-  if(old) old.remove();
-  if(!noteText||!noteText.trim()) return;
-  var parsed=extractLinks(noteText);
-  var area=document.createElement('div');
-  area.className='note-preview-area';
-  area.style.cssText='margin-top:8px;padding:8px 10px;background:#0F1117;border-radius:8px;border:1px solid #2D3048;font-size:12px;color:#CBD5E1;line-height:1.6;word-break:break-word;max-height:100px;overflow-y:auto';
-  if(parsed.plain){
-    var pt=document.createElement('div');
-    pt.style.cssText='white-space:pre-wrap;margin-bottom:'+(parsed.links.length?'6px':'0');
-    pt.textContent=parsed.plain.length>120?parsed.plain.slice(0,120)+'…':parsed.plain;
-    area.appendChild(pt);
-  }
-  if(parsed.links.length){
-    var lc=document.createElement('div');
-    lc.className='note-links';
-    parsed.links.forEach(function(url){
-      var a=document.createElement('a');
-      a.className='note-link-item';
-      a.href=url;a.target='_blank';a.rel='noopener noreferrer';
-      var ic=document.createElement('span');ic.className='note-link-icon';ic.textContent='🔗';
-      var ut=document.createElement('span');ut.className='note-link-url';ut.textContent=truncateUrl(url);
-      a.appendChild(ic);a.appendChild(ut);
-      lc.appendChild(a);
-    });
-    area.appendChild(lc);
-  }
-  container.appendChild(area);
-}
-
 function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   var ov=document.createElement('div');
   ov.className='note-ov';
@@ -2050,12 +2013,6 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ta.placeholder='Scrie orice notă, link, detalii…';
   ta.rows=6;
 
-  // Live preview area
-  var previewArea=document.createElement('div');
-  previewArea.id='note-preview-live';
-  renderNotePreview(previewArea, ta.value);
-  ta.addEventListener('input',function(){renderNotePreview(previewArea,ta.value);});
-
   var btns=document.createElement('div');
   btns.className='note-btns';
 
@@ -2078,7 +2035,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
 
   btns.appendChild(bSave);btns.appendChild(bCancel);
-  card.appendChild(titleEl);card.appendChild(ta);card.appendChild(previewArea);card.appendChild(btns);
+  card.appendChild(titleEl);card.appendChild(ta);card.appendChild(btns);
   ov.appendChild(card);
   document.body.appendChild(ov);
   setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
@@ -2133,10 +2090,42 @@ function rJournal(){
     var searchText=((e.taskName||'')+(e.projectName||'')+(e.kind||'')).toLowerCase();
     el.dataset.jsearch=searchText;
     if(e.kind==='project-archive'){el.style.cssText='background:#FFF8EC;border-left:4px solid #F59E0B';el.innerHTML='<div><span style="font-weight:700;font-size:13px">📁 '+e.projectName+'</span><span class="jdate">arhivat '+fmt(e.ts)+'</span></div>';(e.tasks||[]).forEach(t=>{const d=div('jtask');d.textContent='• '+t.name+' ['+CN[t.status]+']';el.appendChild(d);});}
+    else if(e.kind==='task-delete'){
+      el.style.background='#FEF2F2';
+      const d=div('jtask');
+      var noteHtml2=e.note?'<div style="font-size:10px;color:#9CA3AF;margin-top:3px;white-space:pre-wrap">📝 '+e.note.slice(0,120)+(e.note.length>120?'…':'')+'</div>':'';
+      d.innerHTML='🗑 <strong>'+e.taskName+'</strong> ['+(e.projectName||pn[e.pid]||'')+']<span class="jdate"> · '+fmt(e.ts)+'</span>'+noteHtml2;
+      var rb2=document.createElement('button');
+      rb2.textContent='↩ Refă';
+      rb2.style.cssText='margin-top:5px;background:#1E3A2F;border:1px solid #10B981;color:#34D399;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer';
+      rb2.onclick=function(){
+        if(!e.pid||!e.taskSnap){fbToast('Date insuficiente pentru refacere','#1E2130','#F87171',3000);return;}
+        var proj=S.items.find(x=>x.id===e.pid);
+        if(!proj){fbToast('Proiectul nu mai există','#1E2130','#F87171',3000);return;}
+        try{var t=JSON.parse(e.taskSnap);t.id=gid();t.ts=Date.now();proj.tasks=[...proj.tasks,t];save();render();}catch(_){}
+      };
+      d.appendChild(rb2);el.appendChild(d);
+    }
     else if(e.kind==='task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> → '+CN[e.colId]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='task-move'){const d=div('jmove');d.innerHTML='↔ <strong>'+e.taskName+'</strong>: '+CN[e.fromCol]+' → '+CN[e.toCol]+'<span class="jdate"> · '+(pn[e.projectId]||'')+' · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     else if(e.kind==='free-task-create'){const d=div('jtask');d.innerHTML='➕ <strong>'+e.taskName+'</strong> [Next liber]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
-    else if(e.kind==='free-task-delete'){el.style.background='#FEF2F2';const d=div('jtask');d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Next liber șters]<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
+    else if(e.kind==='free-task-delete'){
+      el.style.background='#FEF2F2';
+      const d=div('jtask');
+      var noteHtml=e.note?'<div style="font-size:10px;color:#9CA3AF;margin-top:3px;white-space:pre-wrap">📝 '+e.note.slice(0,120)+(e.note.length>120?'…':'')+'</div>':'';
+      d.innerHTML='🗑 <strong>'+e.taskName+'</strong> [Next liber șters]<span class="jdate"> · '+fmt(e.ts)+'</span>'+noteHtml;
+      // Buton Restore
+      var rb=document.createElement('button');
+      rb.textContent='↩ Refă';
+      rb.style.cssText='margin-top:5px;background:#1E3A2F;border:1px solid #10B981;color:#34D399;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer';
+      rb.onclick=function(){
+        var ft={id:gid(),name:e.taskName,note:e.note||'',ts:Date.now(),modifiedTs:Date.now()};
+        S.freeTasks.push(ft);S.nextOrder.push({type:'free',id:ft.id});
+        lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
+      };
+      d.appendChild(rb);
+      el.appendChild(d);
+    }
     else if(e.kind==='share-receive'||e.kind==='share-delete'){return;}
     else if(e.kind==='project-create'){el.style.background='#F0FDF4';const d=div('jtask');d.innerHTML='⊞ Proiect nou: <strong>'+e.projectName+'</strong>'+(e.fromFree!==e.projectName?' [from: '+e.fromFree+']':'')+'<span class="jdate"> · '+fmt(e.ts)+'</span>';el.appendChild(d);}
     jd.appendChild(el);
@@ -2613,6 +2602,7 @@ function rBoard(){
           var navTimer=null;var inEditMode=false;
           row.addEventListener('click',function(e){if(e.target&&e.target.tagName==='INPUT')return;if(inEditMode)return;clearTimeout(navTimer);navTimer=setTimeout(function(){if(!inEditMode)doNav();},300);});
           row.addEventListener('dblclick',function(e){if(e.target&&e.target.tagName==='INPUT')return;clearTimeout(navTimer);navTimer=null;inEditMode=true;doEdit(e);});
+          row.addEventListener('blur',function(){setTimeout(function(){inEditMode=false;},200);},true);
         })(r, targetId);
 
         srpBody.appendChild(row);

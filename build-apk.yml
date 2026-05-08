@@ -1,0 +1,157 @@
+# ProjectBoard TWA Build - versiunea 9 (iconite din repo)
+name: Build Android APK (TWA)
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Install ImageMagick
+        run: sudo apt-get install -y imagemagick -q
+
+      - name: Create TWA Android project
+        run: |
+          mkdir -p twa-build/app/src/main/res/mipmap-mdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-hdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xhdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xxhdpi
+          mkdir -p twa-build/app/src/main/res/mipmap-xxxhdpi
+          mkdir -p twa-build/app/src/main/res/values
+          mkdir -p twa-build/app/src/main/java/com/xpareto/kanban
+
+          # Iconite din repo (nu download)
+          convert icon-512.png -resize 48x48   twa-build/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert icon-512.png -resize 72x72   twa-build/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert icon-512.png -resize 96x96   twa-build/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert icon-512.png -resize 144x144 twa-build/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert icon-512.png -resize 192x192 twa-build/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          # Verificare
+          ls -la twa-build/app/src/main/res/mipmap-xxxhdpi/
+
+          cat > twa-build/settings.gradle << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ProjectBoard"
+          include ':app'
+          EOF
+
+          cat > twa-build/gradle.properties << 'EOF'
+          android.useAndroidX=true
+          android.enableJetifier=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
+          cat > twa-build/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application' version '8.2.0' apply false
+          }
+          EOF
+
+          cat > twa-build/app/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.xpareto.kanban'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.xpareto.kanban'
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 58
+                  versionName '58.0'
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.getByName("debug")
+                  }
+              }
+          }
+          dependencies {
+              implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+          }
+          EOF
+
+          cat > twa-build/app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:label="Project Board"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher"
+                  android:theme="@style/AppTheme"
+                  android:allowBackup="true">
+                  <activity
+                      android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+                      android:exported="true">
+                      <meta-data
+                          android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                          android:value="https://xpareto.github.io/Kanban/"/>
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                      <intent-filter android:autoVerify="true">
+                          <action android:name="android.intent.action.VIEW"/>
+                          <category android:name="android.intent.category.DEFAULT"/>
+                          <category android:name="android.intent.category.BROWSABLE"/>
+                          <data android:scheme="https"
+                              android:host="xpareto.github.io"
+                              android:pathPrefix="/Kanban/"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > twa-build/app/src/main/res/values/styles.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:Theme.NoTitleBar">
+                  <item name="android:windowBackground">#1A1D2E</item>
+                  <item name="android:statusBarColor">#1A1D2E</item>
+              </style>
+          </resources>
+          EOF
+
+          cd twa-build
+          gradle wrapper --gradle-version 8.4
+
+      - name: Build APK
+        working-directory: twa-build
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProjectBoard-V58
+          path: twa-build/app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+          retention-days: 30
