@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V58</title>
+<title>Project Board V59</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -695,15 +695,10 @@ function calLogin(){
     redirect_uri:GCAL_REDIRECT,
     response_type:'token',
     scope:GCAL_SCOPE,
-    state:state
+    state:state,
+    prompt: savedEmail ? 'none' : 'select_account'
   };
-  // Dacă avem email memorat → pre-selectează contul, fără ecran de selecție
-  if(savedEmail){
-    p.login_hint=savedEmail;
-    p.prompt='none'; // încearcă silent; dacă eșuează Google va afișa oricum UI
-  } else {
-    p.prompt='select_account';
-  }
+  if(savedEmail) p.login_hint=savedEmail;
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
 
@@ -718,7 +713,9 @@ function calHandleCallback(){
   history.replaceState({},'',window.location.pathname+window.location.search);
   if(!token) return false;
   calSaveToken(token,expiresIn);
-  // Fetch email din tokeninfo — îl salvăm pentru login_hint la re-autorizare
+  // Șterge CAL_DK ca să forțeze re-fetch imediat după reconectare
+  localStorage.removeItem(CAL_DK);
+  // Fetch email din tokeninfo
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
     .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
@@ -898,26 +895,27 @@ async function calCheckAndFetch(){
   }
   if(_calFetchInProgress) return;
   _calFetchInProgress=true;
-  var token=calGetToken();
-  if(!token){
-    _calFetchInProgress=false;
-    // Mesaj discret doar la prima lansare a zilei (nu la fiecare render)
-    var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
-    if(shownToday!==today){
-      localStorage.setItem('pb-cal-info-shown',today);
-      setTimeout(function(){
-        fbToast('📅 Calendar Google neconectat. Apasă 📅 din meniu pentru a conecta.','#1E2130','#6B7280',4000);
-      },1200);
+  try{
+    var token=calGetToken();
+    if(!token){
+      // Mesaj discret doar o dată pe zi
+      var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
+      if(shownToday!==today){
+        localStorage.setItem('pb-cal-info-shown',today);
+        setTimeout(function(){
+          fbToast('📅 Calendar Google neconectat. Apasă 📅 din meniu pentru a conecta.','#1E2130','#6B7280',4000);
+        },1200);
+      }
+      return;
     }
-    return;
+    var events=await calFetchEvents(token);
+    if(events===null) return; // token expirat — NU scriem CAL_DK
+    calInjectEvents(events);
+    localStorage.setItem(CAL_DK,today);
+    render();
+  } finally {
+    _calFetchInProgress=false;
   }
-  var events=await calFetchEvents(token);
-  _calFetchInProgress=false;
-  if(events===null) return; // eroare sau token expirat — NU scriem CAL_DK
-  calInjectEvents(events);
-  // Scriem CAL_DK doar acum, după inject reușit
-  localStorage.setItem(CAL_DK,today);
-  render();
 }
 
 // Buton deconectare calendar
