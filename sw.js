@@ -1,4 +1,4 @@
-//v60
+//v60.  
 var CACHE = 'projectboard-v60';
 var FILES = [
   '/index.html',
