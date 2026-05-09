@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V59</title>
+<title>Project Board V60</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -686,7 +686,7 @@ function calSaveToken(access_token, expires_in, email){
 function calClearToken(){localStorage.removeItem(CAL_CK);}
 
 // Pornește fluxul OAuth — redirect la Google
-function calLogin(){
+function calLogin(forceSelect){
   var state=Math.random().toString(36).substr(2,10);
   sessionStorage.setItem('cal_oauth_state',state);
   var savedEmail=localStorage.getItem('pb-cal-email')||'';
@@ -695,27 +695,52 @@ function calLogin(){
     redirect_uri:GCAL_REDIRECT,
     response_type:'token',
     scope:GCAL_SCOPE,
-    state:state,
-    prompt: savedEmail ? 'none' : 'select_account'
+    state:state
   };
-  if(savedEmail) p.login_hint=savedEmail;
+  if(!forceSelect && savedEmail){
+    p.login_hint=savedEmail;
+    p.prompt='none'; // silent refresh
+  } else {
+    p.prompt='select_account';
+    if(savedEmail) p.login_hint=savedEmail;
+  }
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
 
 // Procesează token-ul din URL hash după redirect OAuth
 function calHandleCallback(){
   var hash=window.location.hash;
-  if(!hash||hash.indexOf('access_token')<0) return false;
+  if(!hash) return false;
   var params=new URLSearchParams(hash.replace(/^#/,''));
+  // Detectează eroare OAuth (ex: interaction_required când prompt:none eșuează)
+  var oauthError=params.get('error');
+  if(oauthError){
+    history.replaceState({},'',window.location.pathname+window.location.search);
+    // Silent login a eșuat → retry cu select_account
+    if(oauthError==='interaction_required'||oauthError==='login_required'||oauthError==='consent_required'){
+      // Mică întârziere ca pagina să se încarce complet
+      setTimeout(function(){
+        var state2=Math.random().toString(36).substr(2,10);
+        sessionStorage.setItem('cal_oauth_state',state2);
+        var savedEmail=localStorage.getItem('pb-cal-email')||'';
+        var p2={client_id:GCAL_CLIENT_ID,redirect_uri:GCAL_REDIRECT,
+                response_type:'token',scope:GCAL_SCOPE,
+                state:state2,prompt:'select_account'};
+        if(savedEmail) p2.login_hint=savedEmail;
+        window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p2).toString();
+      },500);
+    }
+    return false;
+  }
+  if(hash.indexOf('access_token')<0) return false;
   var token=params.get('access_token');
   var expiresIn=params.get('expires_in')||3600;
-  var state=params.get('state');
   history.replaceState({},'',window.location.pathname+window.location.search);
   if(!token) return false;
   calSaveToken(token,expiresIn);
-  // Șterge CAL_DK ca să forțeze re-fetch imediat după reconectare
-  localStorage.removeItem(CAL_DK);
-  // Fetch email din tokeninfo
+  // Șterge CAL_DK → fetch imediat după reconectare
+  localStorage.removeItem('pb-cal-dk');
+  // Fetch email
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
     .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
@@ -898,7 +923,6 @@ async function calCheckAndFetch(){
   try{
     var token=calGetToken();
     if(!token){
-      // Mesaj discret doar o dată pe zi
       var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
       if(shownToday!==today){
         localStorage.setItem('pb-cal-info-shown',today);
@@ -909,10 +933,17 @@ async function calCheckAndFetch(){
       return;
     }
     var events=await calFetchEvents(token);
-    if(events===null) return; // token expirat — NU scriem CAL_DK
+    if(events===null){
+      // Token expirat → încearcă reconectare silențioasă
+      localStorage.removeItem('pb-cal-dk');
+      calLogin();
+      return;
+    }
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
+  } catch(err){
+    console.error('calCheckAndFetch error:',err);
   } finally {
     _calFetchInProgress=false;
   }
