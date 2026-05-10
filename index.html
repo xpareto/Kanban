@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board  - V60</title>
+<title>Project Board V62</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -697,13 +697,10 @@ function calLogin(forceSelect){
     scope:GCAL_SCOPE,
     state:state
   };
-  if(!forceSelect && savedEmail){
-    p.login_hint=savedEmail;
-    p.prompt='none'; // silent refresh
-  } else {
-    p.prompt='select_account';
-    if(savedEmail) p.login_hint=savedEmail;
-  }
+  // Nu folosim prompt:none — pe Android/WebView cauzează bucle
+  // Folosim login_hint ca să pre-selecteze contul fără să mai ceară
+  p.prompt=forceSelect?'select_account':'consent';
+  if(savedEmail) p.login_hint=savedEmail;
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
 
@@ -716,20 +713,8 @@ function calHandleCallback(){
   var oauthError=params.get('error');
   if(oauthError){
     history.replaceState({},'',window.location.pathname+window.location.search);
-    // Silent login a eșuat → retry cu select_account
-    if(oauthError==='interaction_required'||oauthError==='login_required'||oauthError==='consent_required'){
-      // Mică întârziere ca pagina să se încarce complet
-      setTimeout(function(){
-        var state2=Math.random().toString(36).substr(2,10);
-        sessionStorage.setItem('cal_oauth_state',state2);
-        var savedEmail=localStorage.getItem('pb-cal-email')||'';
-        var p2={client_id:GCAL_CLIENT_ID,redirect_uri:GCAL_REDIRECT,
-                response_type:'token',scope:GCAL_SCOPE,
-                state:state2,prompt:'select_account'};
-        if(savedEmail) p2.login_hint=savedEmail;
-        window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p2).toString();
-      },500);
-    }
+    // Eroare OAuth — nu facem retry automat (evită bucle)
+    // Utilizatorul trebuie să apese manual butonul 📅
     return false;
   }
   if(hash.indexOf('access_token')<0) return false;
@@ -739,7 +724,7 @@ function calHandleCallback(){
   if(!token) return false;
   calSaveToken(token,expiresIn);
   // Șterge CAL_DK → fetch imediat după reconectare
-  localStorage.removeItem('pb-cal-dk');
+  localStorage.removeItem(CAL_DK);
   // Fetch email
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
@@ -935,7 +920,7 @@ async function calCheckAndFetch(){
     var events=await calFetchEvents(token);
     if(events===null){
       // Token expirat → încearcă reconectare silențioasă
-      localStorage.removeItem('pb-cal-dk');
+      localStorage.removeItem(CAL_DK);
       calLogin();
       return;
     }
