@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V66</title>
+<title>Project Board V67</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -777,35 +777,31 @@ async function calFetchEvents(token){
     });
   });
 
-  // 4. Filtrare
+  // 4. Filtrare — azi și mâine, fără recurențe zilnice/săptămânale
+  var todayF=calTodayStr();
+  var nowF=new Date();
+  var td2F=new Date(nowF.getFullYear(),nowF.getMonth(),nowF.getDate()+1);
+  var tomorrowF=td2F.getFullYear()+'-'+String(td2F.getMonth()+1).padStart(2,'0')+'-'+String(td2F.getDate()).padStart(2,'0');
   var events=allItems.filter(function(ev){
     if(!ev.summary||!ev.summary.trim()) return false;
-    // Ignoră Google Tasks auto-generate
     if(/^Tasks for\b/i.test(ev.summary.trim())) return false;
-    // Ignoră recurențe zilnice și săptămânale (prea mult zgomot)
+    // Exclude recurențe zilnice și săptămânale
     if(ev.recurrence){
-      var rrules=ev.recurrence.join(' ').toUpperCase();
-      if(rrules.indexOf('FREQ=DAILY')>-1 || rrules.indexOf('FREQ=WEEKLY')>-1) return false;
-    }
-    // Ignoră dacă e parte dintr-o serie recurentă zilnică/săptămânală
-    if(ev.recurringEventId){
-      // Nu avem info RRULE pe instanțe — excludem cele cu interval < 8 zile
-      // Detecție: dacă summary conține pattern de eveniment recurent comun
+      var rr=ev.recurrence.join(' ').toUpperCase();
+      if(rr.indexOf('FREQ=DAILY')>-1||rr.indexOf('FREQ=WEEKLY')>-1) return false;
     }
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
-    var todayS=calTodayStr();
-    var now2=new Date();
-    var td2=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()+2);
-    var tomorrowS=td2.getFullYear()+'-'+String(td2.getMonth()+1).padStart(2,'0')+'-'+String(td2.getDate()-1).padStart(2,'0');
-    // Exclude dacă încearcă după mâine
-    if(evStart > tomorrowS) return false;
-    // Exclude dacă s-a terminat înainte de azi
-    if(evEnd && evEnd < todayS) return false;
+    // Exclude după mâine
+    if(evStart > tomorrowF) return false;
+    // Exclude terminate înainte de azi
+    if(evEnd && evEnd < todayF) return false;
     return true;
   });
 
-  // Sortare după startTime (fetch din mai multe calendare poate fi neordonat)
+  fbToast('📅 '+events.length+' ev din '+allItems.length,'#0F2A1A','#34D399',3000);
+
+  // Sortare după startTime
   events.sort(function(a,b){
     var sa=(a.start&&(a.start.dateTime||a.start.date))||'';
     var sb=(b.start&&(b.start.dateTime||b.start.date))||'';
@@ -925,11 +921,11 @@ async function calCheckAndFetch(){
     }
     var events=await calFetchEvents(token);
     if(events===null){
-      // Token expirat → încearcă reconectare silențioasă
+      fbToast('📅 Token expirat — apasă 📅 pentru reconectare','#1E2130','#F87171',4000);
       localStorage.removeItem(CAL_DK);
-      calLogin();
-      return;
+      return; // NU face redirect automat
     }
+    fbToast('📅 '+events.length+' ev','#0F2A1A','#10B981',2000);
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
