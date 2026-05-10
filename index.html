@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V62</title>
+<title>Project Board V63</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -686,7 +686,7 @@ function calSaveToken(access_token, expires_in, email){
 function calClearToken(){localStorage.removeItem(CAL_CK);}
 
 // Pornește fluxul OAuth — redirect la Google
-function calLogin(forceSelect){
+function calLogin(){
   var state=Math.random().toString(36).substr(2,10);
   sessionStorage.setItem('cal_oauth_state',state);
   var savedEmail=localStorage.getItem('pb-cal-email')||'';
@@ -695,11 +695,9 @@ function calLogin(forceSelect){
     redirect_uri:GCAL_REDIRECT,
     response_type:'token',
     scope:GCAL_SCOPE,
-    state:state
+    state:state,
+    prompt:'select_account'
   };
-  // Nu folosim prompt:none — pe Android/WebView cauzează bucle
-  // Folosim login_hint ca să pre-selecteze contul fără să mai ceară
-  p.prompt=forceSelect?'select_account':'consent';
   if(savedEmail) p.login_hint=savedEmail;
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
@@ -707,25 +705,15 @@ function calLogin(forceSelect){
 // Procesează token-ul din URL hash după redirect OAuth
 function calHandleCallback(){
   var hash=window.location.hash;
-  if(!hash) return false;
+  if(!hash||hash.indexOf('access_token')<0) return false;
   var params=new URLSearchParams(hash.replace(/^#/,''));
-  // Detectează eroare OAuth (ex: interaction_required când prompt:none eșuează)
-  var oauthError=params.get('error');
-  if(oauthError){
-    history.replaceState({},'',window.location.pathname+window.location.search);
-    // Eroare OAuth — nu facem retry automat (evită bucle)
-    // Utilizatorul trebuie să apese manual butonul 📅
-    return false;
-  }
-  if(hash.indexOf('access_token')<0) return false;
   var token=params.get('access_token');
+  if(!token) return false;
   var expiresIn=params.get('expires_in')||3600;
   history.replaceState({},'',window.location.pathname+window.location.search);
-  if(!token) return false;
   calSaveToken(token,expiresIn);
-  // Șterge CAL_DK → fetch imediat după reconectare
-  localStorage.removeItem(CAL_DK);
-  // Fetch email
+  localStorage.removeItem(CAL_DK); // cheie corectă → forțează fetch imediat
+  // Fetch email în background
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
     .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
@@ -897,6 +885,7 @@ async function calCheckAndFetch(){
   // Dacă ziua e marcată ca colectată, dar nu există niciun eveniment cal:: → nu a reușit de fapt
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs) return; // deja colectat cu succes azi
+  // Dacă ziua e marcată dar nu avem events, continuă fetch
   // Zi nouă: șterge evenimentele de calendar din ziua precedentă
   if(lastDay!==today && lastDay!==''){
     S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
@@ -2337,8 +2326,15 @@ function rBoard(){
     'background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
   function doCalBtn(e){
     e.stopPropagation();e.preventDefault();
-    if(hasCalToken){calLogout();}
-    else{calLogin();}
+    if(hasCalToken){
+      // Token valid → forțează re-fetch imediat
+      localStorage.removeItem(CAL_DK);
+      _calFetchInProgress=false;
+      calCheckAndFetch();
+      fbToast('📅 Actualizez calendarul...','#1E2130','#60A5FA',2000);
+    } else {
+      calLogin();
+    }
   }
   calBtn.addEventListener('click',doCalBtn);
   calBtn.addEventListener('touchend',function(e){e.preventDefault();doCalBtn(e);},{passive:false});
