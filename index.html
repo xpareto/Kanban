@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V67</title>
+<title>Project Board V69</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -755,15 +755,22 @@ async function calFetchEvents(token){
   }catch(_){}
 
   // 2. Fetch events din fiecare calendar, în paralel
+  fbToast('📅 Fetch din '+calIds.length+' cal...','#0F1A2A','#60A5FA',8000);
   function fetchCal(calId){
     var url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?'+
       'timeMin='+encodeURIComponent(monthStart.toISOString())+
       '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
       '&singleEvents=true&orderBy=startTime&maxResults=100';
     return fetch(url,{headers:headers}).then(function(r){
-      if(!r.ok) return [];
+      if(!r.ok){
+        fbToast('📅 err '+r.status+' '+calId.slice(0,25),'#1E2130','#F87171',8000);
+        return [];
+      }
       return r.json().then(function(d){return d.items||[];});
-    }).catch(function(){return [];});
+    }).catch(function(e){
+      fbToast('📅 catch: '+e.message,'#1E2130','#F87171',8000);
+      return [];
+    });
   }
 
   var allArrays=await Promise.all(calIds.map(fetchCal));
@@ -776,6 +783,7 @@ async function calFetchEvents(token){
       if(!seen[ev.id]){seen[ev.id]=true;allItems.push(ev);}
     });
   });
+  fbToast('📅 Brut: '+allItems.length+' ev','#0F1A2A','#3B82F6',8000);
 
   // 4. Filtrare — azi și mâine, fără recurențe zilnice/săptămânale
   var todayF=calTodayStr();
@@ -785,21 +793,17 @@ async function calFetchEvents(token){
   var events=allItems.filter(function(ev){
     if(!ev.summary||!ev.summary.trim()) return false;
     if(/^Tasks for\b/i.test(ev.summary.trim())) return false;
-    // Exclude recurențe zilnice și săptămânale
     if(ev.recurrence){
       var rr=ev.recurrence.join(' ').toUpperCase();
       if(rr.indexOf('FREQ=DAILY')>-1||rr.indexOf('FREQ=WEEKLY')>-1) return false;
     }
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
-    // Exclude după mâine
     if(evStart > tomorrowF) return false;
-    // Exclude terminate înainte de azi
     if(evEnd && evEnd < todayF) return false;
     return true;
   });
-
-  fbToast('📅 '+events.length+' ev din '+allItems.length,'#0F2A1A','#34D399',3000);
+  fbToast('📅 Filtrat: '+events.length+' din '+allItems.length,'#0F2A1A','#34D399',8000);
 
   // Sortare după startTime
   events.sort(function(a,b){
@@ -921,11 +925,11 @@ async function calCheckAndFetch(){
     }
     var events=await calFetchEvents(token);
     if(events===null){
-      fbToast('📅 Token expirat — apasă 📅 pentru reconectare','#1E2130','#F87171',4000);
+      fbToast('📅 Token expirat — apasă 📅 pentru reconectare','#1E2130','#F87171',8000);
       localStorage.removeItem(CAL_DK);
-      return; // NU face redirect automat
+      return;
     }
-    fbToast('📅 '+events.length+' ev','#0F2A1A','#10B981',2000);
+    fbToast('📅 Injectez '+events.length+' ev...','#0F2A1A','#10B981',4000);
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
