@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V64</title>
+<title>Project Board V65</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -726,7 +726,7 @@ function calHandleCallback(){
 async function calFetchEvents(token){
   var now=new Date();
   var monthStart=new Date(now.getFullYear(),now.getMonth(),1,0,0,0);
-  var tomorrowEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate()+2,0,0,0);
+  var tomorrowEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate()+30,0,0,0);
   var todayStr=calTodayStr();
   var headers={Authorization:'Bearer '+token};
 
@@ -735,24 +735,16 @@ async function calFetchEvents(token){
   var allCalItems=[];
   try{
     var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
-    if(listResp.status===401){calClearToken();fbToast('📅 401 - token invalid','#1E2130','#F87171',3000);return null;}
+    if(listResp.status===401){calClearToken();fbToast('📅 Token invalid (401)','#1E2130','#F87171',3000);return null;}
     if(listResp.ok){
       var listData=await listResp.json();
       allCalItems=(listData.items||[]);
-      // Verifică dacă există preferință salvată
-      var prefId=localStorage.getItem(CAL_PREF_KEY);
-      if(prefId && allCalItems.find(function(x){return x.id===prefId;})){
-        calIds=[prefId]; // folosește doar calendarul preferat
-      } else {
-        calIds=allCalItems.map(function(x){return x.id;});
-        if(!calIds.length) calIds=['primary'];
-        // Salvează primul calendar non-holidays ca preferință implicită
-        var firstPref=allCalItems.find(function(x){return x.id!=='#holidays@group.v.calendar.google.com' && x.id!=='primary';});
-        if(!firstPref) firstPref=allCalItems[0];
-        if(firstPref) localStorage.setItem(CAL_PREF_KEY, firstPref.id);
-      }
+      // Folosește TOATE calendarele întotdeauna
+      calIds=allCalItems.map(function(x){return x.id;});
+      if(!calIds.length) calIds=['primary'];
+      fbToast('📅 '+calIds.length+' calendare: '+allCalItems.slice(0,3).map(function(x){return x.summary||'?';}).join(', '),'#0F1A2A','#60A5FA',5000);
     }
-  }catch(_){}
+  }catch(e){fbToast('📅 Eroare lista: '+e.message,'#1E2130','#F87171',4000);}
 
   // 2. Fetch events din fiecare calendar, în paralel
   function fetchCal(calId){
@@ -795,6 +787,7 @@ async function calFetchEvents(token){
     return sa<sb?-1:sa>sb?1:0;
   });
 
+  fbToast('📅 După filtrare: '+events.length+' ev din '+allItems.length+' totale','#0F1A2A','#34D399',4000);
   return events;
 }
 
@@ -908,17 +901,15 @@ async function calCheckAndFetch(){
     }
     var events=await calFetchEvents(token);
     if(events===null){
-      fbToast('📅 Token expirat — reconectare...','#1E2130','#F87171',3000);
+      // Token expirat → încearcă reconectare silențioasă
       localStorage.removeItem(CAL_DK);
       calLogin();
       return;
     }
-    fbToast('📅 '+events.length+' evenimente găsite','#0F2A1A','#10B981',3000);
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
   } catch(err){
-    fbToast('📅 Eroare: '+err.message,'#1E2130','#F87171',4000);
     console.error('calCheckAndFetch error:',err);
   } finally {
     _calFetchInProgress=false;
@@ -2328,12 +2319,12 @@ function rBoard(){
     'background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
   function doCalBtn(e){
     e.stopPropagation();e.preventDefault();
-    var liveToken=calGetToken(); // recalculează acum, nu la render
-    if(liveToken){
+    if(hasCalToken){
+      // Token valid → forțează re-fetch imediat
       localStorage.removeItem(CAL_DK);
       _calFetchInProgress=false;
-      fbToast('📅 Actualizez calendarul...','#1E2130','#60A5FA',2000);
       calCheckAndFetch();
+      fbToast('📅 Actualizez calendarul...','#1E2130','#60A5FA',2000);
     } else {
       calLogin();
     }
