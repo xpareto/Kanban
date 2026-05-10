@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V63</title>
+<title>Project Board V64</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -735,7 +735,7 @@ async function calFetchEvents(token){
   var allCalItems=[];
   try{
     var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
-    if(listResp.status===401){calClearToken();return null;}
+    if(listResp.status===401){calClearToken();fbToast('📅 401 - token invalid','#1E2130','#F87171',3000);return null;}
     if(listResp.ok){
       var listData=await listResp.json();
       allCalItems=(listData.items||[]);
@@ -908,15 +908,17 @@ async function calCheckAndFetch(){
     }
     var events=await calFetchEvents(token);
     if(events===null){
-      // Token expirat → încearcă reconectare silențioasă
+      fbToast('📅 Token expirat — reconectare...','#1E2130','#F87171',3000);
       localStorage.removeItem(CAL_DK);
       calLogin();
       return;
     }
+    fbToast('📅 '+events.length+' evenimente găsite','#0F2A1A','#10B981',3000);
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
   } catch(err){
+    fbToast('📅 Eroare: '+err.message,'#1E2130','#F87171',4000);
     console.error('calCheckAndFetch error:',err);
   } finally {
     _calFetchInProgress=false;
@@ -2326,12 +2328,12 @@ function rBoard(){
     'background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
   function doCalBtn(e){
     e.stopPropagation();e.preventDefault();
-    if(hasCalToken){
-      // Token valid → forțează re-fetch imediat
+    var liveToken=calGetToken(); // recalculează acum, nu la render
+    if(liveToken){
       localStorage.removeItem(CAL_DK);
       _calFetchInProgress=false;
-      calCheckAndFetch();
       fbToast('📅 Actualizez calendarul...','#1E2130','#60A5FA',2000);
+      calCheckAndFetch();
     } else {
       calLogin();
     }
