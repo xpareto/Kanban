@@ -173,6 +173,12 @@ input{font-family:inherit;outline:none}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+window.onerror=function(msg,src,line,col,err){
+  var d=document.createElement('div');
+  d.style.cssText='position:fixed;top:0;left:0;right:0;background:#7f1d1d;color:white;padding:12px;font-size:12px;z-index:99999;word-break:break-all';
+  d.textContent='ERR L'+line+':'+col+' '+msg;
+  document.body&&document.body.appendChild(d);
+};
 'use strict';
 const VERSION=(document.title.match(/V[\d]+[a-z]*/i)||['V43b'])[0]||'V43b';
 
@@ -611,6 +617,26 @@ async function fbSync(){
 const COLS=[{id:'next',label:'To Do',color:'#F59E0B',bg:'#FFF8EC',icon:'📋'},{id:'wait',label:'Wait',color:'#6366F1',bg:'#F0F0FF',icon:'⏳'},{id:'done',label:'Done',color:'#10B981',bg:'#ECFDF5',icon:'✅'}];
 const CN={next:'To Do',wait:'Wait',done:'Done'};
 const CAL_PREF_KEY='pb-cal-pref-id';
+
+// ── TRACE system ─────────────────────────────────────────────────
+var TRACE_KEY='pb-cal-trace';
+function traceLog(msg){
+  var ts=new Date().toISOString().slice(11,19);
+  var arr=[];try{arr=JSON.parse(localStorage.getItem(TRACE_KEY)||'[]');}catch(_){}
+  arr.push(ts+' '+msg);
+  if(arr.length>100)arr=arr.slice(-100);
+  localStorage.setItem(TRACE_KEY,JSON.stringify(arr));
+}
+function traceClear(){localStorage.removeItem(TRACE_KEY);}
+function traceCopy(){
+  var arr=[];try{arr=JSON.parse(localStorage.getItem(TRACE_KEY)||'[]');}catch(_){}
+  var text=arr.join('\n')||'(gol)';
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      fbToast('✅ TRACE copiat ('+arr.length+' linii)','#0F2A1A','#10B981',4000);
+    }).catch(function(){console.log('TRACE:\n'+text);});
+  } else { console.log('TRACE:\n'+text);fbToast('TRACE in consola','#1E2130','#60A5FA',4000); }
+}
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
 const CAL_CK='pb-cal-token-v1',CAL_DK='pb-cal-day-v1',CAL_EK='pb-cal-events-v1';
 const GCAL_CLIENT_ID='679630226914-8sftsbf2gqu7hhv82jn8rc9q51j94pha.apps.googleusercontent.com';
@@ -691,15 +717,11 @@ function calLogin(silent){
   sessionStorage.setItem('cal_oauth_state',state);
   if(silent) sessionStorage.setItem('cal_silent_attempt','1');
   var savedEmail=localStorage.getItem('pb-cal-email')||'';
-  var p={
-    client_id:GCAL_CLIENT_ID,
-    redirect_uri:GCAL_REDIRECT,
-    response_type:'token',
-    scope:GCAL_SCOPE,
-    state:state,
-    prompt: silent ? 'none' : 'select_account'
-  };
+  var p={client_id:GCAL_CLIENT_ID,redirect_uri:GCAL_REDIRECT,
+         response_type:'token',scope:GCAL_SCOPE,state:state,
+         prompt:silent?'none':'select_account'};
   if(savedEmail) p.login_hint=savedEmail;
+  traceLog('calLogin prompt:'+(silent?'none':'select_account'));
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams(p).toString();
 }
 
@@ -710,16 +732,12 @@ function calHandleCallback(){
   var params=new URLSearchParams(hash.replace(/^#/,''));
   var isSilent=sessionStorage.getItem('cal_silent_attempt')==='1';
   sessionStorage.removeItem('cal_silent_attempt');
-
-  // Verifică dacă e eroare OAuth
   var oauthError=params.get('error');
   if(oauthError){
     history.replaceState({},'',window.location.pathname+window.location.search);
-    traceLog('OAuth error: '+oauthError+' silent='+isSilent);
-    // Silent a eșuat — nu face loop, lasă utilizatorul să apese manual
+    traceLog('OAuth error:'+oauthError+(isSilent?' [silent]':''));
     return false;
   }
-
   if(hash.indexOf('access_token')<0) return false;
   var token=params.get('access_token');
   if(!token) return false;
@@ -727,7 +745,7 @@ function calHandleCallback(){
   history.replaceState({},'',window.location.pathname+window.location.search);
   calSaveToken(token,expiresIn);
   localStorage.removeItem(CAL_DK);
-  traceLog('OAuth OK, token salvat'+(isSilent?' (silent)':''));
+  traceLog('OAuth OK'+(isSilent?' [silent]':''));
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
     .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
@@ -744,71 +762,71 @@ async function calFetchEvents(token){
   var todayStr=calTodayStr();
   var headers={Authorization:'Bearer '+token};
 
-  // 1. Obține lista tuturor calendarelor accesibile
-  var calIds=['primary']; // fallback
-  var allCalItems=[];
+  // 1. Toate calendarele — fără preferință
+  var calIds=['primary'];
   try{
     var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
-    if(listResp.status===401){calClearToken();return null;}
+    if(listResp.status===401){calClearToken();traceLog('calendarList 401');return null;}
     if(listResp.ok){
       var listData=await listResp.json();
-      allCalItems=(listData.items||[]);
-      // Verifică dacă există preferință salvată
-      var prefId=localStorage.getItem(CAL_PREF_KEY);
-      if(prefId && allCalItems.find(function(x){return x.id===prefId;})){
-        calIds=[prefId]; // folosește doar calendarul preferat
-      } else {
+      var allCalItems=(listData.items||[]);
+      if(allCalItems.length){
         calIds=allCalItems.map(function(x){return x.id;});
-        if(!calIds.length) calIds=['primary'];
-        // Salvează primul calendar non-holidays ca preferință implicită
-        var firstPref=allCalItems.find(function(x){return x.id!=='#holidays@group.v.calendar.google.com' && x.id!=='primary';});
-        if(!firstPref) firstPref=allCalItems[0];
-        if(firstPref) localStorage.setItem(CAL_PREF_KEY, firstPref.id);
-      }
-    }
-  }catch(_){}
+        traceLog('cal list: '+allCalItems.map(function(x){return x.summary||'?';}).join(', '));
+      } else traceLog('calendarList gol');
+    } else {traceLog('calendarList HTTP err: '+listResp.status);}
+  }catch(e){traceLog('calendarList except: '+e.message);}
 
-  // 2. Fetch events din fiecare calendar, în paralel
+  // 2. Fetch paralel
+  traceLog('fetchCal start: '+calIds.length+' cal');
   function fetchCal(calId){
     var url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?'+
       'timeMin='+encodeURIComponent(monthStart.toISOString())+
       '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
       '&singleEvents=true&orderBy=startTime&maxResults=100';
     return fetch(url,{headers:headers}).then(function(r){
-      if(!r.ok) return [];
-      return r.json().then(function(d){return d.items||[];});
-    }).catch(function(){return [];});
+      if(!r.ok){traceLog('cal err '+r.status+': '+calId.slice(0,30));return [];}
+      return r.json().then(function(d){
+        var items=d.items||[];
+        traceLog('cal ok '+items.length+' ev: '+calId.slice(0,30));
+        return items;
+      });
+    }).catch(function(e){traceLog('cal catch: '+e.message);return [];});
   }
 
   var allArrays=await Promise.all(calIds.map(fetchCal));
 
-  // 3. Aplatizează + deduplicare după ev.id
-  var seen={};
-  var allItems=[];
-  allArrays.forEach(function(arr){
-    arr.forEach(function(ev){
-      if(!seen[ev.id]){seen[ev.id]=true;allItems.push(ev);}
-    });
-  });
+  // 3. Aplatizare + deduplicare
+  var seen={};var allItems=[];
+  allArrays.forEach(function(arr){arr.forEach(function(ev){if(!seen[ev.id]){seen[ev.id]=true;allItems.push(ev);}});});
+  traceLog('brut: '+allItems.length+' ev');
 
-  // 4. Filtrare
+  // 4. Filtrare — azi și mâine, fără DAILY/WEEKLY
+  var todayF=calTodayStr();
+  var nowF=new Date();
+  var td2F=new Date(nowF.getFullYear(),nowF.getMonth(),nowF.getDate()+1);
+  var tomorrowF=td2F.getFullYear()+'-'+String(td2F.getMonth()+1).padStart(2,'0')+'-'+String(td2F.getDate()).padStart(2,'0');
   var events=allItems.filter(function(ev){
     if(!ev.summary||!ev.summary.trim()) return false;
-    // Ignoră evenimentele auto-generate de Google Tasks ("Tasks for ...")
     if(/^Tasks for\b/i.test(ev.summary.trim())) return false;
-    var endDate='';
-    if(ev.end) endDate=(ev.end.date||ev.end.dateTime||'').slice(0,10);
-    if(endDate && endDate < todayStr) return false;
+    if(ev.recurrence){
+      var rr=ev.recurrence.join(' ').toUpperCase();
+      if(rr.indexOf('FREQ=DAILY')>-1||rr.indexOf('FREQ=WEEKLY')>-1) return false;
+    }
+    var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
+    var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
+    if(evStart>tomorrowF) return false;
+    if(evEnd&&evEnd<todayF) return false;
     return true;
   });
+  traceLog('filtrat: '+events.length+' din '+allItems.length);
+  fbToast('📅 '+events.length+' ev din '+allItems.length,'#0F2A1A','#34D399',6000);
 
-  // Sortare după startTime (fetch din mai multe calendare poate fi neordonat)
   events.sort(function(a,b){
     var sa=(a.start&&(a.start.dateTime||a.start.date))||'';
     var sb=(b.start&&(b.start.dateTime||b.start.date))||'';
     return sa<sb?-1:sa>sb?1:0;
   });
-
   return events;
 }
 
@@ -896,33 +914,30 @@ var _calFetchInProgress=false;
 async function calCheckAndFetch(){
   var lastDay=localStorage.getItem(CAL_DK)||'';
   var today=calTodayStr();
-  // Dacă ziua e marcată ca colectată, dar nu există niciun eveniment cal:: → nu a reușit de fapt
+  traceLog('calCheck: last='+lastDay+' today='+today);
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
-  if(lastDay===today && hasCalEvs) return; // deja colectat cu succes azi
-  // Dacă ziua e marcată dar nu avem events, continuă fetch
-  // Zi nouă: șterge evenimentele de calendar din ziua precedentă
+  if(lastDay===today && hasCalEvs){traceLog('skip: deja OK azi');return;}
+  // Zi nouă: șterge events vechi
   if(lastDay!==today && lastDay!==''){
+    traceLog('zi noua: sterg events din '+lastDay);
     S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
     S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   }
-  if(_calFetchInProgress) return;
+  if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
   _calFetchInProgress=true;
   try{
     var token=calGetToken();
     if(!token){
-      traceLog('no token - verific email salvat');
-      var savedEmailForSilent=localStorage.getItem('pb-cal-email')||'';
-      if(savedEmailForSilent && !sessionStorage.getItem('cal_silent_tried')){
-        // Email salvat → silent re-auth automat (o singură dată per sesiune)
+      traceLog('no token');
+      var savedEmailF=localStorage.getItem('pb-cal-email')||'';
+      if(savedEmailF && !sessionStorage.getItem('cal_silent_tried')){
         sessionStorage.setItem('cal_silent_tried','1');
-        traceLog('silent re-auth pentru: '+savedEmailForSilent);
+        traceLog('silent re-auth: '+savedEmailF);
         _calFetchInProgress=false;
         calLogin(true);
         return;
       }
-      // Fără email sau silent deja încercat → mesaj utilizator
-      traceLog('afisez mesaj neconectat');
       var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
       if(shownToday!==today){
         localStorage.setItem('pb-cal-info-shown',today);
@@ -932,17 +947,21 @@ async function calCheckAndFetch(){
       }
       return;
     }
+    traceLog('token OK, fetch...');
     var events=await calFetchEvents(token);
     if(events===null){
-      // Token expirat → încearcă reconectare silențioasă
+      traceLog('events null - token expirat');
+      fbToast('📅 Token expirat — apasă 📅','#1E2130','#F87171',6000);
       localStorage.removeItem(CAL_DK);
-      calLogin();
       return;
     }
+    traceLog('inject '+events.length+' ev');
+    fbToast('📅 '+events.length+' ev','#0F2A1A','#10B981',4000);
     calInjectEvents(events);
     localStorage.setItem(CAL_DK,today);
     render();
   } catch(err){
+    traceLog('catch: '+err.message);
     console.error('calCheckAndFetch error:',err);
   } finally {
     _calFetchInProgress=false;
@@ -2352,15 +2371,16 @@ function rBoard(){
     'background:#374151;color:#9CA3AF;border:1px dashed #6B7280;border-radius:7px;padding:6px 9px;font-size:12px;cursor:pointer;touch-action:manipulation';
   function doCalBtn(e){
     e.stopPropagation();e.preventDefault();
-    if(hasCalToken){
-      // Token valid → forțează re-fetch imediat
+    var liveToken=calGetToken();
+    if(liveToken){
+      traceLog('doCalBtn: fetch fortat');
       localStorage.removeItem(CAL_DK);
       _calFetchInProgress=false;
-      calCheckAndFetch();
       fbToast('📅 Actualizez calendarul...','#1E2130','#60A5FA',2000);
+      calCheckAndFetch();
     } else {
-      traceLog('buton cal: login manual');
-      calLogin(false); // forțat select_account
+      traceLog('doCalBtn: login manual');
+      calLogin(false);
     }
   }
   calBtn.addEventListener('click',doCalBtn);
@@ -2376,29 +2396,21 @@ function rBoard(){
   // ── Header simplificat: doar etichete + buton vizualizare ──
   // Butoanele EJD/EJ/ETD/ET/I sunt în interiorul fiecărui view
   // Buton Help
-  // ── Butoane debug RESET / TRACE ──
   var resetBtn=mk('button','btn');
-  resetBtn.textContent='🔄';
-  resetBtn.title='RESET calendar cache';
+  resetBtn.textContent='🔄';resetBtn.title='RESET calendar';
   resetBtn.style.cssText='background:#7C3AED;color:white;font-size:11px;padding:4px 7px;border-radius:5px;min-width:28px';
   resetBtn.addEventListener('click',function(){
-    localStorage.removeItem(CAL_PREF_KEY);
-    localStorage.removeItem(CAL_DK);
-    localStorage.removeItem('pb-cal-info-shown');
-    _calFetchInProgress=false;
-    traceClear();
-    traceLog('RESET manual efectuat');
+    localStorage.removeItem(CAL_PREF_KEY);localStorage.removeItem(CAL_DK);
+    localStorage.removeItem('pb-cal-info-shown');sessionStorage.removeItem('cal_silent_tried');
+    _calFetchInProgress=false;traceClear();traceLog('RESET manual');
     fbToast('🔄 Reset — apasă 📅','#0F1A2A','#A78BFA',4000);
   });
   resetBtn.addEventListener('touchend',function(e){e.preventDefault();resetBtn.click();},{passive:false});
-
   var traceBtn=mk('button','btn');
-  traceBtn.textContent='📋';
-  traceBtn.title='Copiază TRACE în clipboard';
+  traceBtn.textContent='📋';traceBtn.title='Copiază TRACE';
   traceBtn.style.cssText='background:#1E3A5F;color:#60A5FA;font-size:11px;padding:4px 7px;border-radius:5px;min-width:28px';
   traceBtn.addEventListener('click',traceCopy);
   traceBtn.addEventListener('touchend',function(e){e.preventDefault();traceCopy();},{passive:false});
-
   var helpBtn=mk('button','btn bg');
   helpBtn.textContent='?';
   helpBtn.title='Help';
