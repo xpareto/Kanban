@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>ProjectBoard — Help V55</title>
+<title>ProjectBoard — Help V72</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',sans-serif;background:#F8FAFC;color:#1E293B;line-height:1.7;padding-bottom:60px}
@@ -52,10 +52,9 @@ tr:nth-child(even)td{background:#F8FAFC}
 <div class="hdr">
   <span style="font-size:22px;color:#F59E0B">📋</span>
   <h1>ProjectBoard Help</h1>
-  <span class="ver">V55</span>
+  <span class="ver">V72</span>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="toc">
   <strong style="font-size:12px;color:#1E40AF;font-weight:800;letter-spacing:.06em">CUPRINS</strong>
   <div class="toc-cat">Introducere</div>
@@ -66,6 +65,7 @@ tr:nth-child(even)td{background:#F8FAFC}
   <a href="#next">Secțiunea NEXT</a>
   <a href="#wait">Secțiunea WAITING</a>
   <a href="#notes">Note atașate taskurilor</a>
+  <a href="#attachments">Atașamente 📎</a>
   <a href="#search">Căutare</a>
   <a href="#calendar">/c Sintaxă calendar</a>
   <a href="#gcal">Import Google Calendar</a>
@@ -74,11 +74,11 @@ tr:nth-child(even)td{background:#F8FAFC}
   <a href="#sync">Sincronizare cloud</a>
   <a href="#export">Export / Import</a>
   <a href="#header">Butoanele din header</a>
+  <a href="#android">Aplicația Android (TWA)</a>
   <div class="toc-cat">Referință rapidă</div>
   <a href="#alpha">Index alfabetic — Ce vreau să fac?</a>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="section-divider"></div>
 <div class="intro-hero" id="why">
   <h2>„Eu țin minte sau notez pe hârtie" — de ce nu e de ajuns</h2>
@@ -86,392 +86,328 @@ tr:nth-child(even)td{background:#F8FAFC}
 </div>
 
 <div class="sec">
-  <p>Creierul uman nu e conceput să țină minte liste de sarcini. Studiile de productivitate arată că o persoană obișnuită are între <strong>30 și 100 de taskuri active</strong> simultan — proiecte la serviciu, treburi casnice, lucruri promise altora, lucruri amânate. Nimeni nu poate ține toate acestea în cap fără să piardă ceva.</p>
-
+  <p>Creierul uman nu e conceput să țină minte liste de sarcini. Studiile de productivitate arată că o persoană obișnuită are între <strong>30 și 100 de taskuri active</strong> simultan. Nimeni nu poate ține toate acestea în cap fără să piardă ceva.</p>
   <div class="quote">„Mintea e bună să aibă idei, nu să le stocheze." — David Allen, Getting Things Done</div>
-
-  <p>Hârtia are trei probleme fundamentale:</p>
-
   <div class="card red">
-    <strong>1. Nu se reorganizează singură.</strong> Ai scris 10 lucruri. Prioritățile s-au schimbat. Recopiezi totul sau lucrezi cu o foaie mâzgălită care nu mai reflectă realitatea.<br/><br/>
-    <strong>2. Nu știe ce e urgent azi.</strong> O hârtie nu îți spune că mâine ai o scadență, că un task e blocat de altul sau că ai promis ceva cuiva acum 3 săptămâni.<br/><br/>
-    <strong>3. Se pierde.</strong> Sau o uiți acasă. Sau e pe altă hârtie.
+    <strong>1. Nu se reorganizează singură.</strong> Ai scris 10 lucruri. Prioritățile s-au schimbat. Recopiezi totul sau lucrezi cu o foaie mâzgălită.<br/><br/>
+    <strong>2. Nu știe ce e urgent azi.</strong> O hârtie nu îți spune că mâine ai o scadență sau că ai promis ceva acum 3 săptămâni.<br/><br/>
+    <strong>3. Se pierde.</strong> Sau o uiți acasă.
   </div>
-
-  <p>Un board digital ca ProjectBoard rezolvă exact aceste probleme. Nu e complicat — e o foaie de hârtie care se reorganizează singură, nu se pierde, se sincronizează pe toate dispozitivele tale și îți amintește ce urmează.</p>
-
-  <h3>Cum funcționează principiul GTD (Getting Things Done)</h3>
-  <p>Metoda pe care se bazează ProjectBoard e simplă: <strong>scoți din cap orice task</strong> și îl pui în sistem. Odată scris, nu mai consumi energie mentală să nu-l uiți. Creierul tău e eliberat să se concentreze pe <em>ce faci acum</em>, nu pe <em>ce trebuie să nu uiți</em>.</p>
-
   <div class="card green">
     <strong>NEXT</strong> = ce faci azi sau în cel mai scurt timp<br/>
     <strong>WAITING</strong> = ce ai delegat sau e blocat de altcineva<br/>
-    <strong>Proiecte</strong> = orice are mai mult de un pas — de la „renovare baie" la „pregătire vacanță"<br/>
+    <strong>Proiecte</strong> = orice are mai mult de un pas<br/>
     <strong>SHARE</strong> = inbox pentru linkuri și informații primite de pe telefon
   </div>
-
-  <p>Nu e nevoie să folosești toate funcțiile de la început. Poți începe cu un singur lucru: <strong>scrie orice task nou în aplicație înainte să îl uiți</strong>. Restul vine natural.</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="section-divider"></div>
 <div class="sec" id="light">
   <h2>🟢 Ghid rapid pentru începători</h2>
-  <p>Dacă folosești ProjectBoard pentru prima dată, iată tot ce ai nevoie să știi în 5 minute.</p>
-
   <div class="light-section">
     <h3>Pasul 1 — Adaugă primul task</h3>
-    <p>Apasă butonul <strong>verde + (FAB)</strong> din colțul dreapta-jos. Scrie ce ai de făcut. Apasă ✓ sau Enter. Gata — e în lista NEXT.</p>
+    <p>Apasă butonul <strong>verde + (FAB)</strong> din colțul dreapta-jos. Scrie ce ai de făcut. Enter sau ✓. Gata — e în NEXT.</p>
   </div>
-
   <div class="light-section">
     <h3>Pasul 2 — Bifează când termini</h3>
-    <p>Apasă <strong>✓</strong> pe orice task din NEXT sau din proiect. Taskul e marcat Done și dispare din vedere.</p>
+    <p>Apasă <strong>✓</strong> pe orice task din NEXT sau din proiect.</p>
   </div>
-
   <div class="light-section">
     <h3>Pasul 3 — Creează un proiect</h3>
-    <p>Ai mai mult de un lucru de făcut pentru același scop? Apasă <strong>+ Proj</strong> din header, dă-i un nume. Adaugă taskuri cu <strong>+ task</strong> în coloana To Do. Cel mai important task din proiect apare automat în NEXT.</p>
+    <p>Apasă <strong>+ Proj</strong> din header, dă-i un nume. Adaugă taskuri cu <strong>+ task</strong> în coloana To Do.</p>
   </div>
-
   <div class="light-section">
     <h3>Pasul 4 — Redenumește un task</h3>
-    <p><strong>Dublu-tap</strong> pe textul taskului → câmp de editare → Enter pentru salvare.</p>
+    <p><strong>Dublu-tap</strong> pe textul taskului → câmp de editare → Enter.</p>
   </div>
-
   <div class="light-section">
     <h3>Pasul 5 — Caută orice</h3>
-    <p>Apasă câmpul <strong>Search…</strong> din header și scrie. Găsește în taskuri, proiecte, jurnal, share.</p>
-  </div>
-
-  <div class="card blue">
-    <strong>Asta e tot ce ai nevoie la început.</strong> Funcțiile avansate (calendar, sync cloud, note, etichete) le descoperi când ai nevoie de ele. Continuă să citești mai jos pentru detalii complete.
+    <p>Apasă <strong>Search…</strong> din header și scrie.</p>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="section-divider"></div>
 <div class="sec" id="daily">
   <h2>Rutina zilnică</h2>
-  <div class="step"><div class="num">1</div><div>Deschizi aplicația. Dacă Google Calendar e conectat, evenimentele de azi sunt aduse automat în NEXT (o singură dată pe zi). Sincronizarea cloud rulează automat — push dacă ai modificări nesincronizate, pull dacă alt dispozitiv are date mai noi.</div></div>
-  <div class="step"><div class="num">2</div><div>Revizuiești NEXT. Evenimentele din calendar apar sus (fundal albastru). Taskurile cu ⚠ au mai multe taskuri To Do fără niciun <code>*</code> de prioritate setat.</div></div>
-  <div class="step"><div class="num">3</div><div>Procesezi inbox-ul SHARE — linkuri și text primite din alte aplicații. Bifezi și faci Merge → Clipboard.</div></div>
-  <div class="step"><div class="num">4</div><div>Marchezi taskurile terminate cu ✓. Adaugi taskuri noi cu butonul <strong>+</strong> FAB (cerc verde, dreapta-jos) sau direct într-un proiect.</div></div>
+  <div class="step"><div class="num">1</div><div>Deschizi aplicația. Dacă Google Calendar e conectat, evenimentele de azi și mâine sunt aduse automat în NEXT (o singură dată pe zi, automat la prima lansare).</div></div>
+  <div class="step"><div class="num">2</div><div>Revizuiești NEXT. Evenimentele din calendar apar cu fundal albastru.</div></div>
+  <div class="step"><div class="num">3</div><div>Procesezi inbox-ul SHARE — linkuri și text primite din alte aplicații.</div></div>
+  <div class="step"><div class="num">4</div><div>Marchezi taskurile terminate cu ✓. Adaugi taskuri noi cu butonul <strong>+</strong> FAB.</div></div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="next">
   <h2>Secțiunea NEXT</h2>
   <h3>Regula de prioritate — asteriscul</h3>
   <table>
     <tr><th>Situație</th><th>Ce apare în NEXT</th></tr>
     <tr><td>Proiect cu 1 task To Do</td><td>Apare automat</td></tr>
-    <tr><td>Proiect cu mai multe taskuri To Do, unul cu <code>*</code></td><td>Doar cele cu * (afișate fără *)</td></tr>
-    <tr><td>Proiect cu mai multe taskuri To Do, niciunul cu <code>*</code></td><td>Toate apar cu avertisment ⚠</td></tr>
+    <tr><td>Proiect cu mai multe To Do, unul cu <code>*</code></td><td>Doar cele cu * (afișate fără *)</td></tr>
+    <tr><td>Proiect cu mai multe To Do, niciunul cu <code>*</code></td><td>Toate apar cu avertisment ⚠</td></tr>
   </table>
-
-  <h3>Adaugă task rapid la începutul NEXT — buton FAB +</h3>
-  <p>Apasă butonul <strong>verde + </strong> (dreapta-jos, lângă ↑). Apare un dialog — scrie numele taskului și apasă ✓ sau Enter. Taskul e adăugat la <strong>începutul</strong> NEXT ca task liber.</p>
-
   <h3>Mută task în WAITING — comanda /w</h3>
-  <p>În timp ce editezi orice task din NEXT, scrie <code>/w</code> oriunde în text și salvează (Enter sau tap în afară). Taskul se mută imediat în WAITING. Funcționează atât pentru taskuri libere cât și pentru taskuri din proiecte.</p>
-  <div class="card amber">
-    <strong>Exemple:</strong> scrie <code>/w</code> singur, sau <code>aștept răspuns /w</code>, sau <code>/w verifică mâine</code> — toate funcționează.
-  </div>
-
+  <p>Scrie <code>/w</code> oriunde în textul taskului și salvează. Taskul se mută imediat în WAITING.</p>
   <h3>Editare inline</h3>
-  <p><strong>Dublu-tap</strong> (sau dublu-click pe desktop) pe orice text de task → câmp editabil. <strong>Enter</strong> sau tap în afară salvează. <strong>Escape</strong> anulează. Modificările în NEXT se sincronizează automat înapoi în proiectul sursă.</p>
-
-  <h3>Selecție multiplă și reordonare</h3>
-  <div class="step"><div class="num">1</div><div><strong>Long-press (500ms)</strong> pe orice task din NEXT → modul selecție. Rândul apăsat e selectat (albastru).</div></div>
-  <div class="step"><div class="num">2</div><div><strong>Tap</strong> pe alte taskuri pentru a le selecta/deselecta.</div></div>
-  <div class="step"><div class="num">3</div><div>Bara albastră: <strong>↑ Top</strong> | <strong>↓ Bottom</strong> | <strong>✕ Cancel</strong></div></div>
-
-  <h3>Reordonare individuală — drag</h3>
-  <p>Ține apăsat pe mânerul <strong>⠿</strong> din stânga și trage în sus sau jos.</p>
-
+  <p><strong>Dublu-tap</strong> pe orice text de task → câmp editabil. <strong>Enter</strong> sau tap în afară salvează.</p>
+  <h3>Reordonare</h3>
+  <p>Ține apăsat pe mânerul <strong>⠿</strong> și trage. Sau long-press → selecție multiplă → ↑ Top / ↓ Bottom.</p>
   <h3>Promovare task liber la proiect — buton ⊞</h3>
-  <p>Taskurile libere afișează butonul <strong>⊞</strong>. Apasă → alege un proiect existent din listă (poți filtra după nume) sau creează unul nou. Taskul devine parte din proiect și dispare ca task liber.</p>
-
-  <h3>Click pe eveniment calendar</h3>
-  <p>Evenimentele aduse din Google Calendar (fundal albastru) → tap pe rând → deschide Google Calendar la ziua respectivă în browser.</p>
+  <p>Taskurile libere afișează butonul <strong>⊞</strong>. Apasă → alege proiect sau creează unul nou.</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="wait">
   <h2>Secțiunea WAITING</h2>
-  <p>Taskurile delegate sau blocate apar aici. Ajung în WAITING fie prin drag din coloana Wait a unui proiect, fie prin comanda <code>/w</code> din NEXT.</p>
+  <p>Taskurile delegate sau blocate apar aici, via <code>/w</code> din NEXT sau drag din coloana Wait a unui proiect.</p>
   <table>
     <tr><th>Acțiune</th><th>Cum</th></tr>
-    <tr><td>Marchează ca terminat</td><td>Butonul ✓ (doar pentru taskuri din proiecte)</td></tr>
-    <tr><td>Editează textul taskului</td><td>Dublu-tap</td></tr>
+    <tr><td>Marchează ca terminat</td><td>Butonul ✓</td></tr>
+    <tr><td>Editează textul</td><td>Dublu-tap</td></tr>
     <tr><td>Reordonează</td><td>Drag pe mânerul ⠿</td></tr>
-    <tr><td>Adaugă notă</td><td>Butonul ✎ (gri = fără notă, amber = are notă)</td></tr>
+    <tr><td>Adaugă notă</td><td>Butonul ✎</td></tr>
+    <tr><td>Adaugă atașament</td><td>Butonul 📎</td></tr>
   </table>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="notes">
   <h2>Note atașate taskurilor ✎</h2>
-  <p>Fiecare task din NEXT și WAITING poate avea o notă de lungime arbitrară — detalii, linkuri, context, instrucțiuni.</p>
-
-  <h3>Butonul ✎</h3>
+  <p>Fiecare task poate avea o notă de lungime arbitrară. Link-urile din notă sunt detectate automat și afișate separat, în josul notei, ca elemente clickabile cu iconița 🔗.</p>
   <table>
-    <tr><th>Aspect buton</th><th>Semnificație</th></tr>
-    <tr><td>Gri, border subțire</td><td>Fără notă — notă necompletată</td></tr>
-    <tr><td>Amber <strong>✎</strong>, fundal galben</td><td>Are conținut scris</td></tr>
+    <tr><th>Aspect buton ✎</th><th>Semnificație</th></tr>
+    <tr><td>Gri</td><td>Fără notă</td></tr>
+    <tr><td>Amber, fundal galben</td><td>Are conținut</td></tr>
   </table>
-
-  <h3>Primul tap — 3 opțiuni de inițializare</h3>
-  <p>Dacă nota e goală, la primul tap pe ✎ primești un picker cu trei variante:</p>
-  <div class="card indigo">
-    <strong>a) Notă nouă (goală)</strong> — începi de la zero<br/><br/>
-    <strong>b) Preia textul din task → șterge din task</strong> — textul lung al taskului se mută în notă, rămâi să scrii un titlu mai scurt în task<br/><br/>
-    <strong>c) Preia textul din task (păstrează în task)</strong> — copia textului în notă ca punct de pornire, taskul rămâne neschimbat
-  </div>
-
-  <h3>Editare notă</h3>
-  <p>Tap pe ✎ → overlay bottom-sheet cu <code>textarea</code> liberă. Buton <strong>✓ Save</strong> sau <strong>✕</strong>. Tap pe fundal închide fără salvare.</p>
-
-  <h3>Notele în căutare</h3>
-  <p>Conținutul notei e inclus în căutarea globală. Dacă un task e găsit prin notă (nu prin titlu), apare un indicator <strong>✎</strong> amber lângă rezultat.</p>
+  <h3>Link-uri în notă</h3>
+  <p>Scrie orice URL (http/https) în nota unui task. La afișare, link-urile sunt separate automat de text și apar în josul overlay-ului ca butoane clickabile — URL trunchiat la 55 caractere, deschide în browser la tap.</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
+<div class="sec" id="attachments">
+  <h2>Atașamente 📎</h2>
+  <p>Butonul 📎 apare pe orice task din NEXT, WAIT și din coloanele proiectului.</p>
+  <table>
+    <tr><th>Aspect buton 📎</th><th>Semnificație</th></tr>
+    <tr><td>Gri</td><td>Fără atașamente</td></tr>
+    <tr><td>Albastru</td><td>Are fișiere atașate</td></tr>
+  </table>
+  <div class="card amber">
+    <strong>Necesită Firebase Storage (plan Blaze)</strong> și autentificare cu Google (butonul ☁). Fișierele sunt stocate în Firebase Storage izolat per utilizator — fiecare vede doar propriile fișiere.<br/><br/>
+    <strong>Limită:</strong> 5MB per fișier. Orice tip de fișier acceptat.
+  </div>
+</div>
+
 <div class="sec" id="search">
   <h2>Căutare</h2>
-  <p>Apasă câmpul <strong>Search…</strong> din header și scrie. Rezultatele apar imediat. Apasă Enter sau 🔍 pentru căutare. Apasă ✕ pentru a șterge.</p>
-  <p>Panoul de rezultate e scrollabil — trage în sus/jos pentru a vedea toate rezultatele. <strong>Tap simplu</strong> navighează la element. <strong>Dublu-tap</strong> deschide editare inline.</p>
-
-  <h3>Ce găsește căutarea</h3>
+  <p>Apasă <strong>Search…</strong> din header. Găsește în taskuri, proiecte, note, jurnal, share.</p>
   <table>
-    <tr><th>Tip</th><th>Badge</th><th>Note</th></tr>
-    <tr><td>Secțiuni</td><td><span class="badge b-blue">SECT.</span></td><td>Separatoare de secțiuni</td></tr>
-    <tr><td>Proiecte</td><td><span class="badge b-amber">PROJECT</span></td><td>Titluri de proiecte</td></tr>
-    <tr><td>Taskuri (text potrivit)</td><td><span class="badge b-blue">TASK</span></td><td>Taskul conține șirul căutat</td></tr>
-    <tr><td>Taskuri (via proiect)</td><td><span class="badge b-blue">TASK</span> gri</td><td>Titlul proiectului s-a potrivit — toate taskurile Next/Wait ale proiectului sunt incluse automat</td></tr>
-    <tr><td>Taskuri (via notă)</td><td><span class="badge b-blue">TASK</span> + ✎</td><td>Găsit în nota atașată</td></tr>
-    <tr><td>Taskuri libere — Next</td><td><span class="badge b-amber">NEXT</span></td><td></td></tr>
-    <tr><td>Taskuri libere — Wait</td><td><span class="badge b-purple">WAIT</span></td><td></td></tr>
-    <tr><td>Share items</td><td><span class="badge b-green">SHARE</span></td><td></td></tr>
-    <tr><td>Intrări Jurnal</td><td><span class="badge b-blue">JURNAL</span></td><td>Click → navighează și evidențiază în Jurnal</td></tr>
-    <tr><td>Intrări Share Journal</td><td><span class="badge b-green">SHARE-J</span></td><td>Click → navighează în Share Journal</td></tr>
+    <tr><th>Tip</th><th>Badge</th></tr>
+    <tr><td>Secțiuni</td><td><span class="badge b-blue">SECT.</span></td></tr>
+    <tr><td>Proiecte</td><td><span class="badge b-amber">PROJECT</span></td></tr>
+    <tr><td>Taskuri</td><td><span class="badge b-blue">TASK</span></td></tr>
+    <tr><td>Taskuri via notă</td><td><span class="badge b-blue">TASK</span> + ✎</td></tr>
+    <tr><td>Free tasks NEXT</td><td><span class="badge b-amber">NEXT</span></td></tr>
+    <tr><td>Free tasks WAIT</td><td><span class="badge b-purple">WAIT</span></td></tr>
+    <tr><td>Share items</td><td><span class="badge b-green">SHARE</span></td></tr>
+    <tr><td>Jurnal</td><td><span class="badge b-blue">JURNAL</span></td></tr>
+    <tr><td>Share Journal</td><td><span class="badge b-green">SHARE-J</span></td></tr>
   </table>
-
-  <h3>Căutare rapidă după etichetă</h3>
-  <p>Apasă orice buton de etichetă din header (<strong>#a</strong>, <strong>#u</strong>, <strong>#c</strong> etc.) pentru a căuta instant toate taskurile care conțin acea etichetă. Personalizezi etichetele în <strong>⚙ Setări</strong>.</p>
-
-  <h3>Căutare internă în Jurnal și Share Journal</h3>
-  <p>În view-urile <strong>Journal</strong> și <strong>Share Journal</strong> există un câmp de căutare intern (sticky sub header). Filtrează rândurile în timp real, cu evidențiere cu outline colorat pe cele găsite și contor de rezultate.</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="calendar">
   <h2>/c Sintaxă Calendar</h2>
-  <p>Adaugă o dată de calendar direct în textul oricărui task. Funcționează în NEXT, WAITING și SHARE.</p>
-
   <table>
-    <tr><th>Ce scrii</th><th>Semnificație</th><th>După tap 📅</th></tr>
-    <tr><td><code>Doctor /c5.5</code></td><td>5 mai, 09:00</td><td><code>Doctor 📅 5.mai 09:00</code></td></tr>
-    <tr><td><code>Doctor /c5.5 14:30</code></td><td>5 mai, 14:30</td><td><code>Doctor 📅 5.mai 14:30</code></td></tr>
-    <tr><td><code>Pastile /c1.5rz 08:00</code></td><td>1 mai, zilnic 08:00</td><td><code>Pastile 📅 1.mai 08:00 (zil)</code></td></tr>
-    <tr><td><code>Ședință /c15.5rs 10:00</code></td><td>15 mai, săptămânal</td><td><code>Ședință 📅 15.mai 10:00 (sapt)</code></td></tr>
-    <tr><td><code>Chirie /c1.6rl</code></td><td>1 iunie, lunar</td><td><code>Chirie 📅 1.iun 09:00 (lunar)</code></td></tr>
-    <tr><td><code>Zi naștere /c15.7ra</code></td><td>15 iulie, anual</td><td><code>Zi naștere 📅 15.iul 09:00 (anual)</code></td></tr>
+    <tr><th>Ce scrii</th><th>Semnificație</th></tr>
+    <tr><td><code>Doctor /c5.5</code></td><td>5 mai, 09:00</td></tr>
+    <tr><td><code>Doctor /c5.5 14:30</code></td><td>5 mai, 14:30</td></tr>
+    <tr><td><code>Pastile /c1.5rz 08:00</code></td><td>1 mai, zilnic</td></tr>
+    <tr><td><code>Ședință /c15.5rs 10:00</code></td><td>15 mai, săptămânal</td></tr>
+    <tr><td><code>Chirie /c1.6rl</code></td><td>1 iunie, lunar</td></tr>
+    <tr><td><code>Zi naștere /c15.7ra</code></td><td>15 iulie, anual</td></tr>
   </table>
-
   <div class="card green">
-    <strong>Coduri de repetiție:</strong> <code>rz</code> = zilnic · <code>rs</code> = săptămânal · <code>rl</code> = lunar · <code>ra</code> = anual · fără cod = o singură dată<br/>
-    <strong>Oră implicită:</strong> 09:00 dacă nu e specificată<br/><br/>
-    <strong>Flux:</strong> scrie /c → apare butonul 📅 → apasă 📅 → se deschide Google Calendar pre-completat → Salvează în Calendar → revii în aplicație.
-  </div>
-
-  <div class="card amber">
-    <strong>Nu ai cont Google Calendar?</strong> Poți folosi în continuare aplicația fără această funcție. Butonul 📅 va afișa un mesaj informativ. Toate celelalte funcționalități funcționează normal.
+    <strong>Coduri repetiție:</strong> <code>rz</code> zilnic · <code>rs</code> săptămânal · <code>rl</code> lunar · <code>ra</code> anual<br/>
+    <strong>Flux:</strong> scrie /c → apare 📅 → apasă → Google Calendar pre-completat → Salvează.
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="gcal">
   <h2>Import Google Calendar</h2>
-  <div class="step"><div class="num">1</div><div>Apasă butonul <strong>📅</strong> din header (gri = neconectat).</div></div>
-  <div class="step"><div class="num">2</div><div>Se deschide login Google → autentifică-te și autorizează ProjectBoard.</div></div>
-  <div class="step"><div class="num">3</div><div>Evenimentele de azi apar în NEXT cu fundal albastru.</div></div>
-  <div class="step"><div class="num">4</div><div>Evenimentele sunt aduse automat la prima deschidere a fiecărei zile. Nu e nevoie de nicio acțiune.</div></div>
-
+  <div class="step"><div class="num">1</div><div>Apasă <strong>📅</strong> din header (gri = neconectat) → autentificare Google → autorizare.</div></div>
+  <div class="step"><div class="num">2</div><div>Evenimentele de azi și mâine din <strong>toate</strong> calendarele tale apar în NEXT cu fundal albastru.</div></div>
+  <div class="step"><div class="num">3</div><div>La prima lansare a zilei, fetch-ul se face automat (silent re-auth dacă ai email salvat).</div></div>
+  <div class="step"><div class="num">4</div><div>Dacă calendarul nu se conectează automat — apasă 📅 manual.</div></div>
   <div class="card blue">
-    <strong>Ce apare:</strong> toate evenimentele de azi și mâine din toate calendarele tale.<br/>
-    <strong>Evenimente multi-zi:</strong> evenimentele care au început înainte de azi dar nu s-au terminat apar ca <code>[ongoing 1-5 apr] Plată utilități</code>.<br/>
-    <strong>Token expiră</strong> după ~1 oră — apasă 📅 din nou pentru reconectare.<br/>
-    <strong>Click pe eveniment</strong> → deschide Google Calendar la ziua respectivă.
+    <strong>Filtrare automată:</strong> evenimentele cu repetiție zilnică și săptămânală sunt excluse (prea mult zgomot).<br/>
+    <strong>Click pe eveniment</strong> → deschide Google Calendar la ziua respectivă.<br/>
+    <strong>Token expiră</strong> după ~1 oră — aplicația încearcă re-auth silențios la relansare.
   </div>
-
   <div class="card amber">
-    <strong>Notă:</strong> Aplicația e în modul „Testing". Email-ul tău trebuie adăugat ca test user de către dezvoltator pentru a folosi Google Calendar.<br/><br/>
-    <strong>Fără cont Google Calendar?</strong> La prima lansare a zilei primești un mesaj discret informativ. Aplicația funcționează normal fără Calendar.
+    <strong>Notă:</strong> Aplicația e în modul „Testing". Email-ul tău trebuie adăugat ca test user de către dezvoltator.
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="share">
   <h2>Secțiunea SHARE</h2>
-  <p>Tot ce e trimis din alte aplicații Android (browser, YouTube, WhatsApp etc.) aterizează aici automat.</p>
-
-  <h3>Merge — combină mai multe elemente</h3>
-  <div class="step"><div class="num">1</div><div>Bifează elemente cu checkbox-ul din stânga.</div></div>
-  <div class="step"><div class="num">2</div><div>Bara galbenă: <strong>⧉ Merge → Clipboard</strong> | <strong>🗑 Șterge din Share</strong></div></div>
-  <div class="step"><div class="num">3</div><div><strong>⧉ Merge</strong> → copiază textul concatenat în clipboard. Elementele rămân în SHARE.</div></div>
-  <div class="step"><div class="num">4</div><div><strong>🗑 Șterge din Share</strong> → elementele originale înlocuite de un singur element merged.</div></div>
-
+  <p>Tot ce e trimis din alte aplicații Android aterizează aici automat.</p>
   <table>
     <tr><th>Acțiune</th><th>Cum</th></tr>
-    <tr><td>Editează text element</td><td>Dublu-tap</td></tr>
+    <tr><td>Editează text</td><td>Dublu-tap</td></tr>
     <tr><td>Mută în NEXT</td><td>Butonul → Next</td></tr>
-    <tr><td>Șterge element</td><td>Butonul ✕</td></tr>
-    <tr><td>Adaugă dată /c</td><td>Scrie /c în text, apoi apasă 📅</td></tr>
-    <tr><td>Caută în Share Journal</td><td>View Share Journal → câmp căutare intern</td></tr>
+    <tr><td>Șterge</td><td>Butonul ✕</td></tr>
+    <tr><td>Merge mai multe</td><td>Bifează → ⧉ Merge → Clipboard</td></tr>
   </table>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="projects">
   <h2>Proiecte și Taskuri</h2>
-  <h3>Coloanele boardului</h3>
   <table>
     <tr><th>Coloană</th><th>Semnificație</th></tr>
-    <tr><td><strong>To Do</strong> ⚡</td><td>Taskuri active. 1 task → apare automat în NEXT. Mai multe → folosește * pentru prioritate.</td></tr>
-    <tr><td><strong>Wait</strong> ⏳</td><td>Delegate sau blocate. Apar în secțiunea WAITING. Poți trimite taskuri aici și cu /w din NEXT.</td></tr>
-    <tr><td><strong>Done</strong> ✅</td><td>Terminate. Proiectul trece la EMPTY PROJECTS când nu mai are taskuri active.</td></tr>
+    <tr><td><strong>To Do</strong> ⚡</td><td>Taskuri active. 1 task → apare automat în NEXT.</td></tr>
+    <tr><td><strong>Wait</strong> ⏳</td><td>Delegate sau blocate. Apar în WAITING.</td></tr>
+    <tr><td><strong>Done</strong> ✅</td><td>Terminate.</td></tr>
   </table>
-
-  <h3>Drag taskuri între coloane</h3>
-  <p>Ține apăsat un card de task și trage stânga sau dreapta.</p>
-
-  <h3>Editare inline task</h3>
-  <p><strong>Dublu-tap</strong> pe orice nume de task din gridul de proiecte. Enter salvează, Escape anulează.</p>
-
-  <h3>Reordonare proiecte</h3>
-  <p>Ține apăsat pe mânerul <strong>⠿</strong> și trage în sus sau jos.</p>
-
-  <h3>Empty Projects</h3>
-  <p>Proiectele fără taskuri active apar aici. Bifează checkbox-ul → confirmă <strong>Yes</strong> pentru arhivare.</p>
+  <p>Drag taskuri între coloane. Dublu-tap pentru editare inline. Drag pe ⠿ pentru reordonare proiecte.</p>
+  <h3>Jurnal — buton ↩ Refă</h3>
+  <p>Când ștergi un task sau free task, intrarea din Jurnal include nota atașată și un buton <strong>↩ Refă</strong> care restaurează taskul complet.</p>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="sync">
   <h2>Sincronizare Cloud (butonul ☁)</h2>
-  <p>ProjectBoard folosește Firebase pentru a sincroniza datele între dispozitivele tale. Autentifică-te cu Google via butonul ☁ din header sau din view-ul Data.</p>
-
-  <h3>Sincronizare automată la pornire</h3>
   <table>
-    <tr><th>Situație</th><th>Ce se întâmplă</th><th>Toast afișat</th></tr>
-    <tr><td>Ai modificări nesincronizate</td><td>Modificările tale sunt trimise în cloud</td><td>☁↑ Push automat la lansare</td></tr>
-    <tr><td>Alt dispozitiv are date mai noi</td><td>Date remote aduse pe dispozitiv</td><td>☁↓ Pull automat la lansare</td></tr>
-    <tr><td>Ambele dispozitive au modificări noi</td><td>Merge automat — fără pierderi</td><td>☁⟳ Merge automat la lansare</td></tr>
-    <tr><td>Totul sincronizat</td><td>Nimic (silențios)</td><td>—</td></tr>
+    <tr><th>Situație</th><th>Ce se întâmplă</th></tr>
+    <tr><td>Ai modificări nesincronizate</td><td>Push automat</td></tr>
+    <tr><td>Alt dispozitiv are date mai noi</td><td>Pull automat</td></tr>
+    <tr><td>Ambele au modificări</td><td>Merge automat</td></tr>
+    <tr><td>Totul sincronizat</td><td>Silențios</td></tr>
   </table>
-
-  <h3>Sync manual — butonul ☁</h3>
-  <p>Apasă ☁ din header oricând. Aplicația decide automat: push modificările tale, pull date mai noi sau merge dacă ambele au modificări.</p>
-
-  <div class="card green">
-    <strong>Merge inteligent:</strong> când ambele dispozitive au modificări, aplicația face merge per element — versiunea modificată cel mai recent a fiecărui task sau proiect câștigă. Fără dialog, fără pierderi de date.
-  </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="export">
   <h2>Export / Import</h2>
-  <p>Accesezi din header: apasă <strong>Data</strong>, <strong>Journal</strong> sau <strong>Share</strong> pentru a deschide view-ul respectiv.</p>
-
   <table>
-    <tr><th>Buton</th><th>Nume complet</th><th>Fișier produs</th></tr>
-    <tr><td><strong>EJD</strong></td><td>Export JSON cu dată</td><td><code>pb-date-2026-04-26.json</code> — fișier nou de fiecare dată (istoric)</td></tr>
-    <tr><td><strong>ETD</strong></td><td>Export Text cu dată</td><td><code>jurnal-2026-04-26.txt</code> — lizibil, fără diacritice</td></tr>
-    <tr><td><strong>ET</strong></td><td>Export Text fix</td><td><code>jurnal.txt</code> — suprascrie versiunea anterioară</td></tr>
-    <tr><td><strong>I</strong></td><td>Import</td><td>Deschide file picker pentru JSON</td></tr>
-    <tr><td><strong>🗑 CLR</strong></td><td>Șterge jurnalul</td><td>Șterge toate intrările (cere confirmare)</td></tr>
+    <tr><th>Buton</th><th>Fișier produs</th></tr>
+    <tr><td><strong>EJD</strong></td><td>pb-date-YYYY-MM-DD.json</td></tr>
+    <tr><td><strong>ETD</strong></td><td>jurnal-YYYY-MM-DD.txt</td></tr>
+    <tr><td><strong>ET</strong></td><td>jurnal.txt (suprascrie)</td></tr>
+    <tr><td><strong>I</strong></td><td>Import JSON</td></tr>
   </table>
-
-  <div class="card blue">
-    <strong>Migrare pe alt dispozitiv:</strong><br/>
-    1. Dispozitiv vechi: Data view → <strong>EJD</strong> → salvează fișierul<br/>
-    2. Dispozitiv nou: instalează PWA, Data view → <strong>I</strong> → importă fișierul<br/>
-    3. Reconectează Google Calendar (📅) — token-ul nu migrează<br/>
-    4. Apasă ☁ Sync pentru a conecta datele cloud
-  </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
 <div class="sec" id="header">
   <h2>Butoanele din Header</h2>
   <table>
     <tr><th>Buton</th><th>Acțiune</th></tr>
-    <tr><td><strong>Data</strong></td><td>Export/import toate datele proiectului + panou sincronizare Firebase</td></tr>
-    <tr><td><strong>Journal</strong></td><td>Log cronologic al tuturor acțiunilor + căutare internă</td></tr>
-    <tr><td><strong>Share</strong></td><td>Share Journal — istoricul tuturor elementelor primite/merged/șterse + căutare internă</td></tr>
-    <tr><td><strong>+ Sec</strong></td><td>Adaugă un separator de secțiune în board</td></tr>
-    <tr><td><strong>+ Proj</strong></td><td>Adaugă un proiect nou</td></tr>
-    <tr><td><strong>⚙</strong></td><td>Setări etichete rapide — adaugă/elimină etichete de căutare</td></tr>
-    <tr><td><strong>📅</strong></td><td>Conectează/deconectează Google Calendar. Gri = neconectat. Albastru ✓ = conectat.</td></tr>
-    <tr><td><strong>☁</strong></td><td>Sincronizare manuală cloud (push/pull/merge). Afișează email-ul contului când e conectat.</td></tr>
-    <tr><td><strong>?</strong></td><td>Această pagină de help</td></tr>
-    <tr><td><strong>#a #u #c</strong></td><td>Căutare rapidă — tap pentru a căuta toate taskurile cu acea etichetă</td></tr>
-    <tr><td><strong>+ (FAB verde)</strong></td><td>Adaugă task rapid la începutul NEXT (dreapta-jos pe ecran)</td></tr>
-    <tr><td><strong>↑</strong></td><td>Scroll la începutul paginii (dreapta-jos pe ecran)</td></tr>
+    <tr><td><strong>Data</strong></td><td>Export/import + panou Firebase Sync</td></tr>
+    <tr><td><strong>Journal</strong></td><td>Log cronologic acțiuni + căutare internă</td></tr>
+    <tr><td><strong>Share</strong></td><td>Share Journal + căutare internă</td></tr>
+    <tr><td><strong>+ Sec</strong></td><td>Adaugă separator de secțiune</td></tr>
+    <tr><td><strong>+ Proj</strong></td><td>Adaugă proiect nou</td></tr>
+    <tr><td><strong>⚙</strong></td><td>Setări etichete rapide</td></tr>
+    <tr><td><strong>📅</strong></td><td>Conectează/actualizează Google Calendar. Gri = neconectat. Bifat = conectat. Tap când conectat = fetch forțat.</td></tr>
+    <tr><td><strong>☁</strong></td><td>Sincronizare manuală cloud</td></tr>
+    <tr><td><strong>?</strong></td><td>Această pagină</td></tr>
+    <tr><td><strong>🔄</strong></td><td>Reset calendar cache (debug)</td></tr>
+    <tr><td><strong>📋</strong></td><td>Copiază TRACE calendar în clipboard (debug)</td></tr>
+    <tr><td><strong>#a #u #c</strong></td><td>Căutare rapidă după etichetă</td></tr>
+    <tr><td><strong>+ (FAB verde)</strong></td><td>Adaugă task rapid la începutul NEXT</td></tr>
+    <tr><td><strong>↑</strong></td><td>Scroll la începutul paginii</td></tr>
   </table>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ -->
+<div class="sec" id="android">
+  <h2>Cum instalezi ProjectBoard pe Android</h2>
+  <p>Există două variante. <strong>Recomandăm Varianta 1 (PWA)</strong> pentru că oferă funcția de Share din orice aplicație.</p>
+
+  <div class="card green" style="margin-bottom:16px">
+    <strong>✅ Varianta 1 — PWA (recomandat)</strong><br/>
+    Instalare din browser, fără APK, fără magazin. Funcționează Share Target.
+  </div>
+
+  <h3>Varianta 1 — PWA: instalare din Chrome</h3>
+  <div class="step"><div class="num">1</div><div>Deschide <strong>Chrome</strong> pe Android și mergi la adresa:<br/><code>https://xpareto.github.io/Kanban/</code><br/>(K mare — cu minusculă nu funcționează)</div></div>
+  <div class="step"><div class="num">2</div><div>Chrome afișează automat un banner jos: <strong>„Adaugă ProjectBoard pe ecranul de pornire"</strong> → apasă <strong>Instalează</strong>.</div></div>
+  <div class="step"><div class="num">3</div><div>Dacă bannerul nu apare: apasă <strong>⋮ (meniu trei puncte)</strong> dreapta-sus → <strong>Adaugă pe ecranul de pornire</strong> sau <strong>Instalează aplicația</strong>.</div></div>
+  <div class="step"><div class="num">4</div><div>Apare iconița <strong>cu punct roșu</strong> pe ecranul de pornire. Aplicația se deschide fără bara de browser — ca o aplicație nativă.</div></div>
+
+  <div class="card blue">
+    <strong>De ce PWA e recomandat:</strong><br/>
+    ✅ <strong>Share Target</strong> — din orice aplicație (Chrome, YouTube, WhatsApp etc.) poți apăsa <strong>Share → ProjectBoard</strong> și linkul/textul ajunge direct în secțiunea SHARE.<br/>
+    ✅ Update automat — când se lansează o versiune nouă, aplicația se actualizează singură.<br/>
+    ✅ Fără aprobare din magazin, fără cont developer.<br/>
+    ✅ Offline după prima încărcare.
+  </div>
+
+  <h3>Cum folosești Share Target (PWA)</h3>
+  <div class="step"><div class="num">1</div><div>În orice aplicație (browser, YouTube, WhatsApp, Gmail etc.) → apasă butonul <strong>Share / Distribuie</strong>.</div></div>
+  <div class="step"><div class="num">2</div><div>Din lista de aplicații → selectează <strong>Project Board</strong> (iconița cu punct roșu).</div></div>
+  <div class="step"><div class="num">3</div><div>Linkul sau textul ajunge automat în secțiunea <strong>SHARE</strong> din ProjectBoard. De acolo îl poți muta în NEXT, edita sau șterge.</div></div>
+
+  <div class="card amber">
+    <strong>Important:</strong> Share Target funcționează DOAR cu varianta PWA instalată din Chrome. Varianta APK (TWA) <strong>nu are Share Target</strong> — nu apare în lista de aplicații când dai Share dintr-un browser.
+  </div>
+
+  <div class="card red" style="margin-top:16px">
+    <strong>⚠ Varianta 2 — APK (mai puțin recomandată)</strong><br/>
+    Fișier .apk primit direct (nu din Play Store). Lipsește Share Target.
+  </div>
+
+  <h3>Varianta 2 — APK: instalare manuală</h3>
+  <div class="step"><div class="num">1</div><div>Primești fișierul <code>app-release.apk</code> pe telefon (WhatsApp, email, Google Drive etc.).</div></div>
+  <div class="step"><div class="num">2</div><div>Activează <strong>instalare din surse necunoscute</strong>: Settings → Security → <strong>Install unknown apps</strong> → activează pentru aplicația prin care ai primit fișierul.</div></div>
+  <div class="step"><div class="num">3</div><div>Deschide fișierul APK → apasă <strong>Instalează</strong>. Poate apărea un avertisment Google Play Protect — apasă <strong>Instalează oricum</strong>.</div></div>
+  <div class="step"><div class="num">4</div><div>Apare iconița <strong>fără punct roșu</strong> pe ecranul de pornire.</div></div>
+
+  <div class="card amber">
+    <strong>Limitări APK vs PWA:</strong><br/>
+    ❌ Nu apare ca destinație în Share (nu poți trimite linkuri direct din browser).<br/>
+    ❌ Nu se actualizează automat — trebuie reinstalat manual la versiuni noi.<br/>
+    ❌ Necesită activarea „surse necunoscute" — Android afișează avertismente de securitate.<br/>
+    ✅ Funcțional complet altfel — taskuri, proiecte, calendar, Firebase sync funcționează identic.<br/>
+    ✅ Nu necesită Chrome instalat.
+  </div>
+
+  <h3>Comparație rapidă</h3>
+  <table>
+    <tr><th>Funcție</th><th>PWA ✅</th><th>APK ⚠</th></tr>
+    <tr><td>Share Target (trimite din orice app)</td><td>✅ Da</td><td>❌ Nu</td></tr>
+    <tr><td>Update automat</td><td>✅ Da</td><td>❌ Nu</td></tr>
+    <tr><td>Instalare simplă</td><td>✅ Din Chrome</td><td>⚠ Fișier APK</td></tr>
+    <tr><td>Surse necunoscute necesare</td><td>❌ Nu</td><td>✅ Da</td></tr>
+    <tr><td>Funcționalitate completă</td><td>✅ Da</td><td>✅ Da</td></tr>
+    <tr><td>Offline</td><td>✅ Da</td><td>✅ Da</td></tr>
+    <tr><td>Google Calendar sync</td><td>✅ Da</td><td>✅ Da</td></tr>
+    <tr><td>Firebase sync</td><td>✅ Da</td><td>✅ Da</td></tr>
+  </table>
+</div>
+
 <div class="section-divider"></div>
 <div class="sec" id="alpha">
   <h2>📖 Index alfabetic — Ce vreau să fac?</h2>
-  <p>Găsești rapid orice funcție. Ordonat alfabetic după intenție.</p>
-
   <table class="alpha-table">
     <tr><th>Vreau să…</th><th>Cum</th></tr>
-    <tr><td>Adaug dată în calendar la un task</td><td>Scrie <code>/c5.5</code> în task → apasă butonul 📅 care apare → se deschide Google Calendar pre-completat → Salvează</td></tr>
-    <tr><td>Adaug etichetă la un task</td><td>Scrie <code>#eticheta</code> direct în textul taskului (ex: <code>#urgent</code>, <code>#acasă</code>)</td></tr>
-    <tr><td>Adaug notă la un task</td><td>Apasă butonul ✎ de lângă task → alege opțiunea → scrie nota → ✓ Save</td></tr>
-    <tr><td>Adaug task rapid</td><td>Butonul verde <strong>+</strong> dreapta-jos → scrie → Enter</td></tr>
-    <tr><td>Adaug task într-un proiect</td><td>Deschide proiectul → <strong>+ task</strong> în coloana To Do</td></tr>
-    <tr><td>Arhivez un proiect terminat</td><td>Empty Projects → bifează checkbox → Yes</td></tr>
-    <tr><td>Bifez un task ca terminat</td><td>Butonul <strong>✓</strong> pe task-ul din NEXT sau din gridul proiectului</td></tr>
-    <tr><td>Caut ceva în aplicație</td><td>Câmpul <strong>Search…</strong> din header → scrie → rezultate imediate</td></tr>
-    <tr><td>Caut în Jurnal</td><td>View Journal → câmpul <strong>Caută în jurnal…</strong> sub header</td></tr>
-    <tr><td>Caut în Share Journal</td><td>View Share Journal (buton Share din header) → câmpul de căutare sub header</td></tr>
-    <tr><td>Caut taskuri cu o etichetă</td><td>Apasă butonul etichetei din header (<strong>#a</strong> etc.) sau scrie eticheta în câmpul Search</td></tr>
-    <tr><td>Conectez Google Calendar</td><td>Apasă <strong>📅</strong> din header → autentificare Google → autorizare</td></tr>
-    <tr><td>Creez proiect nou</td><td>Butonul <strong>+ Proj</strong> din header → scrie numele</td></tr>
-    <tr><td>Creez separator de secțiune</td><td>Butonul <strong>+ Sec</strong> din header → scrie numele</td></tr>
-    <tr><td>Deleg un task (WAIT)</td><td>Editează task → scrie <code>/w</code> → Enter. Sau drag din coloana To Do în Wait.</td></tr>
-    <tr><td>Deschid eveniment în Google Calendar</td><td>Tap pe evenimentul (fundal albastru) din NEXT → se deschide Calendar în browser</td></tr>
-    <tr><td>Editez un task</td><td>Dublu-tap pe textul taskului → câmp editabil → Enter sau tap în afară</td></tr>
-    <tr><td>Export date jurnal</td><td>View Journal → buton <strong>EJD</strong> (JSON) sau <strong>ETD</strong> (TXT) sau <strong>ET</strong> (TXT fix)</td></tr>
-    <tr><td>Export date proiecte</td><td>View Data → Export</td></tr>
-    <tr><td>Filtrez proiecte la promovare</td><td>Butonul ⊞ → câmpul <strong>Filtrează proiecte…</strong> → scrie câteva litere</td></tr>
-    <tr><td>Import date</td><td>View Data → buton <strong>I</strong> → alege fișier JSON</td></tr>
-    <tr><td>Mut task în WAITING</td><td>Editează → scrie <code>/w</code> → salvează. Sau drag în coloana Wait din proiect.</td></tr>
-    <tr><td>Mut task din Share în NEXT</td><td>Butonul <strong>→ Next</strong> de pe elementul din SHARE</td></tr>
-    <tr><td>Navighez la un proiect</td><td>Butonul <strong>▶</strong> de pe taskul din NEXT sau din rezultatele de căutare</td></tr>
-    <tr><td>Promovez task liber la proiect</td><td>Butonul <strong>⊞</strong> verde → alege proiect sau „Proiect nou"</td></tr>
-    <tr><td>Reordonez taskuri în NEXT</td><td>Drag pe mânerul <strong>⠿</strong> stânga. Sau: long-press → selecție → ↑ Top / ↓ Bottom</td></tr>
-    <tr><td>Reordonez proiecte</td><td>Drag pe mânerul <strong>⠿</strong> din coloana stângă a gridului</td></tr>
-    <tr><td>Scroll la începutul paginii</td><td>Butonul <strong>↑</strong> dreapta-jos</td></tr>
-    <tr><td>Selectez mai multe taskuri din NEXT</td><td>Long-press (500ms) pe un task → modul selecție → tap pe celelalte</td></tr>
-    <tr><td>Setez prioritate în proiect</td><td>Adaugă <code>*</code> la începutul numelui taskului din To Do (ex: <code>* Comandă materiale</code>)</td></tr>
-    <tr><td>Șterg un element din SHARE</td><td>Butonul <strong>✕</strong> de pe element</td></tr>
-    <tr><td>Șterg un task liber din NEXT</td><td>Butonul <strong>✕</strong> de pe task (doar taskuri libere)</td></tr>
-    <tr><td>Sync cloud manual</td><td>Butonul <strong>☁</strong> din header</td></tr>
-    <tr><td>Văd ce am terminat</td><td>Coloana <strong>Done</strong> din gridul proiectului</td></tr>
-    <tr><td>Văd istoricul acțiunilor</td><td>Butonul <strong>Journal</strong> din header</td></tr>
-    <tr><td>Văd istoricul share-urilor</td><td>Butonul <strong>Share</strong> din header → Share Journal</td></tr>
-    <tr><td>Văd evenimentele de azi din Calendar</td><td>Automat la prima deschidere a zilei. Sau reconectează 📅 dacă tokenul a expirat.</td></tr>
+    <tr><td>Adaug atașament la un task</td><td>Butonul 📎 de lângă task → overlay → + Adaugă fișier</td></tr>
+    <tr><td>Adaug dată în calendar</td><td>Scrie <code>/c5.5</code> în task → apasă 📅 → Google Calendar</td></tr>
+    <tr><td>Adaug notă la un task</td><td>Butonul ✎ → scrie nota → ✓ Save. Link-urile din notă apar automat ca 🔗</td></tr>
+    <tr><td>Adaug task rapid</td><td>Butonul verde <strong>+</strong> dreapta-jos</td></tr>
+    <tr><td>Bifez un task</td><td>Butonul ✓</td></tr>
+    <tr><td>Caut ceva</td><td>Câmpul Search… din header</td></tr>
+    <tr><td>Conectez Google Calendar</td><td>Apasă 📅 din header → autentificare Google</td></tr>
+    <tr><td>Deleg un task (WAIT)</td><td>Editează → scrie <code>/w</code> → Enter</td></tr>
+    <tr><td>Editez un task</td><td>Dublu-tap pe textul taskului</td></tr>
+    <tr><td>Export date</td><td>View Data → EJD sau ETD</td></tr>
+    <tr><td>Forțez citire calendar</td><td>Apasă 📅 când e bifat (albastru)</td></tr>
+    <tr><td>Mut task în WAITING</td><td>Scrie <code>/w</code> în task → salvează</td></tr>
+    <tr><td>Promovez task liber la proiect</td><td>Butonul ⊞ → alege proiect</td></tr>
+    <tr><td>Refac un task șters</td><td>Journal → butonul ↩ Refă de pe rândul de ștergere</td></tr>
+    <tr><td>Reset calendar (dacă nu funcționează)</td><td>Butonul 🔄 din header → apasă 📅</td></tr>
+    <tr><td>Reordonez taskuri în NEXT</td><td>Drag pe ⠿ sau long-press → selecție → ↑/↓</td></tr>
+    <tr><td>Sync cloud manual</td><td>Butonul ☁ din header</td></tr>
+    <tr><td>Văd TRACE calendar (debug)</td><td>Butonul 📋 → clipboard → trimite log</td></tr>
+    <tr><td>Văd evenimentele de azi</td><td>Automat la prima deschidere. Sau apasă 📅 pentru refresh.</td></tr>
+    <tr><td>Văd istoricul acțiunilor</td><td>Butonul Journal din header</td></tr>
+    <tr><td>Văd nota unui task șters</td><td>Journal → rândul de ștergere include nota (primele 120 caractere)</td></tr>
   </table>
 </div>
 
 <div style="padding:20px;text-align:center;color:#94A3B8;font-size:11px;margin-top:20px">
-  ProjectBoard V55 · xpareto.github.io/kanban
+  ProjectBoard V72 · xpareto.github.io/Kanban
 </div>
 
 </body>
