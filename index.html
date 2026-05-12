@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V72</title>
+<title>Project Board V73</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -117,7 +117,7 @@ input{font-family:inherit;outline:none}
 .jtask{font-size:12px;color:#374151;padding:2px 0 2px 12px}
 .jmove{font-size:11px;color:#6B7280;padding:2px 0 2px 12px;font-style:italic}
 .nrow.sel-on{background:#EFF6FF!important;border-left:3px solid #3B82F6;}
-.sel-bar{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#1E40AF;border-bottom:2px solid #3B82F6;}
+.sel-bar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:#1E40AF;border:2px solid #3B82F6;border-radius:12px;position:fixed;bottom:76px;left:10px;right:10px;z-index:600;box-shadow:0 4px 20px rgba(0,0,0,.45);}
 .nrow.cal-ev{background:#EFF6FF!important;border-left:3px solid #3B82F6;}
 .nrow.cal-ev .ndot{background:#3B82F6!important;}
 .cal-time{font-size:9px;font-weight:700;background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:1px 5px;flex-shrink:0;white-space:nowrap;}
@@ -931,13 +931,16 @@ async function calCheckAndFetch(){
     if(!token){
       traceLog('no token');
       var savedEmailF=localStorage.getItem('pb-cal-email')||'';
-      if(savedEmailF && !sessionStorage.getItem('cal_silent_tried')){
-        sessionStorage.setItem('cal_silent_tried','1');
+      // Silent re-auth: o singură încercare pe zi, cheie în localStorage (supraviețuiește redirect OAuth)
+      var silentTriedDay=localStorage.getItem('pb-cal-silent-tried')||'';
+      if(savedEmailF && silentTriedDay!==today){
+        localStorage.setItem('pb-cal-silent-tried',today);
         traceLog('silent re-auth: '+savedEmailF);
         _calFetchInProgress=false;
         calLogin(true);
         return;
       }
+      traceLog('no token, silent deja incercat azi');
       var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
       if(shownToday!==today){
         localStorage.setItem('pb-cal-info-shown',today);
@@ -2401,7 +2404,7 @@ function rBoard(){
   resetBtn.style.cssText='background:#7C3AED;color:white;font-size:11px;padding:4px 7px;border-radius:5px;min-width:28px';
   resetBtn.addEventListener('click',function(){
     localStorage.removeItem(CAL_PREF_KEY);localStorage.removeItem(CAL_DK);
-    localStorage.removeItem('pb-cal-info-shown');sessionStorage.removeItem('cal_silent_tried');
+    localStorage.removeItem('pb-cal-info-shown');localStorage.removeItem('pb-cal-silent-tried');sessionStorage.removeItem('cal_silent_tried');
     _calFetchInProgress=false;traceClear();traceLog('RESET manual');
     fbToast('🔄 Reset — apasă 📅','#0F1A2A','#A78BFA',4000);
   });
