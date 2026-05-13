@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V73</title>
+<title>Project Board V74</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -713,6 +713,11 @@ function calClearToken(){localStorage.removeItem(CAL_CK);}
 
 // Pornește fluxul OAuth — redirect la Google
 function calLogin(silent){
+  // Dacă silent și offline — nu redirecționa, lasă retry la următoarea deschidere
+  if(silent && !navigator.onLine){
+    traceLog('silent re-auth skip: offline');
+    return;
+  }
   var state=Math.random().toString(36).substr(2,10);
   sessionStorage.setItem('cal_oauth_state',state);
   if(silent) sessionStorage.setItem('cal_silent_attempt','1');
@@ -736,6 +741,8 @@ function calHandleCallback(){
   if(oauthError){
     history.replaceState({},'',window.location.pathname+window.location.search);
     traceLog('OAuth error:'+oauthError+(isSilent?' [silent]':''));
+    // La eroare silent, șterge flag-ul ca să poată reîncerca la next launch
+    if(isSilent) localStorage.removeItem('pb-cal-silent-tried');
     return false;
   }
   if(hash.indexOf('access_token')<0) return false;
@@ -745,6 +752,12 @@ function calHandleCallback(){
   history.replaceState({},'',window.location.pathname+window.location.search);
   calSaveToken(token,expiresIn);
   localStorage.removeItem(CAL_DK);
+  // Marchează silent re-auth ca reușit pentru ziua de azi
+  if(isSilent){
+    var todayStr2=calTodayStr();
+    localStorage.setItem('pb-cal-silent-tried',todayStr2);
+    traceLog('silent re-auth OK, tried='+todayStr2);
+  }
   traceLog('OAuth OK'+(isSilent?' [silent]':''));
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
@@ -917,13 +930,16 @@ async function calCheckAndFetch(){
   traceLog('calCheck: last='+lastDay+' today='+today);
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs){traceLog('skip: deja OK azi');return;}
-  // Zi nouă: șterge events vechi
+  // Zi nouă: șterge events vechi și resetează flag silent pentru ziua nouă
   if(lastDay!==today && lastDay!==''){
     traceLog('zi noua: sterg events din '+lastDay);
     S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
     S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    localStorage.removeItem('pb-cal-silent-tried');
   }
+  // Resetează și dacă lastDay e gol (prima rulare sau localStorage șters)
+  if(!lastDay) localStorage.removeItem('pb-cal-silent-tried');
   if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
   _calFetchInProgress=true;
   try{
@@ -931,10 +947,10 @@ async function calCheckAndFetch(){
     if(!token){
       traceLog('no token');
       var savedEmailF=localStorage.getItem('pb-cal-email')||'';
-      // Silent re-auth: o singură încercare pe zi, cheie în localStorage (supraviețuiește redirect OAuth)
+      // Silent re-auth: flag în localStorage cu data zilei (supraviețuiește redirect OAuth)
+      // NU se setează înainte de redirect — se setează în calHandleCallback la succes
       var silentTriedDay=localStorage.getItem('pb-cal-silent-tried')||'';
       if(savedEmailF && silentTriedDay!==today){
-        localStorage.setItem('pb-cal-silent-tried',today);
         traceLog('silent re-auth: '+savedEmailF);
         _calFetchInProgress=false;
         calLogin(true);
