@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V74</title>
+<title>Project Board V75</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -621,7 +621,8 @@ const CAL_PREF_KEY='pb-cal-pref-id';
 // ── TRACE system ─────────────────────────────────────────────────
 var TRACE_KEY='pb-cal-trace';
 function traceLog(msg){
-  var ts=new Date().toISOString().slice(11,19);
+  var _d=new Date();
+  var ts=String(_d.getHours()).padStart(2,'0')+':'+String(_d.getMinutes()).padStart(2,'0')+':'+String(_d.getSeconds()).padStart(2,'0');
   var arr=[];try{arr=JSON.parse(localStorage.getItem(TRACE_KEY)||'[]');}catch(_){}
   arr.push(ts+' '+msg);
   if(arr.length>100)arr=arr.slice(-100);
@@ -737,6 +738,7 @@ function calHandleCallback(){
   var params=new URLSearchParams(hash.replace(/^#/,''));
   var isSilent=sessionStorage.getItem('cal_silent_attempt')==='1';
   sessionStorage.removeItem('cal_silent_attempt');
+  sessionStorage.removeItem('cal_silent_pending');
   var oauthError=params.get('error');
   if(oauthError){
     history.replaceState({},'',window.location.pathname+window.location.search);
@@ -745,7 +747,12 @@ function calHandleCallback(){
     if(isSilent) localStorage.removeItem('pb-cal-silent-tried');
     return false;
   }
-  if(hash.indexOf('access_token')<0) return false;
+  if(hash.indexOf('access_token')<0){
+    // Hash prezent dar fără token și fără error = redirect eșuat (ex: prompt=none fără sesiune activă)
+    history.replaceState({},'',window.location.pathname+window.location.search);
+    if(isSilent){traceLog('silent re-auth: no token in hash');}
+    return false;
+  }
   var token=params.get('access_token');
   if(!token) return false;
   var expiresIn=params.get('expires_in')||3600;
@@ -941,6 +948,7 @@ async function calCheckAndFetch(){
   // Resetează și dacă lastDay e gol (prima rulare sau localStorage șters)
   if(!lastDay) localStorage.removeItem('pb-cal-silent-tried');
   if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
+  if(sessionStorage.getItem('cal_silent_pending')){traceLog('skip: silent pending redirect');return;}
   _calFetchInProgress=true;
   try{
     var token=calGetToken();
@@ -952,6 +960,9 @@ async function calCheckAndFetch(){
       var silentTriedDay=localStorage.getItem('pb-cal-silent-tried')||'';
       if(savedEmailF && silentTriedDay!==today){
         traceLog('silent re-auth: '+savedEmailF);
+        // Setează un flag temporar în sessionStorage ca să blocheze apeluri simultane
+        // (înainte de redirect, _calFetchInProgress nu mai e util)
+        sessionStorage.setItem('cal_silent_pending','1');
         _calFetchInProgress=false;
         calLogin(true);
         return;
