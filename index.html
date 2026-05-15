@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V76</title>
+<title>Project Board V77</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -748,12 +748,23 @@ function calHandleCallback(){
   var isSilent=sessionStorage.getItem('cal_silent_attempt')==='1';
   sessionStorage.removeItem('cal_silent_attempt');
   sessionStorage.removeItem('cal_silent_pending');
+  sessionStorage.removeItem('cal_silent_pending_ts');
   var oauthError=params.get('error');
   if(oauthError){
     history.replaceState({},'',window.location.pathname+window.location.search);
     traceLog('OAuth error:'+oauthError+(isSilent?' [silent]':''));
-    // La eroare silent, șterge flag-ul ca să poată reîncerca la next launch
-    if(isSilent) localStorage.removeItem('pb-cal-silent-tried');
+    sessionStorage.removeItem('cal_silent_pending');
+    if(isSilent){
+      if(oauthError==='interaction_required'||oauthError==='login_required'||oauthError==='account_selection_required'){
+        // Necesită interacțiune manuală — nu mai reîncerca automat azi
+        var todayE=calTodayStr();
+        localStorage.setItem('pb-cal-silent-tried',todayE);
+        traceLog('silent blocked today: '+oauthError);
+      } else {
+        // Altă eroare (ex: network) — permite retry la next launch
+        localStorage.removeItem('pb-cal-silent-tried');
+      }
+    }
     return false;
   }
   if(hash.indexOf('access_token')<0){
@@ -946,18 +957,24 @@ async function calCheckAndFetch(){
   traceLog('calCheck: last='+lastDay+' today='+today);
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs){traceLog('skip: deja OK azi');return;}
-  // Zi nouă: șterge events vechi și resetează flag silent pentru ziua nouă
-  if(lastDay!==today && lastDay!==''){
-    traceLog('zi noua: sterg events din '+lastDay);
+  // Zi nouă: șterge events vechi O SINGURĂ DATĂ (marcat cu CAL_DK setat pe today)
+  var calCleaned=localStorage.getItem('pb-cal-cleaned')||'';
+  if(lastDay!==today && calCleaned!==today){
+    traceLog('zi noua: sterg events din '+(lastDay||'gol'));
     S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
     S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    localStorage.setItem('pb-cal-cleaned',today);
     localStorage.removeItem('pb-cal-silent-tried');
+    localStorage.removeItem('pb-cal-info-shown');
   }
-  // Resetează și dacă lastDay e gol (prima rulare sau localStorage șters)
-  if(!lastDay) localStorage.removeItem('pb-cal-silent-tried');
   if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
-  if(sessionStorage.getItem('cal_silent_pending')){traceLog('skip: silent pending redirect');return;}
+  // cal_silent_pending: blocat doar dacă redirect e cu adevărat în curs
+  // (nu dacă a rămas setat dintr-o sesiune anterioară)
+  var pendingTs=parseInt(sessionStorage.getItem('cal_silent_pending_ts')||'0');
+  if(pendingTs && Date.now()-pendingTs<30000){traceLog('skip: silent pending redirect');return;}
+  sessionStorage.removeItem('cal_silent_pending');
+  sessionStorage.removeItem('cal_silent_pending_ts');
   _calFetchInProgress=true;
   try{
     var token=calGetToken();
@@ -969,6 +986,7 @@ async function calCheckAndFetch(){
         // Încearcă silent re-auth indiferent dacă avem email salvat sau nu
         traceLog('silent re-auth: '+(savedEmailF||'no-hint'));
         sessionStorage.setItem('cal_silent_pending','1');
+        sessionStorage.setItem('cal_silent_pending_ts',String(Date.now()));
         _calFetchInProgress=false;
         calLogin(true);
         return;
@@ -4073,7 +4091,8 @@ function registerSW(){
     }
   });
   // Verifică dacă există share pending (app era închisă)
-  caches.open('projectboard-v44').then(function(cache){
+  var swCacheName='projectboard-v'+((document.title||'').match(/V(\d+)/)||[,'0'])[1];
+  caches.open(swCacheName).then(function(cache){
     cache.match('/__pending_share__').then(function(resp){
       if(!resp)return;
       resp.text().then(function(text){
