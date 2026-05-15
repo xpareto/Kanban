@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V75</title>
+<title>Project Board V76</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -123,7 +123,7 @@ input{font-family:inherit;outline:none}
 .cal-time{font-size:9px;font-weight:700;background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:1px 5px;flex-shrink:0;white-space:nowrap;}
 .sel-count{font-size:11px;font-weight:700;color:#BFDBFE;}
 .sel-btn{background:#3B82F6;color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:12px;font-weight:800;cursor:pointer;touch-action:manipulation;}
-.sel-btn.end{background:#6366F1;}
+.sel-btn.end{background:#6366F1;}.sel-btn.proj{background:#10B981;}.sel-btn.sub{background:#F59E0B;}
 .sel-clear{background:#1E3A8A;color:#93C5FD;border:none;border-radius:7px;padding:6px 10px;font-size:11px;cursor:pointer;touch-action:manipulation;}
 .si{background:transparent;border:none;color:#fff;font-size:12px;width:100px;outline:none}
 .si::placeholder{color:#6B7280}
@@ -281,8 +281,9 @@ function mergeItemArray(localArr, remoteArr){
   (localArr||[]).forEach(function(x){map[x.id]=x;});
   (remoteArr||[]).forEach(function(x){
     var l=map[x.id];
-    if(!l){map[x.id]=x;} // nou în remote — adaugă
-    else{
+    if(!l){
+      if(!x._deleted) map[x.id]=x; // nou în remote — adaugă doar dacă nu e tombstone
+    } else {
       var lt=l.modifiedTs||l.ts||0;
       var rt=x.modifiedTs||x.ts||0;
       if(rt>lt) map[x.id]=x; // remote mai recent — câștigă
@@ -404,9 +405,17 @@ async function fbPull(mode){
         // nextOrder: union dedup
         var knownIds=new Set((S.freeTasks).map(function(x){return x.id;}));
         S.items.forEach(function(it){if(it.type==='project')(it.tasks||[]).forEach(function(t){knownIds.add(t.id);});});
+        // Ordinea locală se păstrează; elementele noi din remote se inserează la ÎNCEPUT
+        var localOrdSet=new Set((S.nextOrder||[]).map(function(e){
+          return e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
+        }));
+        var remoteNew=(rData.nextOrder||[]).filter(function(e){
+          var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
+          return !localOrdSet.has(key)&&knownIds.has(e.type==='free'?e.id:e.taskId);
+        });
         var seenOrd=new Set();
         var mergedOrd=[];
-        (S.nextOrder||[]).concat(rData.nextOrder||[]).forEach(function(e){
+        remoteNew.concat(S.nextOrder||[]).forEach(function(e){
           var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
           if(!seenOrd.has(key)&&knownIds.has(e.type==='free'?e.id:e.taskId)){seenOrd.add(key);mergedOrd.push(e);}
         });
@@ -955,13 +964,10 @@ async function calCheckAndFetch(){
     if(!token){
       traceLog('no token');
       var savedEmailF=localStorage.getItem('pb-cal-email')||'';
-      // Silent re-auth: flag în localStorage cu data zilei (supraviețuiește redirect OAuth)
-      // NU se setează înainte de redirect — se setează în calHandleCallback la succes
       var silentTriedDay=localStorage.getItem('pb-cal-silent-tried')||'';
-      if(savedEmailF && silentTriedDay!==today){
-        traceLog('silent re-auth: '+savedEmailF);
-        // Setează un flag temporar în sessionStorage ca să blocheze apeluri simultane
-        // (înainte de redirect, _calFetchInProgress nu mai e util)
+      if(silentTriedDay!==today){
+        // Încearcă silent re-auth indiferent dacă avem email salvat sau nu
+        traceLog('silent re-auth: '+(savedEmailF||'no-hint'));
         sessionStorage.setItem('cal_silent_pending','1');
         _calFetchInProgress=false;
         calLogin(true);
@@ -2764,10 +2770,16 @@ function rBoard(){
     var sbBot=mk('button','sel-btn end');sbBot.textContent='↓ Bottom';
     sbBot.addEventListener('click',function(){moveSelectedNext('end');});
     sbBot.addEventListener('touchend',function(e){e.preventDefault();moveSelectedNext('end');},{passive:false});
+    var sbProj=mk('button','sel-btn proj');sbProj.textContent='⊞ Project';
+    sbProj.addEventListener('click',function(){moveSelectedToProject();});
+    sbProj.addEventListener('touchend',function(e){e.preventDefault();moveSelectedToProject();},{passive:false});
+    var sbSub=mk('button','sel-btn sub');sbSub.textContent='↳ Sub primul';
+    sbSub.addEventListener('click',function(){moveSelectedUnderFirst();});
+    sbSub.addEventListener('touchend',function(e){e.preventDefault();moveSelectedUnderFirst();},{passive:false});
     var sbClear=mk('button','sel-clear');sbClear.textContent='✕ Cancel';
     sbClear.addEventListener('click',function(){S.selectedNext={};S.selectMode=false;render();});
     sbClear.addEventListener('touchend',function(e){e.preventDefault();S.selectedNext={};S.selectMode=false;render();},{passive:false});
-    ap(sb,scc,sbTop,sbBot,sbClear);
+    ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbClear);
     root.appendChild(sb);
   }
 
@@ -3525,6 +3537,155 @@ function rBoard(){
 }
 
 // ── Mută taskurile selectate la început sau la final în NEXT ──
+// Mută toate rândurile selectate într-un proiect (existent sau nou)
+// Folosește același overlay ca promoteToProject, dar acționează pe toate rândurile selectate
+function moveSelectedToProject(){
+  var nr=getNR();
+  var selKeys=Object.keys(S.selectedNext);
+  if(!selKeys.length) return;
+  // Colectează rândurile selectate în ordinea din NR
+  var selRows=nr.filter(function(r){
+    var k=r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;
+    return selKeys.indexOf(k)>=0;
+  });
+  // Construiește label preview din primul rând
+  var firstLabel=(selRows[0]&&(selRows[0].name||selRows[0].taskName))||'';
+  var previewLabel=firstLabel.length>50?firstLabel.slice(0,50)+'…':firstLabel;
+  if(selRows.length>1) previewLabel+=' + '+(selRows.length-1)+' altele';
+
+  // Overlay identic cu promoteToProject
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px 14px 0 0;padding:16px 16px 24px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='⊞ Add '+selRows.length+' items to project';
+  h.style.cssText='color:#10B981;font-weight:800;font-size:15px;margin-bottom:4px';
+  var taskPrev=document.createElement('div');
+  taskPrev.textContent=previewLabel;
+  taskPrev.style.cssText='color:#6B7280;font-size:10px;margin-bottom:12px;word-break:break-word';
+  var filterWrap=document.createElement('div');
+  filterWrap.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-shrink:0';
+  var filterInp=document.createElement('input');
+  filterInp.placeholder='Filtrează proiecte…';
+  filterInp.style.cssText='flex:1;background:#0F1117;color:#E2E8F0;border:1px solid #374151;border-radius:7px;padding:7px 10px;font-size:12px;outline:none';
+  filterWrap.appendChild(filterInp);
+  var projList=S.items.filter(function(x){return x.type==='project';}).slice().sort(function(a,b){return a.name.localeCompare(b.name,'ro');});
+  var listLbl=document.createElement('div');
+  listLbl.textContent='Proiecte existente:';
+  listLbl.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:6px;flex-shrink:0';
+  var listWrap=document.createElement('div');
+  listWrap.style.cssText='overflow-y:auto;max-height:35vh;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;flex-shrink:1';
+  function doClose(){document.body.removeChild(ov);}
+  function doAddToProj(proj,projId,isNew){
+    doClose();
+    selRows.forEach(function(row){
+      var taskLabel=row.name||row.taskName||'';
+      var newTaskId=gid();
+      if(isNew){
+        // proiect nou: primul rând l-am deja creat în doCreateProject, restul adăugăm
+        proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
+        S.nextOrder=[...S.nextOrder,{type:'proj',projectId:projId,taskId:newTaskId}];
+      } else {
+        proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
+        S.nextOrder=[...S.nextOrder,{type:'proj',projectId:projId,taskId:newTaskId}];
+      }
+      // Elimină din freeTasks și nextOrder dacă era free
+      if(row.isFree){
+        S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
+        S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
+      }
+    });
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SK,S.items);
+    S.selectedNext={};S.selectMode=false;
+    save();render();
+  }
+  var projBtns=[];
+  projList.forEach(function(proj){
+    var pb=document.createElement('button');
+    pb.textContent=proj.name;
+    pb.dataset.pname=proj.name.toLowerCase();
+    pb.style.cssText='text-align:left;background:#2D3048;color:#F1F5F9;border:1px solid #374151;border-radius:7px;padding:9px 12px;font-size:13px;cursor:pointer;touch-action:manipulation;flex-shrink:0';
+    pb.addEventListener('click',function(){doAddToProj(proj,proj.id,false);});
+    listWrap.appendChild(pb);projBtns.push(pb);
+  });
+  filterInp.addEventListener('input',function(){
+    var q=filterInp.value.trim().toLowerCase();
+    projBtns.forEach(function(pb){pb.style.display=(!q||pb.dataset.pname.indexOf(q)>=0)?'':'none';});
+  });
+  var newLbl=document.createElement('div');
+  newLbl.textContent='Or create new project:';
+  newLbl.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:6px;flex-shrink:0';
+  var newRow=document.createElement('div');
+  newRow.style.cssText='display:flex;gap:8px;flex-shrink:0';
+  var inp=document.createElement('input');
+  inp.placeholder='New project name...';
+  inp.style.cssText='flex:1;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓';
+  bOk.style.cssText='background:#10B981;color:#fff;border:none;border-radius:7px;padding:9px 14px;font-weight:800;font-size:15px;cursor:pointer;flex-shrink:0';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕';
+  bCancel.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:9px 12px;font-size:13px;cursor:pointer;flex-shrink:0';
+  function doNew(){
+    var projName=inp.value.trim();
+    if(!projName) return;
+    doClose();
+    var newProjId=gid();
+    var newProj={type:'project',id:newProjId,name:projName,tasks:[]};
+    S.items=[...S.items,newProj];
+    doAddToProj(newProj,newProjId,true);
+  }
+  bOk.addEventListener('click',doNew);
+  bCancel.addEventListener('click',doClose);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doNew();}if(e.key==='Escape')doClose();});
+  newRow.appendChild(inp);newRow.appendChild(bOk);newRow.appendChild(bCancel);
+  card.appendChild(h);card.appendChild(taskPrev);
+  if(projList.length){card.appendChild(listLbl);card.appendChild(filterWrap);card.appendChild(listWrap);}
+  card.appendChild(newLbl);card.appendChild(newRow);
+  ov.appendChild(card);document.body.appendChild(ov);
+  ov.addEventListener('click',function(e){if(e.target===ov)doClose();});
+  setTimeout(function(){inp.focus();},80);
+}
+
+// Mută rândurile 2..n sub primul rând selectat (în ordinea selectată)
+function moveSelectedUnderFirst(){
+  var nr=getNR();
+  var selKeys=Object.keys(S.selectedNext);
+  if(selKeys.length<2) return;
+  // Ordinea selectatelor în NR
+  var selRows=nr.filter(function(r){
+    var k=r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;
+    return selKeys.indexOf(k)>=0;
+  });
+  if(selRows.length<2) return;
+  var firstRow=selRows[0];
+  var firstKey=firstRow.isFree?'f::'+firstRow.id:'p::'+firstRow.projectId+'::'+firstRow.taskId;
+  var restKeys=new Set(selKeys.filter(function(k){return k!==firstKey;}));
+  // Construiește unified order
+  var unified=nr.map(function(r){
+    return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
+  });
+  function rowKey(r){return r.type==='free'?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  var rest=unified.filter(function(r){return !restKeys.has(rowKey(r));});
+  var toInsert=unified.filter(function(r){return restKeys.has(rowKey(r));});
+  // Găsește indexul primului în rest
+  var firstIdx=rest.findIndex(function(r){return rowKey(r)===firstKey;});
+  if(firstIdx<0){S.nextOrder=unified;lw(NK,S.nextOrder);S.selectedNext={};S.selectMode=false;render();return;}
+  // Inserează 2..n imediat după primul
+  var newOrder=rest.slice(0,firstIdx+1).concat(toInsert).concat(rest.slice(firstIdx+1));
+  S.nextOrder=newOrder;
+  var newFT=[];
+  newOrder.forEach(function(x){
+    if(x.type==='free'){var f=S.freeTasks.find(function(ft){return ft.id===x.id;});if(f)newFT.push(f);}
+  });
+  S.freeTasks.forEach(function(f){if(!newFT.find(function(x){return x.id===f.id;}))newFT.push(f);});
+  S.freeTasks=newFT;
+  lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+  S.selectedNext={};S.selectMode=false;
+  render();
+}
+
 function moveSelectedNext(where){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext); // chei: 'f::id' sau 'p::pid::tid'
