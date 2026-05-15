@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V77</title>
+<title>Project Board V79</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -951,6 +951,7 @@ function calInjectEvents(events){
 
 // Verifică dacă e prima rulare a zilei și dacă avem token
 var _calFetchInProgress=false;
+var _selOrder=0; // contor ordine selecție
 async function calCheckAndFetch(){
   var lastDay=localStorage.getItem(CAL_DK)||'';
   var today=calTodayStr();
@@ -958,14 +959,19 @@ async function calCheckAndFetch(){
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs){traceLog('skip: deja OK azi');return;}
   // Zi nouă: șterge events vechi O SINGURĂ DATĂ (marcat cu CAL_DK setat pe today)
+  // Zi nouă sau lastDay gol: șterge events vechi O SINGURĂ DATĂ
   var calCleaned=localStorage.getItem('pb-cal-cleaned')||'';
-  if(lastDay!==today && calCleaned!==today){
-    traceLog('zi noua: sterg events din '+(lastDay||'gol'));
-    S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
-    S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
-    lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  if(calCleaned!==today){
+    if(lastDay && lastDay!==today){
+      traceLog('zi noua: sterg events din '+lastDay);
+      S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
+      S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    }
     localStorage.setItem('pb-cal-cleaned',today);
-    localStorage.removeItem('pb-cal-silent-tried');
+    // Resetează silent doar dacă nu e blocat din interaction_required
+    var silentBlocked=localStorage.getItem('pb-cal-silent-tried')||'';
+    if(silentBlocked!==today) localStorage.removeItem('pb-cal-silent-tried');
     localStorage.removeItem('pb-cal-info-shown');
   }
   if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
@@ -2455,7 +2461,10 @@ function rBoard(){
   resetBtn.style.cssText='background:#7C3AED;color:white;font-size:11px;padding:4px 7px;border-radius:5px;min-width:28px';
   resetBtn.addEventListener('click',function(){
     localStorage.removeItem(CAL_PREF_KEY);localStorage.removeItem(CAL_DK);
-    localStorage.removeItem('pb-cal-info-shown');localStorage.removeItem('pb-cal-silent-tried');sessionStorage.removeItem('cal_silent_tried');
+    localStorage.removeItem('pb-cal-info-shown');localStorage.removeItem('pb-cal-silent-tried');
+    localStorage.removeItem('pb-cal-cleaned');localStorage.removeItem('pb-cal-silent-tried');
+    sessionStorage.removeItem('cal_silent_tried');sessionStorage.removeItem('cal_silent_pending');
+    sessionStorage.removeItem('cal_silent_pending_ts');
     _calFetchInProgress=false;traceClear();traceLog('RESET manual');
     fbToast('🔄 Reset — apasă 📅','#0F1A2A','#A78BFA',4000);
   });
@@ -2795,8 +2804,8 @@ function rBoard(){
     sbSub.addEventListener('click',function(){moveSelectedUnderFirst();});
     sbSub.addEventListener('touchend',function(e){e.preventDefault();moveSelectedUnderFirst();},{passive:false});
     var sbClear=mk('button','sel-clear');sbClear.textContent='✕ Cancel';
-    sbClear.addEventListener('click',function(){S.selectedNext={};S.selectMode=false;render();});
-    sbClear.addEventListener('touchend',function(e){e.preventDefault();S.selectedNext={};S.selectMode=false;render();},{passive:false});
+    sbClear.addEventListener('click',function(){S.selectedNext={};S.selectMode=false;_selOrder=0;render();});
+    sbClear.addEventListener('touchend',function(e){e.preventDefault();S.selectedNext={};S.selectMode=false;_selOrder=0;render();},{passive:false});
     ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbClear);
     root.appendChild(sb);
   }
@@ -2860,7 +2869,8 @@ function rBoard(){
         lpTimer=null;
         lastTapTs=0;
         S.selectMode=true;
-        S.selectedNext[selKey]=true;
+        _selOrder++;
+        S.selectedNext[selKey]=_selOrder;
         render();
       },500);
     },{passive:false});
@@ -2872,7 +2882,7 @@ function rBoard(){
       if(e.target&&(e.target.tagName==='BUTTON'||e.target.tagName==='A')) return;
       e.stopPropagation();
       if(S.selectedNext[selKey]) delete S.selectedNext[selKey];
-      else S.selectedNext[selKey]=true;
+      else{_selOrder++;S.selectedNext[selKey]=_selOrder;}
       render();
     });
 
@@ -3671,27 +3681,36 @@ function moveSelectedUnderFirst(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
   if(selKeys.length<2) return;
-  // Ordinea selectatelor în NR
-  var selRows=nr.filter(function(r){
-    var k=r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;
-    return selKeys.indexOf(k)>=0;
-  });
-  if(selRows.length<2) return;
-  var firstRow=selRows[0];
-  var firstKey=firstRow.isFree?'f::'+firstRow.id:'p::'+firstRow.projectId+'::'+firstRow.taskId;
-  var restKeys=new Set(selKeys.filter(function(k){return k!==firstKey;}));
+  // Sortează cheile după ordinea selectării (valoarea din S.selectedNext)
+  var sortedKeys=selKeys.slice().sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  // Ancora = primul selectat (sortedKeys[0])
+  var firstKey=sortedKeys[0];
+  // Restul în ordinea selectării
+  var restKeysList=sortedKeys.slice(1);
+  var restKeysSet=new Set(restKeysList);
   // Construiește unified order
   var unified=nr.map(function(r){
     return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
   });
   function rowKey(r){return r.type==='free'?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
-  var rest=unified.filter(function(r){return !restKeys.has(rowKey(r));});
-  var toInsert=unified.filter(function(r){return restKeys.has(rowKey(r));});
-  // Găsește indexul primului în rest
-  var firstIdx=rest.findIndex(function(r){return rowKey(r)===firstKey;});
-  if(firstIdx<0){S.nextOrder=unified;lw(NK,S.nextOrder);S.selectedNext={};S.selectMode=false;render();return;}
-  // Inserează 2..n imediat după primul
-  var newOrder=rest.slice(0,firstIdx+1).concat(toInsert).concat(rest.slice(firstIdx+1));
+  // rest = rândurile neselectate (ancora rămâne în unified, o tratăm separat)
+  var allSelSet=new Set(selKeys);
+  var rest=unified.filter(function(r){return !allSelSet.has(rowKey(r));});
+  // toInsert = rândurile 2..n în ORDINEA SELECTĂRII
+  var unifiedMap={};
+  unified.forEach(function(r){unifiedMap[rowKey(r)]=r;});
+  var toInsert=restKeysList.map(function(k){return unifiedMap[k];}).filter(Boolean);
+  var anchorUnified=unifiedMap[firstKey];
+  // Găsim poziția ancorei în unified original pentru a ști unde o inserăm
+  var anchorOrigIdx=unified.findIndex(function(r){return rowKey(r)===firstKey;});
+  if(anchorOrigIdx<0||!anchorUnified){S.nextOrder=unified;lw(NK,S.nextOrder);S.selectedNext={};_selOrder=0;S.selectMode=false;render();return;}
+  // restBefore/restAfter față de poziția ancorei
+  var restBefore=[];var restAfter=[];
+  rest.forEach(function(r){
+    var idx=unified.findIndex(function(u){return rowKey(u)===rowKey(r);});
+    if(idx<anchorOrigIdx) restBefore.push(r); else restAfter.push(r);
+  });
+  var newOrder=restBefore.concat([anchorUnified]).concat(toInsert).concat(restAfter);
   S.nextOrder=newOrder;
   var newFT=[];
   newOrder.forEach(function(x){
