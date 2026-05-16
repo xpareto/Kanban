@@ -1,5 +1,5 @@
-//v79
-var CACHE = 'projectboard-v79';
+//v80
+var CACHE = 'projectboard-v80';
 var FILES = [
   '/index.html',
   '/manifest.json',
