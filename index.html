@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V81</title>
+<title>Project Board V82</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -279,10 +279,13 @@ function fbPayloadShareJournal(){
 function mergeItemArray(localArr, remoteArr){
   var map={};
   (localArr||[]).forEach(function(x){map[x.id]=x;});
+  // Construiește set de id-uri șterse local (din localStorage, dacă există)
+  var localDeleted=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
   (remoteArr||[]).forEach(function(x){
     var l=map[x.id];
     if(!l){
-      if(!x._deleted) map[x.id]=x; // nou în remote — adaugă doar dacă nu e tombstone
+      // Nou în remote — adaugă doar dacă nu e tombstone și nu e în lista locală de șterse
+      if(!x._deleted && !localDeleted[x.id]) map[x.id]=x;
     } else {
       var lt=l.modifiedTs||l.ts||0;
       var rt=x.modifiedTs||x.ts||0;
@@ -952,6 +955,10 @@ function calInjectEvents(events){
 // Verifică dacă e prima rulare a zilei și dacă avem token
 var _calFetchInProgress=false;
 var _selOrder=0; // contor ordine selecție
+function markDeleted(id){
+  try{var del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
+  del[id]=Date.now();localStorage.setItem('pb-deleted-ids',JSON.stringify(del));}catch(_){}
+}
 async function calCheckAndFetch(){
   var lastDay=localStorage.getItem(CAL_DK)||'';
   var today=calTodayStr();
@@ -1386,6 +1393,7 @@ function moveToWait(taskId, projectId){
     var ft=S.freeTasks.find(function(x){return x.id===taskId;});
     if(!ft) return;
     je({kind:'task-move',taskName:ft.name,fromCol:'next',toCol:'wait',projectId:null,ts:Date.now()});
+    markDeleted(taskId);
     S.freeTasks=S.freeTasks.filter(function(x){return x.id!==taskId;});
     S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===taskId);});
     var wft={id:ft.id,name:ft.name,ts:ft.ts,modifiedTs:Date.now()};
@@ -1406,6 +1414,7 @@ function checkSlashW(name, taskId, projectId){
 
 function delFree(id){
   const f=S.freeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,note:f.note||'',ts:Date.now()});
+  markDeleted(id);
   S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
   S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
@@ -1612,6 +1621,7 @@ function doCreateProject(freeId,projName,taskLabel){
   var newTaskId=gid();
   S.items=[...S.items,{type:'project',id:newId,name:projName,tasks:[{id:newTaskId,name:taskLabel,status:'next'}]}];
   S.nextOrder=[...S.nextOrder,{type:'proj',projectId:newId,taskId:newTaskId}];
+  markDeleted(freeId);
   S.freeTasks=S.freeTasks.filter(function(x){return x.id!==freeId;});
   S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===freeId);});
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
@@ -2849,7 +2859,15 @@ function rBoard(){
     var sbClear=mk('button','sel-clear');sbClear.textContent='✕ Cancel';
     sbClear.addEventListener('click',function(){S.selectedNext={};S.selectMode=false;_selOrder=0;render();});
     sbClear.addEventListener('touchend',function(e){e.preventDefault();S.selectedNext={};S.selectMode=false;_selOrder=0;render();},{passive:false});
-    ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbClear);
+    if(selCount===2){
+      var sbSort=mk('button','sel-btn');sbSort.textContent='⇅ Sortare dată';
+      sbSort.style.background='#7C3AED';
+      sbSort.addEventListener('click',function(){sortSelectedByDate();});
+      sbSort.addEventListener('touchend',function(e){e.preventDefault();sortSelectedByDate();},{passive:false});
+      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbSort,sbClear);
+    } else {
+      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbClear);
+    }
     root.appendChild(sb);
   }
 
@@ -3772,6 +3790,79 @@ function moveSelectedUnderFirst(){
   S.freeTasks=newFT;
   lw(NK,S.nextOrder);lw(FK,S.freeTasks);
   S.selectedNext={};S.selectMode=false;
+  render();
+}
+
+// Extrage data din textul unui rând pentru sortare
+function extractDateFromRow(row){
+  // 1. Cal event — are calStart direct
+  if(row.isFree && row.id && row.id.startsWith('cal::')){
+    var f=S.freeTasks.find(function(ft){return ft.id===row.id;});
+    if(f&&f.calStart){
+      var d=new Date(f.calStart);
+      if(!isNaN(d.getTime())) return d;
+    }
+  }
+  var text=row.tname||'';
+  var now=new Date();
+  var cy=now.getFullYear();var cm=now.getMonth()+1;
+  // 2. Pattern interval N.L - N2.L2 (ex: "5.5 - 7.5") — ia prima dată
+  var mInt=text.match(/(\d{1,2})\.(\d{1,2})\s*[-–]\s*\d{1,2}\.\d{1,2}/);
+  if(mInt){
+    var d2=parseInt(mInt[1]),mo2=parseInt(mInt[2]);
+    if(d2>=1&&d2<=31&&mo2>=1&&mo2<=12) return new Date(cy,mo2-1,d2);
+  }
+  // 3. Pattern N.L (ex: "5.5", "15.3")
+  var mDM=text.match(/(\d{1,2})\.(\d{1,2})/);
+  if(mDM){
+    var d3=parseInt(mDM[1]),mo3=parseInt(mDM[2]);
+    if(d3>=1&&d3<=31&&mo3>=1&&mo3<=12) return new Date(cy,mo3-1,d3);
+  }
+  // 4. Pattern N singur (1-31) — ziua din luna curentă
+  var mD=text.match(/([1-9]|[12]\d|3[01])/);
+  if(mD){
+    var d4=parseInt(mD[1]);
+    return new Date(cy,cm-1,d4);
+  }
+  return null; // fără dată — va merge la început
+}
+
+// Sortare temporală a intervalului dintre cele două rânduri selectate
+function sortSelectedByDate(){
+  var nr=getNR();
+  var selKeys=Object.keys(S.selectedNext);
+  if(selKeys.length!==2) return;
+  // Găsim pozițiile celor două selectate în NR
+  function rowKey2(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  var idxA=-1,idxB=-1;
+  nr.forEach(function(r,i){
+    var k=rowKey2(r);
+    if(k===selKeys[0]||k===selKeys[1]){if(idxA<0)idxA=i;else idxB=i;}
+  });
+  if(idxA<0||idxB<0) return;
+  var iMin=Math.min(idxA,idxB);var iMax=Math.max(idxA,idxB);
+  // Intervalul de sortat (inclusiv capetele)
+  var interval=nr.slice(iMin,iMax+1);
+  // Extrage data pentru fiecare rând
+  var withDate=interval.map(function(r){return {r:r,d:extractDateFromRow(r)};});
+  // Sortare: fără dată → început, cu dată → crescător
+  withDate.sort(function(a,b){
+    if(!a.d&&!b.d) return 0;
+    if(!a.d) return -1;
+    if(!b.d) return 1;
+    return a.d-b.d;
+  });
+  // Reconstruiește nextOrder cu intervalul sortat
+  var unified=nr.map(function(r){
+    return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
+  });
+  var sorted=withDate.map(function(x){
+    return x.r.isFree?{type:'free',id:x.r.id}:{type:'proj',projectId:x.r.projectId,taskId:x.r.taskId};
+  });
+  var newOrder=unified.slice(0,iMin).concat(sorted).concat(unified.slice(iMax+1));
+  S.nextOrder=newOrder;
+  lw(NK,S.nextOrder);
+  S.selectedNext={};S.selectMode=false;_selOrder=0;
   render();
 }
 
