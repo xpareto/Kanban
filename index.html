@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V84</title>
+<title>Project Board V85</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3798,40 +3798,31 @@ function extractDateFromRow(row){
   // 1. Cal event — are calStart direct
   if(row.isFree && row.id && row.id.startsWith('cal::')){
     var f=S.freeTasks.find(function(ft){return ft.id===row.id;});
-    if(f&&f.calStart){
-      var d=new Date(f.calStart);
-      if(!isNaN(d.getTime())) return d;
-    }
+    if(f&&f.calStart){var d=new Date(f.calStart);if(!isNaN(d.getTime())) return d;}
   }
   var text=row.tname||'';
   var now=new Date();
   var cy=now.getFullYear();var cm=now.getMonth()+1;
-    // 2. Pattern interval — diverse formate, ia prima dată
-  var monthNames={'ian':1,'feb':2,'mar':3,'apr':4,'mai':5,'iun':6,'iul':7,'aug':8,'sep':9,'oct':10,'noi':11,'dec':12,'jan':1,'jun':6,'jul':7,'nov':11};
-  // "N-N2.L" sau "N-N2.luna" ex: "5-22.5", "6-21.mai"
-  var mInt2=text.match(/\b(\d{1,2})[-\u2013]\d{1,2}\.(\d{1,2}|[a-zA-Z]{3,})/);
-  if(mInt2){var mo2r=mInt2[2];var mo2n=parseInt(mo2r);if(isNaN(mo2n)){mo2n=monthNames[(mo2r||'').toLowerCase().slice(0,3)]||0;}
-    var d2r=parseInt(mInt2[1]);if(d2r>=1&&d2r<=31&&mo2n>=1&&mo2n<=12) return new Date(cy,mo2n-1,d2r);}
-  // "N.L - N2.L2" sau "N.luna - ..."
-  var mInt=text.match(/\b(\d{1,2})\.(\d{1,2}|[a-zA-Z]{3,})\s*[-\u2013]/);
-  if(mInt){var mo3r=mInt[2];var mo3n=parseInt(mo3r);if(isNaN(mo3n)){mo3n=monthNames[(mo3r||'').toLowerCase().slice(0,3)]||0;}
-    var d3r=parseInt(mInt[1]);if(d3r>=1&&d3r<=31&&mo3n>=1&&mo3n<=12) return new Date(cy,mo3n-1,d3r);}
-  // 3. Pattern N.L (ex: "5.5", "15.3")
-  var mDM=text.match(/(\d{1,2})\.(\d{1,2})/);
-  if(mDM){
-    var d3=parseInt(mDM[1]),mo3=parseInt(mDM[2]);
-    if(d3>=1&&d3<=31&&mo3>=1&&mo3<=12) return new Date(cy,mo3-1,d3);
-  }
-  // 4. Pattern N singur (1-31) — ziua din luna curentă
-  var mD=text.match(/([1-9]|[12]\d|3[01])/);
-  if(mD){
-    var d4=parseInt(mD[1]);
-    return new Date(cy,cm-1,d4);
-  }
-  return null; // fără dată — va merge la început
+  var mn={'ian':1,'feb':2,'mar':3,'apr':4,'mai':5,'iun':6,'iul':7,'aug':8,'sep':9,'oct':10,'noi':11,'dec':12,
+          'jan':1,'jun':6,'jul':7,'aug':8,'sep':9,'oct':10,'nov':11};
+  function mo(s){var n=parseInt(s);if(!isNaN(n))return n;return mn[(s||'').toLowerCase().slice(0,3)]||0;}
+  function mkD(d,m){if(d>=1&&d<=31&&m>=1&&m<=12)return new Date(cy,m-1,d);return null;}
+  var r,d,m;
+  // 2a. Interval "N-N2.luna" ex: "6-21.mai", "12-30.05"
+  r=text.match(/(\d{1,2})\s*[-–]\s*\d{1,2}\.([a-zA-Z]{2,}|\d{1,2})/);
+  if(r){d=parseInt(r[1]);m=mo(r[2]);var v=mkD(d,m);if(v)return v;}
+  // 2b. Interval "N.luna-N2" ex: "5.mai-22", "14.5-30"
+  r=text.match(/(\d{1,2})\.([a-zA-Z]{2,}|\d{1,2})\s*[-–]/);
+  if(r){d=parseInt(r[1]);m=mo(r[2]);var v2=mkD(d,m);if(v2)return v2;}
+  // 3. "N.luna" sau "N.L" ex: "21.mai", "14.5", "5.iun"
+  r=text.match(/(\d{1,2})\.([a-zA-Z]{2,}|\d{1,2})(?!\d)/);
+  if(r){d=parseInt(r[1]);m=mo(r[2]);var v3=mkD(d,m);if(v3)return v3;}
+  // 4. N singur (1-31) — ziua din luna curentă — doar ca ultimă soluție
+  r=text.match(/(?<!\d)([1-9]|[12]\d|3[01])(?!\d)/);
+  if(r){d=parseInt(r[1]);return new Date(cy,cm-1,d);}
+  return null;
 }
 
-// Sortare temporală a intervalului dintre cele două rânduri selectate
 function sortSelectedByDate(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
