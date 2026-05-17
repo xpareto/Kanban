@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V83</title>
+<title>Project Board V84</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3835,27 +3835,27 @@ function extractDateFromRow(row){
 function sortSelectedByDate(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
-  if(selKeys.length!==2) return;
+  if(selKeys.length!==2){traceLog('sort: nu 2 selectate ('+selKeys.length+')');return;}
   function rowKey2(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
-  // IMPORTANT: sincronizează S.nextOrder cu ordinea completă din getNR()
-  // (getNR() poate adăuga elemente noi la final care nu sunt în S.nextOrder)
   var fullOrder=nr.map(function(r){
     return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
   });
-  S.nextOrder=fullOrder;
   // Găsim pozițiile celor două capete în nr
   var idxA=-1,idxB=-1;
   nr.forEach(function(r,i){
     var k=rowKey2(r);
     if(k===selKeys[0]||k===selKeys[1]){if(idxA<0)idxA=i;else idxB=i;}
   });
-  if(idxA<0||idxB<0){render();return;}
+  traceLog('sort: selKeys='+selKeys.join('|')+' idxA='+idxA+' idxB='+idxB+' nr='+nr.length);
+  if(idxA<0||idxB<0){traceLog('sort: capete negasite');render();return;}
   var iMin=Math.min(idxA,idxB);var iMax=Math.max(idxA,idxB);
-  // Intervalul de sortat (inclusiv capetele)
   var interval=nr.slice(iMin,iMax+1);
-  // Extrage data pentru fiecare rând
-  var withDate=interval.map(function(r){return {r:r,d:extractDateFromRow(r)};});
-  // Sortare: fără dată → început, cu dată → crescător
+  traceLog('sort: interval '+iMin+'-'+iMax+' ('+interval.length+' randuri)');
+  var withDate=interval.map(function(r){
+    var d=extractDateFromRow(r);
+    traceLog('sort: "'+r.tname.slice(0,30)+'" -> '+(d?d.toISOString().slice(0,10):'null'));
+    return {r:r,d:d};
+  });
   withDate.sort(function(a,b){
     if(!a.d&&!b.d) return 0;
     if(!a.d) return -1;
@@ -3866,9 +3866,11 @@ function sortSelectedByDate(){
     return x.r.isFree?{type:'free',id:x.r.id}:{type:'proj',projectId:x.r.projectId,taskId:x.r.taskId};
   });
   var newOrder=fullOrder.slice(0,iMin).concat(sorted).concat(fullOrder.slice(iMax+1));
+  traceLog('sort: newOrder.length='+newOrder.length);
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
   S.selectedNext={};S.selectMode=false;_selOrder=0;
+  save(); // forțează save ca să nu fie suprascris de Firebase pull
   render();
 }
 
