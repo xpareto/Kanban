@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V87</title>
+<title>Project Board V88</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3917,10 +3917,7 @@ function extractDateFromRow(row){
   // 3. "N.luna" sau "N.L" ex: "21.mai", "14.5", "5.iun"
   r=text.match(/(\d{1,2})\.([a-zA-Z]{2,}|\d{1,2})(?!\d)/);
   if(r){d=parseInt(r[1]);m=mo(r[2]);var v3=mkD(d,m);if(v3)return v3;}
-  // 4. N singur (1-31) — ziua din luna curentă — doar ca ultimă soluție
-  r=text.match(/(?<!\d)([1-9]|[12]\d|3[01])(?!\d)/);
-  if(r){d=parseInt(r[1]);return new Date(cy,cm-1,d);}
-  return null;
+  return null; // fără pattern N singur — prea ambiguu
 }
 
 function sortSelectedByDate(){
