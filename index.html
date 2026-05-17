@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V80</title>
+<title>Project Board V81</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -806,7 +806,7 @@ async function calFetchEvents(token){
   var calIds=['primary'];
   try{
     var listResp=await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:headers});
-    if(listResp.status===401){calClearToken();traceLog('calendarList 401');return null;}
+    if(listResp.status===401){calClearToken();localStorage.removeItem('pb-cal-silent-tried');localStorage.removeItem('pb-cal-cleaned');traceLog('calendarList 401 - reset silent');return null;}
     if(listResp.ok){
       var listData=await listResp.json();
       var allCalItems=(listData.items||[]);
@@ -825,7 +825,7 @@ async function calFetchEvents(token){
       '&timeMax='+encodeURIComponent(tomorrowEnd.toISOString())+
       '&singleEvents=true&orderBy=startTime&maxResults=100';
     return fetch(url,{headers:headers}).then(function(r){
-      if(!r.ok){traceLog('cal err '+r.status+': '+calId.slice(0,30));return [];}
+      if(!r.ok){if(r.status===401){calClearToken();localStorage.removeItem('pb-cal-silent-tried');localStorage.removeItem('pb-cal-cleaned');traceLog('cal 401 - reset token');return null;}traceLog('cal err '+r.status+': '+calId.slice(0,30));return [];}
       return r.json().then(function(d){
         var items=d.items||[];
         traceLog('cal ok '+items.length+' ev: '+calId.slice(0,30));
@@ -1011,8 +1011,13 @@ async function calCheckAndFetch(){
     var events=await calFetchEvents(token);
     if(events===null){
       traceLog('events null - token expirat');
-      fbToast('📅 Token expirat — apasă 📅','#1E2130','#F87171',6000);
+      fbToast('📅 Token expirat — reconectare automată…','#1E2130','#F87171',4000);
       localStorage.removeItem(CAL_DK);
+      localStorage.removeItem('pb-cal-silent-tried');
+      localStorage.removeItem('pb-cal-cleaned');
+      // Reîncearcă silent re-auth imediat
+      _calFetchInProgress=false;
+      setTimeout(function(){calCheckAndFetch();},1500);
       return;
     }
     traceLog('inject '+events.length+' ev');
