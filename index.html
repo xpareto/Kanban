@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V82</title>
+<title>Project Board V83</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3806,12 +3806,16 @@ function extractDateFromRow(row){
   var text=row.tname||'';
   var now=new Date();
   var cy=now.getFullYear();var cm=now.getMonth()+1;
-  // 2. Pattern interval N.L - N2.L2 (ex: "5.5 - 7.5") — ia prima dată
-  var mInt=text.match(/(\d{1,2})\.(\d{1,2})\s*[-–]\s*\d{1,2}\.\d{1,2}/);
-  if(mInt){
-    var d2=parseInt(mInt[1]),mo2=parseInt(mInt[2]);
-    if(d2>=1&&d2<=31&&mo2>=1&&mo2<=12) return new Date(cy,mo2-1,d2);
-  }
+    // 2. Pattern interval — diverse formate, ia prima dată
+  var monthNames={'ian':1,'feb':2,'mar':3,'apr':4,'mai':5,'iun':6,'iul':7,'aug':8,'sep':9,'oct':10,'noi':11,'dec':12,'jan':1,'jun':6,'jul':7,'nov':11};
+  // "N-N2.L" sau "N-N2.luna" ex: "5-22.5", "6-21.mai"
+  var mInt2=text.match(/\b(\d{1,2})[-\u2013]\d{1,2}\.(\d{1,2}|[a-zA-Z]{3,})/);
+  if(mInt2){var mo2r=mInt2[2];var mo2n=parseInt(mo2r);if(isNaN(mo2n)){mo2n=monthNames[(mo2r||'').toLowerCase().slice(0,3)]||0;}
+    var d2r=parseInt(mInt2[1]);if(d2r>=1&&d2r<=31&&mo2n>=1&&mo2n<=12) return new Date(cy,mo2n-1,d2r);}
+  // "N.L - N2.L2" sau "N.luna - ..."
+  var mInt=text.match(/\b(\d{1,2})\.(\d{1,2}|[a-zA-Z]{3,})\s*[-\u2013]/);
+  if(mInt){var mo3r=mInt[2];var mo3n=parseInt(mo3r);if(isNaN(mo3n)){mo3n=monthNames[(mo3r||'').toLowerCase().slice(0,3)]||0;}
+    var d3r=parseInt(mInt[1]);if(d3r>=1&&d3r<=31&&mo3n>=1&&mo3n<=12) return new Date(cy,mo3n-1,d3r);}
   // 3. Pattern N.L (ex: "5.5", "15.3")
   var mDM=text.match(/(\d{1,2})\.(\d{1,2})/);
   if(mDM){
@@ -3832,14 +3836,20 @@ function sortSelectedByDate(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
   if(selKeys.length!==2) return;
-  // Găsim pozițiile celor două selectate în NR
   function rowKey2(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  // IMPORTANT: sincronizează S.nextOrder cu ordinea completă din getNR()
+  // (getNR() poate adăuga elemente noi la final care nu sunt în S.nextOrder)
+  var fullOrder=nr.map(function(r){
+    return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
+  });
+  S.nextOrder=fullOrder;
+  // Găsim pozițiile celor două capete în nr
   var idxA=-1,idxB=-1;
   nr.forEach(function(r,i){
     var k=rowKey2(r);
     if(k===selKeys[0]||k===selKeys[1]){if(idxA<0)idxA=i;else idxB=i;}
   });
-  if(idxA<0||idxB<0) return;
+  if(idxA<0||idxB<0){render();return;}
   var iMin=Math.min(idxA,idxB);var iMax=Math.max(idxA,idxB);
   // Intervalul de sortat (inclusiv capetele)
   var interval=nr.slice(iMin,iMax+1);
@@ -3852,14 +3862,10 @@ function sortSelectedByDate(){
     if(!b.d) return 1;
     return a.d-b.d;
   });
-  // Reconstruiește nextOrder cu intervalul sortat
-  var unified=nr.map(function(r){
-    return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};
-  });
   var sorted=withDate.map(function(x){
     return x.r.isFree?{type:'free',id:x.r.id}:{type:'proj',projectId:x.r.projectId,taskId:x.r.taskId};
   });
-  var newOrder=unified.slice(0,iMin).concat(sorted).concat(unified.slice(iMax+1));
+  var newOrder=fullOrder.slice(0,iMin).concat(sorted).concat(fullOrder.slice(iMax+1));
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
   S.selectedNext={};S.selectMode=false;_selOrder=0;
