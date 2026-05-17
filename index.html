@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V86</title>
+<title>Project Board V87</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3816,43 +3816,76 @@ function moveSelectedUnderFirst(){
 // Sortare globala: muta toate randurile cu data intre primul si al doilea *1
 function sortBetweenMarkers(){
   var nr=getNR();
-  var m1idx=-1,m2idx=-1;
-  nr.forEach(function(r,i){
-    var name=r.tname||'';
-    if(name.match(/^[*]1/)){ if(m1idx<0) m1idx=i; else if(m2idx<0) m2idx=i; }
-  });
-  if(m1idx<0||m2idx<0){
-    fbToast('Nu am gasit doi marcatori *1 in NEXT','#1E2130','#F87171',3000);
-    traceLog('sortGlobal: markeri *1 negasiti ('+m1idx+','+m2idx+')');
-    return;
-  }
-  traceLog('sortGlobal: *1 la '+m1idx+' si '+m2idx);
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
   function rk(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
-  // Gaseste toate randurile cu data (oriunde in NEXT, excluzand marcatorii)
+  // Gaseste marcatorii *1 si *2
+  var m1a=-1,m1b=-1,m2a=-1,m2b=-1;
+  nr.forEach(function(r,i){
+    var name=r.tname||'';
+    if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
+    if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+  });
+  traceLog('sortGlobal: *1='+m1a+','+m1b+' *2='+m2a+','+m2b);
+  if(m1a<0||m1b<0){
+    fbToast('Nu am gasit doi marcatori *1 in NEXT','#1E2130','#F87171',3000);
+    return;
+  }
+  // Marcatori si zone protejate
+  var markerSet=new Set();
+  markerSet.add(m1a);markerSet.add(m1b);
+  if(m2a>=0)markerSet.add(m2a);
+  if(m2b>=0)markerSet.add(m2b);
+  // Zona *2 (rânduri între m2a si m2b inclusiv) - protejată
+  var zone2Set=new Set();
+  if(m2a>=0&&m2b>=0){
+    for(var zi=m2a;zi<=m2b;zi++) zone2Set.add(zi);
+  }
+  // Cal events (cal::) - merg la inceput
+  var calRows=[];var calSet=new Set();
+  nr.forEach(function(r,i){
+    if(markerSet.has(i)||zone2Set.has(i)) return;
+    if(r.isFree&&r.id&&r.id.startsWith('cal::')){
+      calRows.push(r);calSet.add(rk(r));
+    }
+  });
+  // Rânduri cu termene (au data, nu sunt cal::) - merg intre *1
   var withDate=[];var withDateSet=new Set();
   nr.forEach(function(r,i){
-    if(i===m1idx||i===m2idx) return;
+    if(markerSet.has(i)||zone2Set.has(i)) return;
+    if(calSet.has(rk(r))) return; // cal events deja tratate
     var d=extractDateFromRow(r);
     if(d){withDate.push({r:r,d:d});withDateSet.add(rk(r));}
   });
-  traceLog('sortGlobal: '+withDate.length+' randuri cu data');
   withDate.sort(function(a,b){return a.d-b.d;});
-  // Construieste noua ordine
-  var newOrder=[];
+  traceLog('sortGlobal: cal='+calRows.length+' termene='+withDate.length);
+  // Zona *2 in ordine originala
+  var zone2Rows=[];
+  if(m2a>=0&&m2b>=0){
+    for(var zi2=m2a;zi2<=m2b;zi2++) zone2Rows.push(nr[zi2]);
+  }
+  // Restul (fara data, fara cal, fara zone marcate)
+  var rest=[];
   nr.forEach(function(r,i){
-    if(withDateSet.has(rk(r))) return; // se adauga mai jos
-    if(i===m2idx){
-      withDate.forEach(function(x){newOrder.push(toOrd(x.r));});
-      newOrder.push(toOrd(r));
-      return;
-    }
-    newOrder.push(toOrd(r));
+    if(markerSet.has(i)||zone2Set.has(i)) return;
+    if(calSet.has(rk(r))||withDateSet.has(rk(r))) return;
+    rest.push(r);
   });
+  // Construieste ordinea finala:
+  // 1. Cal events
+  // 2. *1 + termene sortate + *1
+  // 3. Zona *2 (daca exista)
+  // 4. Restul
+  var newOrder=[];
+  calRows.forEach(function(r){newOrder.push(toOrd(r));});
+  newOrder.push(toOrd(nr[m1a])); // primul *1
+  withDate.forEach(function(x){newOrder.push(toOrd(x.r));});
+  newOrder.push(toOrd(nr[m1b])); // al doilea *1
+  zone2Rows.forEach(function(r){newOrder.push(toOrd(r));});
+  rest.forEach(function(r){newOrder.push(toOrd(r));});
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
   save();
-  fbToast('⧸✱ Sortat '+withDate.length+' task-uri intre *1','#1E2130','#A78BFA',3000);
+  fbToast('⧸✱ Sortat: '+calRows.length+' cal + '+withDate.length+' termene','#1E2130','#A78BFA',3000);
   render();
 }
 
