@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V92</title>
+<title>Project Board V93</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2813,7 +2813,7 @@ function rBoard(){
               if(/\/w(?:\s|$)/i.test(v)){if(res.k==='fn') moveToWait(res.id,null);else if(res.k==='task') moveToWait(res.taskId,res.projectId);return;}
               if(res.k==='proj'){var it=S.items.find(function(x){return x.id===res.id;});if(it){it.name=v;it.modifiedTs=Date.now();save();}}
               else if(res.k==='task'){var pr=S.items.find(function(x){return x.id===res.projectId;});if(pr){var tk=pr.tasks.find(function(t){return t.id===res.taskId;});if(tk){tk.name=v;tk.modifiedTs=Date.now();save();}}res.tn=v;}
-              else if(res.k==='fn'){var ft=S.freeTasks.find(function(x){return x.id===res.id;});if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);triggerAutoSort(v);}res.name=v;}
+              else if(res.k==='fn'){var ft=S.freeTasks.find(function(x){return x.id===res.id;});if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);traceLog('commitEdit fn: "'+v.slice(0,20)+'"');triggerAutoSort(v);}res.name=v;}
               else if(res.k==='fw'){var wft=S.waitFreeTasks.find(function(x){return x.id===res.id;});if(wft){wft.name=v;wft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}res.name=v;}
               else if(res.k==='sh'){var st=S.shareTasks.find(function(x){return x.id===res.id;});if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}res.name=v;}
               render();setTimeout(function(){doNav();},80);
@@ -4073,6 +4073,7 @@ init();
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
     lw('pb-local-dirty-ts',Date.now());
     closeFab();
+    traceLog('commitFab: "'+name.slice(0,20)+'"');
     triggerAutoSort(name);
     render();
     // scroll la primul element din next
