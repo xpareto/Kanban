@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V89</title>
+<title>Project Board V90</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -995,6 +995,7 @@ async function calCheckAndFetch(){
     var silentBlocked=localStorage.getItem('pb-cal-silent-tried')||'';
     if(silentBlocked!==today) localStorage.removeItem('pb-cal-silent-tried');
     localStorage.removeItem('pb-cal-info-shown');
+    localStorage.removeItem('pb-cal-login-asked');
   }
   if(_calFetchInProgress){traceLog('skip: fetch in progress');return;}
   // cal_silent_pending: blocat doar dacă redirect e cu adevărat în curs
@@ -1010,8 +1011,8 @@ async function calCheckAndFetch(){
       traceLog('no token');
       var savedEmailF=localStorage.getItem('pb-cal-email')||'';
       var silentTriedDay=localStorage.getItem('pb-cal-silent-tried')||'';
+      // Pseudocod: Nu: 1.sterg vechi(deja facut sus) 2.incerc silent 3.daca eroare cer explicit
       if(silentTriedDay!==today){
-        // Încearcă silent re-auth indiferent dacă avem email salvat sau nu
         traceLog('silent re-auth: '+(savedEmailF||'no-hint'));
         sessionStorage.setItem('cal_silent_pending','1');
         sessionStorage.setItem('cal_silent_pending_ts',String(Date.now()));
@@ -1019,16 +1020,17 @@ async function calCheckAndFetch(){
         calLogin(true);
         return;
       }
-      traceLog('no token, silent deja incercat azi');
-      var shownToday=localStorage.getItem('pb-cal-info-shown')||'';
-      if(shownToday!==today){
-        localStorage.setItem('pb-cal-info-shown',today);
-        // La prima lansare din zi, dacă silent a eșuat, declanșează login manual automat
-        traceLog('auto login manual: prima lansare din zi');
+      // Silent a esuat (interaction_required sau alta eroare)
+      // Cer explicit userului login — O SINGURA DATA pana da OK sau pana maine
+      var loginAskedDay=localStorage.getItem('pb-cal-login-asked')||'';
+      if(loginAskedDay!==today){
+        localStorage.setItem('pb-cal-login-asked',today);
+        traceLog('cer login explicit: prima cerere din zi');
         _calFetchInProgress=false;
         setTimeout(function(){calLogin(false);},800);
         return;
       }
+      traceLog('no token, login deja cerut azi');
       return;
     }
     traceLog('token OK, fetch...');
@@ -1071,6 +1073,18 @@ function calLogout(){
   render();
 }
 // ══════════════════════════════════════════════════════════════
+// Auto-sort după editare task dacă conține dată
+var _autoSortTimer=null;
+function triggerAutoSort(text){
+  if(!text) return;
+  if(!extractDateFromRow({tname:text,isFree:true,id:''})) return;
+  clearTimeout(_autoSortTimer);
+  _autoSortTimer=setTimeout(function(){
+    traceLog('auto-sort: data detectata in task');
+    sortBetweenMarkers();
+  },1200);
+}
+
 function saveAll(){lw(SK,S.items);lw(JK,S.journal);lw(NK,S.nextOrder);lw(FK,S.freeTasks);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(MK,S.mergeFlags);lw(SHK,S.shareTasks);lw(LBLK,S.labels);lw(SHJK,S.shareJournal);lw('pb-local-dirty-ts',Date.now());}
 function je(e){S.journal.push(e);lw(JK,S.journal);}
 
@@ -2532,7 +2546,7 @@ function rBoard(){
   resetBtn.addEventListener('click',function(){
     localStorage.removeItem(CAL_PREF_KEY);localStorage.removeItem(CAL_DK);
     localStorage.removeItem('pb-cal-info-shown');localStorage.removeItem('pb-cal-silent-tried');
-    localStorage.removeItem('pb-cal-cleaned');localStorage.removeItem('pb-cal-silent-tried');
+    localStorage.removeItem('pb-cal-cleaned');localStorage.removeItem('pb-cal-login-asked');
     sessionStorage.removeItem('cal_silent_tried');sessionStorage.removeItem('cal_silent_pending');
     sessionStorage.removeItem('cal_silent_pending_ts');
     _calFetchInProgress=false;traceClear();traceLog('RESET manual');
@@ -2797,7 +2811,7 @@ function rBoard(){
               if(/\/w(?:\s|$)/i.test(v)){if(res.k==='fn') moveToWait(res.id,null);else if(res.k==='task') moveToWait(res.taskId,res.projectId);return;}
               if(res.k==='proj'){var it=S.items.find(function(x){return x.id===res.id;});if(it){it.name=v;it.modifiedTs=Date.now();save();}}
               else if(res.k==='task'){var pr=S.items.find(function(x){return x.id===res.projectId;});if(pr){var tk=pr.tasks.find(function(t){return t.id===res.taskId;});if(tk){tk.name=v;tk.modifiedTs=Date.now();save();}}res.tn=v;}
-              else if(res.k==='fn'){var ft=S.freeTasks.find(function(x){return x.id===res.id;});if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}res.name=v;}
+              else if(res.k==='fn'){var ft=S.freeTasks.find(function(x){return x.id===res.id;});if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);triggerAutoSort(v);}res.name=v;}
               else if(res.k==='fw'){var wft=S.waitFreeTasks.find(function(x){return x.id===res.id;});if(wft){wft.name=v;wft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}res.name=v;}
               else if(res.k==='sh'){var st=S.shareTasks.find(function(x){return x.id===res.id;});if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}res.name=v;}
               render();setTimeout(function(){doNav();},80);
@@ -3629,8 +3643,13 @@ function rBoard(){
         const card=div('tcard');card.style.borderLeft=`3px solid ${col.color}`;
         const tn=sp('tname','');
         renderTaskText(tn,task.name);
-        tn.addEventListener('dblclick',()=>{S.editTid=task.id;render();});
-        tn.addEventListener('touchend',()=>dbt(task.id,()=>{S.editTid=task.id;render();}));
+        tn.addEventListener('dblclick',function(e){e.preventDefault();S.editTid=task.id;render();});
+        // touchend pe <a> propagă în sus — folosim touchstart pe tn cu dublu-tap manual
+        tn.addEventListener('touchend',function(e){
+          // Dacă tap-ul e pe un link, nu intrăm în editare
+          if(e.target&&e.target.tagName==='A') return;
+          dbt(task.id,function(){S.editTid=task.id;render();});
+        });
         card.appendChild(tn);
         const td=mk('button','tdel');td.textContent='✕';
         td.addEventListener('touchstart',e=>{e.stopPropagation();e.preventDefault();},{passive:false});
@@ -3831,8 +3850,13 @@ function sortBetweenMarkers(){
   });
   traceLog('sortGlobal: *1='+m1a+','+m1b+' *2='+m2a+','+m2b);
   if(m1a<0||m1b<0){
-    fbToast('Nu am gasit doi marcatori *1 in NEXT','#1E2130','#F87171',3000);
-    return;
+    traceLog('sortGlobal: creez marcatori *1 lipsa ('+m1a+','+m1b+')');
+    var mkM=function(){var mid=gid();var mft={id:mid,name:'*1------------------------',ts:Date.now(),modifiedTs:Date.now()};
+      S.freeTasks.push(mft);S.nextOrder.push({type:'free',id:mid});
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);return mid;};
+    if(m1a<0){mkM();} // primul
+    if(m1b<0){mkM();} // al doilea
+    render();setTimeout(function(){sortBetweenMarkers();},150);return;
   }
   // Marcatori si zone protejate
   var markerSet=new Set();
@@ -3900,10 +3924,18 @@ function extractDateFromRow(row){
     if(f&&f.calStart){var d=new Date(f.calStart);if(!isNaN(d.getTime())) return d;}
   }
   var text=row.tname||'';
-  // Task cu 📅 in text - cauta calStart in freeTasks
+  // Task cu 📅 in text: 1) cauta calStart; 2) cauta data dupa 📅
   if(text.indexOf('📅')>=0){
     var fCal=S.freeTasks.find(function(ft){return ft.id===row.id&&ft.calStart;});
     if(fCal){var dCal=new Date(fCal.calStart);if(!isNaN(dCal.getTime()))return dCal;}
+    // Cauta data imediat dupa 📅 in text
+    var afterCal=text.split('📅').slice(1).join(' ');
+    var rCal=afterCal.match(/(\d{1,2})\.([a-zA-Z]{2,}|\d{1,2})/);
+    if(rCal){
+      var dC=parseInt(rCal[1]);
+      var mC=parseInt(rCal[2]);if(isNaN(mC)){var mn2={'ian':1,'feb':2,'mar':3,'apr':4,'mai':5,'iun':6,'iul':7,'aug':8,'sep':9,'oct':10,'noi':11,'dec':12,'jan':1,'jun':6,'jul':7,'nov':11};mC=mn2[(rCal[2]||'').toLowerCase().slice(0,3)]||0;}
+      if(dC>=1&&dC<=31&&mC>=1&&mC<=12) return new Date((new Date()).getFullYear(),mC-1,dC,12,0,0);
+    }
   }
   var now=new Date();
   var cy=now.getFullYear();var cm=now.getMonth()+1;
@@ -4039,6 +4071,7 @@ init();
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
     lw('pb-local-dirty-ts',Date.now());
     closeFab();
+    triggerAutoSort(name);
     render();
     // scroll la primul element din next
     setTimeout(function(){
