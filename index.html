@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V90</title>
+<title>Project Board V92</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1076,11 +1076,13 @@ function calLogout(){
 // Auto-sort după editare task dacă conține dată
 var _autoSortTimer=null;
 function triggerAutoSort(text){
-  if(!text) return;
-  if(!extractDateFromRow({tname:text,isFree:true,id:''})) return;
+  if(!text){traceLog('autoSort: text gol');return;}
+  var d=extractDateFromRow({tname:text,isFree:true,id:''});
+  traceLog('autoSort: "'+text.slice(0,30)+'" -> '+(d?d.toISOString().slice(0,10):'null'));
+  if(!d) return;
   clearTimeout(_autoSortTimer);
   _autoSortTimer=setTimeout(function(){
-    traceLog('auto-sort: data detectata in task');
+    traceLog('auto-sort: sortez dupa data din task');
     sortBetweenMarkers();
   },1200);
 }
@@ -3977,7 +3979,7 @@ function sortSelectedByDate(){
   traceLog('sort: interval '+iMin+'-'+iMax+' ('+interval.length+' randuri)');
   var withDate=interval.map(function(r){
     var d=extractDateFromRow(r);
-    traceLog('sort: "'+r.tname.slice(0,30)+'" -> '+(d?d.toISOString().slice(0,10):'null'));
+    traceLog('sort: "'+r.tname.slice(0,30)+'" id='+(r.id||'?').slice(0,10)+' -> '+(d?d.toISOString().slice(0,10):'null'));
     return {r:r,d:d};
   });
   withDate.sort(function(a,b){
