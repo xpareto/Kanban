@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V94</title>
+<title>Project Board V95</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2935,6 +2935,14 @@ function rBoard(){
     r.dataset.nidx=idx;
     if(row.isFree&&row.id&&!isCalEv) r.dataset.fid=row.id;
     if(_bandColor&&!isSel&&!isCalEv) r.style.background=_bandColor;
+    // Bold pentru taskuri cu dată <= azi în zona roșie
+    if(_bandColor&&_bandColor==='rgba(255,80,80,.15)'&&!isSel&&!isCalEv){
+      var _rd=extractDateFromRow(row);
+      if(_rd){
+        var _now=new Date();_now.setHours(23,59,59,0);
+        if(_rd<=_now) r.style.fontWeight='700';
+      }
+    }
     if(row.warn&&!isSel&&!isCalEv) r.style.background='#FFFBEB';
 
     // Click pe eveniment calendar → deschide Google Calendar la ziua respectivă
@@ -3053,13 +3061,14 @@ function rBoard(){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
             if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
           } else {
-            // Sync înapoi în proiect
             var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
             if(proj){
               var task=proj.tasks.find(function(t){return t.id===rowSnap.taskId;});
               if(task){task.name=newName;task.modifiedTs=Date.now();save();}
             }
           }
+          traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
+          triggerAutoSort(newTitle);
           render();
         }
         inp.addEventListener('keydown',function(e){
