@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V95</title>
+<title>Project Board V96</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2917,12 +2917,13 @@ function rBoard(){
   if(!nr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='No tasks in Next.';nsec.appendChild(e);}
   // Benzi de culoare *1/*2/*3
   var _bandColor=null;
+  var _firstFutureFound=false;
   nr.forEach((row,idx)=>{
     // Detectează marcator *1/*2/*3
     var _rawName=row.isFree?(S.freeTasks.find(function(f){return f.id===row.id;})||{}).name||'':(function(){var p=S.items.find(function(x){return x.id===row.projectId;});var t=p&&p.tasks&&p.tasks.find(function(tt){return tt.id===row.taskId;});return t?t.name:'';}());
     var _bm=_rawName.match(/^[*]([123])/);
     if(_bm){var _bl=_bm[1];var _colors={'1':'rgba(255,80,80,.15)','2':'rgba(255,210,50,.15)','3':'rgba(60,200,100,.15)'};
-      if(_bandColor&&_bandColor===_colors[_bl]){_bandColor=null;}else{_bandColor=_colors[_bl];}}
+      if(_bandColor&&_bandColor===_colors[_bl]){_bandColor=null;_firstFutureFound=false;}else{_bandColor=_colors[_bl];_firstFutureFound=false;}}
 
     // Cheie unică pentru selecție
     var selKey=row.isFree?'f::'+row.id:'p::'+row.projectId+'::'+row.taskId;
@@ -2935,12 +2936,13 @@ function rBoard(){
     r.dataset.nidx=idx;
     if(row.isFree&&row.id&&!isCalEv) r.dataset.fid=row.id;
     if(_bandColor&&!isSel&&!isCalEv) r.style.background=_bandColor;
-    // Bold pentru taskuri cu dată <= azi în zona roșie
+    // Bold: trecute+azi și primul viitor în zona roșie
     if(_bandColor&&_bandColor==='rgba(255,80,80,.15)'&&!isSel&&!isCalEv){
       var _rd=extractDateFromRow(row);
       if(_rd){
         var _now=new Date();_now.setHours(23,59,59,0);
-        if(_rd<=_now) r.style.fontWeight='700';
+        if(_rd<=_now){r.style.fontWeight='700';}
+        else if(!_firstFutureFound){_firstFutureFound=true;r.style.fontWeight='700';}
       }
     }
     if(row.warn&&!isSel&&!isCalEv) r.style.background='#FFFBEB';
@@ -3068,7 +3070,27 @@ function rBoard(){
             }
           }
           traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
-          triggerAutoSort(newTitle);
+          // Dacă task-ul era în zona *1 (roșie), sort oricum — chiar dacă data e ștearsă
+          var _wasInBand1=false;
+          (function(){
+            var nr2=getNR();
+            var m1a2=-1,m1b2=-1;
+            nr2.forEach(function(rr,ii){
+              if((rr.tname||'').match(/^\*1/)){if(m1a2<0)m1a2=ii;else if(m1b2<0)m1b2=ii;}
+            });
+            if(m1a2>=0&&m1b2>=0){
+              nr2.forEach(function(rr,ii){
+                if(ii>m1a2&&ii<m1b2){
+                  var rid=rr.isFree?rr.id:rr.taskId;
+                  var sid=rowSnap.isFree?rowSnap.id:rowSnap.taskId;
+                  if(rid===sid) _wasInBand1=true;
+                }
+              });
+            }
+          })();
+          if(_wasInBand1||extractDateFromRow({tname:newTitle,isFree:true,id:''})){
+            triggerAutoSort(newTitle||'x');
+          }
           render();
         }
         inp.addEventListener('keydown',function(e){
@@ -3658,11 +3680,15 @@ function rBoard(){
         renderTaskText(tn,task.name);
         tn.addEventListener('dblclick',function(e){e.preventDefault();S.editTid=task.id;render();});
         // touchend pe <a> propagă în sus — folosim touchstart pe tn cu dublu-tap manual
-        tn.addEventListener('touchend',function(e){
-          // Dacă tap-ul e pe un link, nu intrăm în editare
-          if(e.target&&e.target.tagName==='A') return;
-          dbt(task.id,function(){S.editTid=task.id;render();});
-        });
+        (function(tid){
+          var _lastTapProj=0;
+          tn.addEventListener('touchend',function(e){
+            if(e.target&&e.target.tagName==='A') return;
+            var now=Date.now();
+            if(now-_lastTapProj<380){e.preventDefault();e.stopPropagation();S.editTid=tid;render();_lastTapProj=0;}
+            else _lastTapProj=now;
+          });
+        })(task.id);
         card.appendChild(tn);
         const td=mk('button','tdel');td.textContent='✕';
         td.addEventListener('touchstart',e=>{e.stopPropagation();e.preventDefault();},{passive:false});
