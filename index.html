@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V96</title>
+<title>Project Board V97</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3070,24 +3070,29 @@ function rBoard(){
             }
           }
           traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
-          // Dacă task-ul era în zona *1 (roșie), sort oricum — chiar dacă data e ștearsă
+          // Dacă task-ul era în zona *1 (roșie), sort oricum
           var _wasInBand1=false;
           (function(){
-            var nr2=getNR();
-            var m1a2=-1,m1b2=-1;
-            nr2.forEach(function(rr,ii){
-              if((rr.tname||'').match(/^\*1/)){if(m1a2<0)m1a2=ii;else if(m1b2<0)m1b2=ii;}
-            });
-            if(m1a2>=0&&m1b2>=0){
-              nr2.forEach(function(rr,ii){
-                if(ii>m1a2&&ii<m1b2){
-                  var rid=rr.isFree?rr.id:rr.taskId;
-                  var sid=rowSnap.isFree?rowSnap.id:rowSnap.taskId;
-                  if(rid===sid) _wasInBand1=true;
-                }
-              });
+            // Găsim marcatorii *1 direct în S.freeTasks + S.nextOrder (nu prin getNR care modifică tname)
+            var m1ids=S.freeTasks.filter(function(f){return (f.name||'').match(/^\*1/);}).map(function(f){return f.id;});
+            traceLog('_wasInBand1: m1ids='+m1ids.length+' rowSnap.id='+rowSnap.id);
+            if(m1ids.length>=2){
+              var ord=S.nextOrder;
+              var pos1=-1,pos2=-1;
+              ord.forEach(function(e,i){if(e.type==='free'&&m1ids.indexOf(e.id)>=0){if(pos1<0)pos1=i;else if(pos2<0)pos2=i;} });
+              traceLog('_wasInBand1: pos1='+pos1+' pos2='+pos2);
+              if(pos1>=0&&pos2>=0){
+                var sid=rowSnap.isFree?rowSnap.id:rowSnap.taskId;
+                ord.forEach(function(e,i){
+                  if(i>pos1&&i<pos2){
+                    var eid=e.type==='free'?e.id:e.taskId;
+                    if(eid===sid) _wasInBand1=true;
+                  }
+                });
+              }
             }
           })();
+          traceLog('_wasInBand1='+_wasInBand1+' hasDate='+!!extractDateFromRow({tname:newTitle,isFree:true,id:''}));
           if(_wasInBand1||extractDateFromRow({tname:newTitle,isFree:true,id:''})){
             triggerAutoSort(newTitle||'x');
           }
@@ -3680,14 +3685,18 @@ function rBoard(){
         renderTaskText(tn,task.name);
         tn.addEventListener('dblclick',function(e){e.preventDefault();S.editTid=task.id;render();});
         // touchend pe <a> propagă în sus — folosim touchstart pe tn cu dublu-tap manual
+        // Dublu-tap pe card: touchstart detectează tap rapid vs drag
+        // attCard blochează touchend, deci folosim touchstart pe tn
         (function(tid){
-          var _lastTapProj=0;
-          tn.addEventListener('touchend',function(e){
+          var _t1=0;
+          tn.addEventListener('touchstart',function(e){
             if(e.target&&e.target.tagName==='A') return;
             var now=Date.now();
-            if(now-_lastTapProj<380){e.preventDefault();e.stopPropagation();S.editTid=tid;render();_lastTapProj=0;}
-            else _lastTapProj=now;
-          });
+            if(now-_t1<380&&now-_t1>50){
+              e.preventDefault();e.stopPropagation();
+              S.editTid=tid;render();_t1=0;
+            } else _t1=now;
+          },{passive:false});
         })(task.id);
         card.appendChild(tn);
         const td=mk('button','tdel');td.textContent='✕';
