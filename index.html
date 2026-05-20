@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V98</title>
+<title>Project Board V99</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -893,6 +893,8 @@ async function calFetchEvents(token){
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
     if(evStart>tomorrowF) return false;
+    // Exclude evenimente cu start strict în trecut (ieri sau mai devreme)
+    if(evStart&&evStart<todayF) return false;
     if(evEnd&&evEnd<todayF) return false;
     return true;
   });
@@ -2609,13 +2611,19 @@ function rBoard(){
   sortGlobalBtn.style.cssText='background:#7C3AED;color:#E9D5FF;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
   sortGlobalBtn.addEventListener('click',function(){sortBetweenMarkers();});
   sortGlobalBtn.addEventListener('touchend',function(e){e.preventDefault();sortBetweenMarkers();},{passive:false});
+  var sortRestBtn=mk('button','btn');
+  sortRestBtn.textContent='⋯⧸';
+  sortRestBtn.title='Sort restul: proiecte în față, free la urmă';
+  sortRestBtn.style.cssText='background:#0F766E;color:#99F6E4;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  sortRestBtn.addEventListener('click',function(){sortRestNext();});
+  sortRestBtn.addEventListener('touchend',function(e){e.preventDefault();sortRestNext();},{passive:false});
   ap(hr, sdot,
     hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();}),
     hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();}),
     hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();}),
-    settBtn, calBtn, fbBtn, sortGlobalBtn, helpBtn, resetBtn, traceBtn, lblBtns);
+    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, helpBtn, resetBtn, traceBtn, lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
   // ── Panou Settings ──
@@ -3913,6 +3921,47 @@ function moveSelectedUnderFirst(){
 
 // Extrage data din textul unui rând pentru sortare
 // Sortare globala: muta toate randurile cu data intre primul si al doilea *1
+// Sortare restul NEXT: proiecte în față, free punctuale la urmă
+// Operează pe rândurile DUPĂ zona *2 (sau *1 dacă nu există *2)
+function sortRestNext(){
+  var nr=getNR();
+  function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
+  function rk(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  // Găsește ultima zonă marcată (*2 sau *1)
+  var lastMarkerIdx=-1;
+  var m1a=-1,m1b=-1,m2a=-1,m2b=-1;
+  nr.forEach(function(r,i){
+    var name=r.tname||'';
+    if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
+    if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+  });
+  // Zona protejată = tot ce e până la sfârșitul ultimei zone marcate
+  if(m2b>=0) lastMarkerIdx=m2b;
+  else if(m1b>=0) lastMarkerIdx=m1b;
+  else if(m1a>=0) lastMarkerIdx=m1a;
+  traceLog('sortRest: lastMarker='+lastMarkerIdx+' nr='+nr.length);
+  if(lastMarkerIdx>=nr.length-1){fbToast('Nu există rânduri după zona marcată','#1E2130','#6B7280',2000);return;}
+  // Rândurile protejate (până la lastMarkerIdx inclusiv)
+  var protected2=nr.slice(0,lastMarkerIdx+1);
+  // Restul de sortat
+  var rest=nr.slice(lastMarkerIdx+1);
+  // Separă: cal events, proj tasks, free tasks
+  var calRest=[],projRest=[],freeRest=[];
+  rest.forEach(function(r){
+    if(r.isFree&&r.id&&r.id.startsWith('cal::')) calRest.push(r);
+    else if(!r.isFree) projRest.push(r);
+    else freeRest.push(r);
+  });
+  traceLog('sortRest: cal='+calRest.length+' proj='+projRest.length+' free='+freeRest.length);
+  // Noua ordine: protejate + proj + free + cal (cal events nu ar trebui să fie aici)
+  var newOrder=protected2.concat(projRest).concat(freeRest).concat(calRest).map(toOrd);
+  S.nextOrder=newOrder;
+  lw(NK,S.nextOrder);
+  save();
+  fbToast('⊞ Sortat: '+projRest.length+' proj + '+freeRest.length+' free','#1E2130','#A78BFA',3000);
+  render();
+}
+
 function sortBetweenMarkers(){
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
@@ -3953,10 +4002,12 @@ function sortBetweenMarkers(){
     }
   });
   // Rânduri cu termene (au data, nu sunt cal::) - ORIUNDE in NEXT, inclusiv din *2
+  // Cal events sunt excluse — au propria zonă înaintea *1
   var withDate=[];var withDateSet=new Set();
   nr.forEach(function(r,i){
     if(markerSet.has(i)) return;
-    if(calSet.has(rk(r))) return;
+    if(calSet.has(rk(r))) return; // cal:: exclus
+    if(r.isFree&&r.id&&r.id.startsWith('cal::')) return; // double-check
     var d=extractDateFromRow(r);
     if(d){withDate.push({r:r,d:d});withDateSet.add(rk(r));}
   });
@@ -4492,6 +4543,8 @@ render();
 registerSW();
 // Fetch calendar după render (async, nu blochează UI)
 calCheckAndFetch();
+// Sortare implicită la lansare — după ce render-ul s-a stabilizat
+setTimeout(function(){sortBetweenMarkers();},2500);
 </script>
 </body>
 </html>
