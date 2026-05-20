@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V97</title>
+<title>Project Board V98</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -657,11 +657,32 @@ function traceClear(){localStorage.removeItem(TRACE_KEY);}
 function traceCopy(){
   var arr=[];try{arr=JSON.parse(localStorage.getItem(TRACE_KEY)||'[]');}catch(_){}
   var text=arr.join('\n')||'(gol)';
+  function showTraceOverlay(txt){
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px';
+    var ta=document.createElement('textarea');
+    ta.value=txt;
+    ta.style.cssText='width:100%;height:60vh;background:#0F1117;color:#E2E8F0;font-size:11px;font-family:monospace;border:1px solid #374151;border-radius:8px;padding:10px;resize:none;box-sizing:border-box';
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;gap:8px;margin-top:10px;width:100%';
+    var bCopy=document.createElement('button');
+    bCopy.textContent='📋 Copiaza tot';
+    bCopy.style.cssText='flex:1;background:#3B82F6;color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer';
+    bCopy.addEventListener('click',function(){ta.select();document.execCommand('copy');fbToast('✅ TRACE copiat','#0F2A1A','#10B981',2000);});
+    var bClose=document.createElement('button');
+    bClose.textContent='✕ Inchide';
+    bClose.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer';
+    bClose.addEventListener('click',function(){document.body.removeChild(ov);});
+    row.appendChild(bCopy);row.appendChild(bClose);
+    ov.appendChild(ta);ov.appendChild(row);
+    document.body.appendChild(ov);
+    setTimeout(function(){ta.select();},100);
+  }
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(function(){
       fbToast('✅ TRACE copiat ('+arr.length+' linii)','#0F2A1A','#10B981',4000);
-    }).catch(function(){console.log('TRACE:\n'+text);});
-  } else { console.log('TRACE:\n'+text);fbToast('TRACE in consola','#1E2130','#60A5FA',4000); }
+    }).catch(function(){showTraceOverlay(text);});
+  } else {showTraceOverlay(text);}
 }
 const SK='pb-data-v2',JK='pb-journal-v1',NK='pb-next-v1',FK='pb-free-v1',WK='pb-wait-order-v1',WFK='pb-wait-free-v1',MK='pb-merge-v1',CK='pb-cliplog-v1',SHK='pb-share-v1',LBLK='pb-labels-v1',SHJK='pb-sharejour-v1';
 const CAL_CK='pb-cal-token-v1',CAL_DK='pb-cal-day-v1',CAL_EK='pb-cal-events-v1';
@@ -1075,14 +1096,14 @@ function calLogout(){
 // ══════════════════════════════════════════════════════════════
 // Auto-sort după editare task dacă conține dată
 var _autoSortTimer=null;
-function triggerAutoSort(text){
-  if(!text){traceLog('autoSort: text gol');return;}
-  var d=extractDateFromRow({tname:text,isFree:true,id:''});
-  traceLog('autoSort: "'+text.slice(0,30)+'" -> '+(d?d.toISOString().slice(0,10):'null'));
-  if(!d) return;
+function triggerAutoSort(text,force){
+  if(!text&&!force) return;
+  var d=text?extractDateFromRow({tname:text,isFree:true,id:''}):null;
+  traceLog('autoSort: "'+(text||'').slice(0,30)+'" -> '+(d?d.toISOString().slice(0,10):'null')+(force?' [force]':''));
+  if(!d&&!force) return;
   clearTimeout(_autoSortTimer);
   _autoSortTimer=setTimeout(function(){
-    traceLog('auto-sort: sortez dupa data din task');
+    traceLog('auto-sort: sortez'+(force?' [force]':''));
     sortBetweenMarkers();
   },1200);
 }
@@ -2940,18 +2961,22 @@ function rBoard(){
     if(_bandColor&&_bandColor==='rgba(255,80,80,.15)'&&!isSel&&!isCalEv){
       var _rd=extractDateFromRow(row);
       if(_rd){
-        var _now=new Date();_now.setHours(23,59,59,0);
-        if(_rd<=_now){r.style.fontWeight='700';}
-        else if(!_firstFutureFound){_firstFutureFound=true;r.style.fontWeight='700';}
+        var _now=new Date();
+        var _todayD=new Date();_todayD.setHours(0,0,0,0);
+        var _rdDay=new Date(_rd);_rdDay.setHours(0,0,0,0);
+        _now.setHours(23,59,59,0);
+        if(_rd<=_now){
+          r.style.fontWeight='700';
+          if(_rdDay.getTime()===_todayD.getTime()) r.style.textDecoration='underline';
+        } else if(!_firstFutureFound){_firstFutureFound=true;r.style.fontWeight='700';}
       }
     }
     if(row.warn&&!isSel&&!isCalEv) r.style.background='#FFFBEB';
 
-    // Click pe eveniment calendar → deschide Google Calendar la ziua respectivă
+    // Buton explicit pentru salt în calendar (nu tap direct pe rând)
     if(isCalEv){
       var calStartStr=row.calStart||null;
-      function openCalDay(e){
-        if(e.target&&e.target.tagName==='BUTTON') return;
+      function openCalDay(){
         var url='https://calendar.google.com/calendar/r';
         if(calStartStr){
           var d=new Date(calStartStr);
@@ -2961,12 +2986,15 @@ function rBoard(){
         }
         window.open(url,'_blank');
       }
-      r.addEventListener('click',openCalDay);
-      r.addEventListener('touchend',function(e){
-        if(e.target&&e.target.tagName==='BUTTON') return;
-        e.preventDefault();openCalDay(e);
-      },{passive:false});
-      r.style.cursor='pointer';
+      // Buton calendar în loc de tap pe rând
+      var calJumpBtn=document.createElement('button');
+      calJumpBtn.textContent='📅';
+      calJumpBtn.title='Deschide în Google Calendar';
+      calJumpBtn.style.cssText='background:#1E40AF;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:13px;cursor:pointer;touch-action:manipulation;flex-shrink:0';
+      calJumpBtn.addEventListener('click',function(e){e.stopPropagation();openCalDay();});
+      calJumpBtn.addEventListener('touchend',function(e){e.preventDefault();e.stopPropagation();openCalDay();},{passive:false});
+      // Inserează butonul în rând (după butonul de note)
+      r.appendChild(calJumpBtn);
     }
 
     // Long-press → selectMode; dublu-tap → editare — un singur touchstart {passive:false}
@@ -3094,7 +3122,7 @@ function rBoard(){
           })();
           traceLog('_wasInBand1='+_wasInBand1+' hasDate='+!!extractDateFromRow({tname:newTitle,isFree:true,id:''}));
           if(_wasInBand1||extractDateFromRow({tname:newTitle,isFree:true,id:''})){
-            triggerAutoSort(newTitle||'x');
+            triggerAutoSort(newTitle,_wasInBand1);
           }
           render();
         }
@@ -3916,34 +3944,41 @@ function sortBetweenMarkers(){
   if(m2a>=0&&m2b>=0){
     for(var zi=m2a;zi<=m2b;zi++) zone2Set.add(zi);
   }
-  // Cal events (cal::) - merg la inceput
+  // Cal events (cal::) - merg la inceput, oriunde ar fi in NEXT
   var calRows=[];var calSet=new Set();
   nr.forEach(function(r,i){
-    if(markerSet.has(i)||zone2Set.has(i)) return;
+    if(markerSet.has(i)) return; // marcatorii ramân
     if(r.isFree&&r.id&&r.id.startsWith('cal::')){
       calRows.push(r);calSet.add(rk(r));
     }
   });
-  // Rânduri cu termene (au data, nu sunt cal::) - merg intre *1
+  // Rânduri cu termene (au data, nu sunt cal::) - ORIUNDE in NEXT, inclusiv din *2
   var withDate=[];var withDateSet=new Set();
   nr.forEach(function(r,i){
-    if(markerSet.has(i)||zone2Set.has(i)) return;
-    if(calSet.has(rk(r))) return; // cal events deja tratate
+    if(markerSet.has(i)) return;
+    if(calSet.has(rk(r))) return;
     var d=extractDateFromRow(r);
     if(d){withDate.push({r:r,d:d});withDateSet.add(rk(r));}
   });
   withDate.sort(function(a,b){return a.d-b.d;});
   traceLog('sortGlobal: cal='+calRows.length+' termene='+withDate.length);
-  // Zona *2 in ordine originala
+  // Zona *2: doar rândurile FARA data raman (cele cu data au plecat la *1)
   var zone2Rows=[];
   if(m2a>=0&&m2b>=0){
-    for(var zi2=m2a;zi2<=m2b;zi2++) zone2Rows.push(nr[zi2]);
+    for(var zi2=m2a;zi2<=m2b;zi2++){
+      var r2=nr[zi2];
+      if(markerSet.has(zi2)||(!withDateSet.has(rk(r2))&&!calSet.has(rk(r2)))){
+        zone2Rows.push(r2);
+      }
+    }
   }
-  // Restul (fara data, fara cal, fara zone marcate)
+  // Restul (fara data, fara cal, in afara zonelor marcate)
   var rest=[];
   nr.forEach(function(r,i){
-    if(markerSet.has(i)||zone2Set.has(i)) return;
+    if(markerSet.has(i)) return;
     if(calSet.has(rk(r))||withDateSet.has(rk(r))) return;
+    // Daca e în zona *2 si fara data, e deja in zone2Rows
+    if(zone2Set.has(i)) return;
     rest.push(r);
   });
   // Construieste ordinea finala:
