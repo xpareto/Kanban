@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V99</title>
+<title>Project Board V100</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -892,10 +892,10 @@ async function calFetchEvents(token){
     }
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
-    if(evStart>tomorrowF) return false;
-    // Exclude evenimente cu start strict în trecut (ieri sau mai devreme)
-    if(evStart&&evStart<todayF) return false;
-    if(evEnd&&evEnd<todayF) return false;
+    if(evStart>tomorrowF) return false; // start după mâine → exclude
+    if(evEnd&&evEnd<=todayF) return false; // s-a terminat deja → exclude
+    // Ongoing: start < azi dar end >= azi → include
+    // Start azi sau mâine → include
     return true;
   });
   traceLog('filtrat: '+events.length+' din '+allItems.length);
@@ -991,6 +991,7 @@ function calInjectEvents(events){
 // Verifică dacă e prima rulare a zilei și dacă avem token
 var _calFetchInProgress=false;
 var _selOrder=0; // contor ordine selecție
+var _tapTimes={}; // last tap timestamp per task.id pentru dublu-tap în Projects
 function markDeleted(id){
   try{var del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
   del[id]=Date.now();localStorage.setItem('pb-deleted-ids',JSON.stringify(del));}catch(_){}
@@ -1098,6 +1099,37 @@ function calLogout(){
 // ══════════════════════════════════════════════════════════════
 // Auto-sort după editare task dacă conține dată
 var _autoSortTimer=null;
+// Adaugă ziua de săptămână după o dată detectată în text (dacă nu e deja)
+var _ziSapt=['dum','lun','mar','mie','joi','vin','sam'];
+function addWeekday(text){
+  if(!text) return text;
+  // Găsește prima dată din text
+  var d=extractDateFromRow({tname:text,isFree:true,id:''});
+  if(!d) return text;
+  var zi=_ziSapt[d.getDay()];
+  // Nu adăuga dacă există deja o zi de săptămână lângă dată
+  if(text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
+  // Găsește pattern-ul datei în text și inserează ziua după el
+  var patterns=[
+    /(\d{1,2}[-\u2013]\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2}))/,
+    /(\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2})(?!\d))/
+  ];
+  for(var pi=0;pi<patterns.length;pi++){
+    var m=text.match(patterns[pi]);
+    if(m){
+      var insertAfter=m[1];
+      var idx=text.indexOf(insertAfter);
+      if(idx>=0){
+        var after=text.slice(idx+insertAfter.length);
+        // Nu adăuga dacă urmează deja un shortname de zi
+        if(after.match(/^\s*(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
+        return text.slice(0,idx+insertAfter.length)+' '+zi+text.slice(idx+insertAfter.length);
+      }
+    }
+  }
+  return text;
+}
+
 function triggerAutoSort(text,force){
   if(!text&&!force) return;
   var d=text?extractDateFromRow({tname:text,isFree:true,id:''}):null;
@@ -3095,6 +3127,8 @@ function rBoard(){
             moveToWait(tid,pid);
             return;
           }
+          newName=addWeekday(newName); // Adaugă ziua săptămânii după dată
+          newTitle=newName;
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
             if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
@@ -3705,8 +3739,9 @@ function rBoard(){
                 moveToWait(task.id,item.id);
                 return;
               }
-              if(v!==task.name){
-                S.items=S.items.map(x=>x.id===item.id?{...x,tasks:x.tasks.map(t=>t.id===task.id?{...t,name:v,modifiedTs:Date.now()}:t)}:x);
+              var vw=addWeekday(v);
+              if(vw!==task.name){
+                S.items=S.items.map(x=>x.id===item.id?{...x,tasks:x.tasks.map(t=>t.id===task.id?{...t,name:vw,modifiedTs:Date.now()}:t)}:x);
                 save();
               }
             }
@@ -3720,18 +3755,19 @@ function rBoard(){
         const tn=sp('tname','');
         renderTaskText(tn,task.name);
         tn.addEventListener('dblclick',function(e){e.preventDefault();S.editTid=task.id;render();});
-        // touchend pe <a> propagă în sus — folosim touchstart pe tn cu dublu-tap manual
-        // Dublu-tap pe card: touchstart detectează tap rapid vs drag
-        // attCard blochează touchend, deci folosim touchstart pe tn
+        // Dublu-tap persistent: _tapTimes supraviețuiește render-ului
         (function(tid){
-          var _t1=0;
           tn.addEventListener('touchstart',function(e){
             if(e.target&&e.target.tagName==='A') return;
             var now=Date.now();
-            if(now-_t1<380&&now-_t1>50){
+            var last=_tapTimes[tid]||0;
+            if(now-last<380&&now-last>50){
               e.preventDefault();e.stopPropagation();
-              S.editTid=tid;render();_t1=0;
-            } else _t1=now;
+              _tapTimes[tid]=0;
+              S.editTid=tid;render();
+            } else {
+              _tapTimes[tid]=now;
+            }
           },{passive:false});
         })(task.id);
         card.appendChild(tn);
@@ -4197,6 +4233,7 @@ init();
   function commitFab(){
     var name=inp.value.trim();
     if(!name){closeFab();return;}
+    name=addWeekday(name);
     var ft={id:gid(),name:name,ts:Date.now(),modifiedTs:Date.now()};
     je({kind:'free-task-create',taskName:name,ts:ft.ts});
     S.freeTasks=[...S.freeTasks,ft];
