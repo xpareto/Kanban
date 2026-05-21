@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V100</title>
+<title>Project Board V101</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1103,6 +1103,19 @@ var _autoSortTimer=null;
 var _ziSapt=['dum','lun','mar','mie','joi','vin','sam'];
 function addWeekday(text){
   if(!text) return text;
+  // Pentru rânduri cu /c, extrage data din /cDD.MM
+  var slashC=text.match(/\/c(\d{1,2})\.(\d{1,2})/);
+  if(slashC){
+    var scD=parseInt(slashC[1]),scM=parseInt(slashC[2]);
+    if(scD>=1&&scD<=31&&scM>=1&&scM<=12){
+      var scDate=new Date((new Date()).getFullYear(),scM-1,scD,12,0,0);
+      var scZi=_ziSapt[scDate.getDay()];
+      if(!text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)){
+        return text.replace(/(\/c\d{1,2}\.\d{1,2})/,'$1 ('+scZi+')');
+      }
+      return text;
+    }
+  }
   // Găsește prima dată din text
   var d=extractDateFromRow({tname:text,isFree:true,id:''});
   if(!d) return text;
@@ -1123,7 +1136,7 @@ function addWeekday(text){
         var after=text.slice(idx+insertAfter.length);
         // Nu adăuga dacă urmează deja un shortname de zi
         if(after.match(/^\s*(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
-        return text.slice(0,idx+insertAfter.length)+' '+zi+text.slice(idx+insertAfter.length);
+        return text.slice(0,idx+insertAfter.length)+' ('+zi+')'+text.slice(idx+insertAfter.length);
       }
     }
   }
@@ -1405,6 +1418,16 @@ function attWaitHandle(node,idx,label){
 function attCard(node,tid,pid,colId,tn){
   node.addEventListener('touchstart',e=>{
     e.preventDefault();e.stopPropagation();
+    // Dublu-tap: dacă al doilea tap vine repede și nu e pe buton/link → editare
+    var now=Date.now();
+    var last=_tapTimes[tid]||0;
+    var target=e.target;
+    var isBtn=target.tagName==='BUTTON'||target.tagName==='A';
+    if(!isBtn&&now-last<400&&now-last>40){
+      _tapTimes[tid]=0;
+      S.editTid=tid;render();return;
+    }
+    if(!isBtn) _tapTimes[tid]=now;
     const t=e.touches[0];
     drag={type:'task',tid,tn,pid,colId};
     node.classList.add('drg');
@@ -3730,7 +3753,9 @@ function rBoard(){
         if(S.editTid===task.id){
           const ei=ip('einp','',task.name,null,null);
           ei.style.fontSize='11px';
+          var _saveEditDone=false;
           function saveTaskEdit(){
+            if(_saveEditDone) return; _saveEditDone=true;
             const v=ei.value.trim();
             if(v){
               // /w → mută task-ul în Wait
@@ -3755,21 +3780,7 @@ function rBoard(){
         const tn=sp('tname','');
         renderTaskText(tn,task.name);
         tn.addEventListener('dblclick',function(e){e.preventDefault();S.editTid=task.id;render();});
-        // Dublu-tap persistent: _tapTimes supraviețuiește render-ului
-        (function(tid){
-          tn.addEventListener('touchstart',function(e){
-            if(e.target&&e.target.tagName==='A') return;
-            var now=Date.now();
-            var last=_tapTimes[tid]||0;
-            if(now-last<380&&now-last>50){
-              e.preventDefault();e.stopPropagation();
-              _tapTimes[tid]=0;
-              S.editTid=tid;render();
-            } else {
-              _tapTimes[tid]=now;
-            }
-          },{passive:false});
-        })(task.id);
+        // dublu-tap gestionat in attCard via _tapTimes
         card.appendChild(tn);
         const td=mk('button','tdel');td.textContent='✕';
         td.addEventListener('touchstart',e=>{e.stopPropagation();e.preventDefault();},{passive:false});
