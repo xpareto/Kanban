@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V101</title>
+<title>Project Board V102</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1425,9 +1425,10 @@ function attCard(node,tid,pid,colId,tn){
     var isBtn=target.tagName==='BUTTON'||target.tagName==='A';
     if(!isBtn&&now-last<400&&now-last>40){
       _tapTimes[tid]=0;
+      traceLog('attCard dblTap: '+tid.slice(0,8));
       S.editTid=tid;render();return;
     }
-    if(!isBtn) _tapTimes[tid]=now;
+    if(!isBtn){_tapTimes[tid]=now;traceLog('attCard tap1: '+tid.slice(0,8)+' dt='+(now-last));}
     const t=e.touches[0];
     drag={type:'task',tid,tn,pid,colId};
     node.classList.add('drg');
@@ -2678,7 +2679,19 @@ function rBoard(){
     hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
     bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();}),
     bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();}),
-    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, helpBtn, resetBtn, traceBtn, lblBtns);
+  var sortNewBtn=mk('button','btn');
+  sortNewBtn.textContent='▼ T';
+  sortNewBtn.title='Sort nou→vechi (dupa data creare/modificare)';
+  sortNewBtn.style.cssText='background:#475569;color:#CBD5E1;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  sortNewBtn.addEventListener('click',function(){sortByTime("new");});
+  sortNewBtn.addEventListener('touchend',function(e){e.preventDefault();sortByTime("new");},{passive:false});
+  var sortOldBtn=mk('button','btn');
+  sortOldBtn.textContent='▲ T';
+  sortOldBtn.title='Sort vechi→nou (dupa data creare/modificare)';
+  sortOldBtn.style.cssText='background:#475569;color:#CBD5E1;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  sortOldBtn.addEventListener('click',function(){sortByTime("old");});
+  sortOldBtn.addEventListener('touchend',function(e){e.preventDefault();sortByTime("old");},{passive:false});
+    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn, lblBtns);
   ap(h,hl,hr);root.appendChild(h);
 
   // ── Panou Settings ──
@@ -3970,6 +3983,32 @@ function moveSelectedUnderFirst(){
 // Sortare globala: muta toate randurile cu data intre primul si al doilea *1
 // Sortare restul NEXT: proiecte în față, free punctuale la urmă
 // Operează pe rândurile DUPĂ zona *2 (sau *1 dacă nu există *2)
+// Sortare după timestamp creare/modificare
+function sortByTime(order){
+  // order: 'new' = nou-vechi, 'old' = vechi-nou
+  var nr=getNR();
+  function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
+  function getTs(r){
+    if(r.isFree){
+      var f=S.freeTasks.find(function(x){return x.id===r.id;});
+      return f?(f.modifiedTs||f.ts||0):0;
+    } else {
+      var p=S.items.find(function(x){return x.id===r.projectId;});
+      var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===r.taskId;});
+      return t?(t.modifiedTs||t.ts||0):0;
+    }
+  }
+  var sorted=nr.slice().sort(function(a,b){
+    var ta=getTs(a),tb=getTs(b);
+    return order==='new'?(tb-ta):(ta-tb);
+  });
+  S.nextOrder=sorted.map(toOrd);
+  lw(NK,S.nextOrder);
+  save();
+  fbToast((order==='new'?'▼ Nou→Vechi':'▲ Vechi→Nou')+' aplicat','#1E2130','#A78BFA',2500);
+  render();
+}
+
 function sortRestNext(){
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
