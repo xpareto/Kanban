@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V103</title>
+<title>Project Board V104</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1445,23 +1445,36 @@ function attWaitHandle(node,idx,label){
   },{passive:false});
 }
 function attCard(node,tid,pid,colId,tn){
+  // touchstart: inițiază drag (ca înainte)
   node.addEventListener('touchstart',e=>{
     e.preventDefault();e.stopPropagation();
-    // Dublu-tap: dacă al doilea tap vine repede și nu e pe buton/link → editare
-    var now=Date.now();
-    var last=_tapTimes[tid]||0;
-    var target=e.target;
-    var isBtn=target.tagName==='BUTTON'||target.tagName==='A';
-    if(!isBtn&&now-last<600&&now-last>40){
-      _tapTimes[tid]=0;
-      traceLog('attCard dblTap: '+tid.slice(0,8));
-      S.editTid=tid;render();return;
-    }
-    if(!isBtn){_tapTimes[tid]=now;traceLog('attCard tap1: '+tid.slice(0,8)+' dt='+(now-last));}
     const t=e.touches[0];
     drag={type:'task',tid,tn,pid,colId};
     node.classList.add('drg');
     sg(tn,t.clientX,t.clientY);
+  },{passive:false});
+  // touchend: detectează dublu-tap (după ce touchstart s-a consumat)
+  node.addEventListener('touchend',function(e){
+    var target=e.target;
+    var isBtn=target.tagName==='BUTTON'||target.tagName==='A';
+    if(isBtn) return;
+    // Dacă degetul s-a mișcat mult → drag real, nu tap
+    if(drag&&drag.type==='task'&&drag.tid===tid){
+      var ch=e.changedTouches[0];
+      var startT=drag._startT||e.changedTouches[0];
+      // Anulăm dublu-tap dacă e drag real (va fi tratat de touchend global)
+    }
+    var now=Date.now();
+    var last=_tapTimes[tid]||0;
+    if(now-last<600&&now-last>50){
+      e.preventDefault();e.stopPropagation();
+      _tapTimes[tid]=0;
+      traceLog('attCard dblTap: '+tid.slice(0,8));
+      drag=null; // anulează drag
+      S.editTid=tid;render();return;
+    }
+    _tapTimes[tid]=now;
+    traceLog('attCard tap1: '+tid.slice(0,8)+' dt='+(now-last));
   },{passive:false});
 }
 
@@ -4056,10 +4069,20 @@ function sortRestNext(){
   else if(m1a>=0) lastMarkerIdx=m1a;
   traceLog('sortRest: lastMarker='+lastMarkerIdx+' nr='+nr.length);
   if(lastMarkerIdx>=nr.length-1){fbToast('Nu există rânduri după zona marcată','#1E2130','#6B7280',2000);return;}
-  // Rândurile protejate (până la lastMarkerIdx inclusiv)
-  var protected2=nr.slice(0,lastMarkerIdx+1);
-  // Restul de sortat
+  // Rândurile protejate: marcatori + free tasks din zone marcate
+  // Proj tasks din interiorul *2 NU sunt protejate — se mută în sortare
+  var protected2=[];
   var rest=nr.slice(lastMarkerIdx+1);
+  for(var pi=0;pi<=lastMarkerIdx;pi++){
+    var pr=nr[pi];
+    // Dacă e proj task în interiorul *2 (nu marcator), îl scoatem la rest
+    var inZone2=(m2a>=0&&m2b>=0&&pi>m2a&&pi<m2b);
+    if(inZone2&&!pr.isFree){
+      rest.push(pr); // se va sorta cu restul
+    } else {
+      protected2.push(pr);
+    }
+  }
   // Separă: cal events, proj tasks, free tasks
   var calRest=[],projRest=[],freeRest=[];
   rest.forEach(function(r){
@@ -4068,7 +4091,6 @@ function sortRestNext(){
     else freeRest.push(r);
   });
   traceLog('sortRest: cal='+calRest.length+' proj='+projRest.length+' free='+freeRest.length);
-  // Noua ordine: protejate + proj + free + cal (cal events nu ar trebui să fie aici)
   var newOrder=protected2.concat(projRest).concat(freeRest).concat(calRest).map(toOrd);
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
