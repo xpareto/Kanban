@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V104</title>
+<title>Project Board V105</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -896,9 +896,8 @@ async function calFetchEvents(token){
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
     if(evStart>tomorrowF) return false; // start după mâine → exclude
-    if(evEnd&&evEnd<=todayF) return false; // s-a terminat deja → exclude
-    // Ongoing: start < azi dar end >= azi → include
-    // Start azi sau mâine → include
+    if(evEnd&&evEnd<todayF) return false; // s-a terminat înainte de azi → exclude
+    // Ongoing activ azi, azi, mâine → include
     return true;
   });
   traceLog('filtrat: '+events.length+' din '+allItems.length);
@@ -1466,7 +1465,7 @@ function attCard(node,tid,pid,colId,tn){
     }
     var now=Date.now();
     var last=_tapTimes[tid]||0;
-    if(now-last<600&&now-last>50){
+    if(now-last<900&&now-last>50){
       e.preventDefault();e.stopPropagation();
       _tapTimes[tid]=0;
       traceLog('attCard dblTap: '+tid.slice(0,8));
