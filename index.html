@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V105</title>
+<title>Project Board V106</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -544,6 +544,11 @@ async function fbPullIfNewer(){
         var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
         fbToast('☁↓ Pull automat la lansare: date din '+ds,'#0F2A1A','#10B981',3000);
         render();
+        setTimeout(function(){
+          applyWeekdaysToAll();
+          sortBetweenMarkers();
+          setTimeout(function(){sortRestNext();},300);
+        },1000);
       }
     }
     // dacă nimic nu e nou — tăcere, nu afișăm nimic
@@ -2595,15 +2600,7 @@ function rBoard(){
   htxt.appendChild(htitleWrap);htxt.appendChild(hdateEl);
   hl.appendChild(sp('logo','◈'));hl.appendChild(htxt);
   const hr=div('hdr-r');
-  // Search box — adăugat înaintea butonului de save
-  var sw=div('sw');
-  var si=mk('input','si');si.placeholder='Search...';si.value=S.sq;
-  si.addEventListener('input',function(e){S.sq=e.target.value;});
-  si.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();if(e.key==='Escape'){S.sq='';S.sr=null;si.value='';render();}});
-  var sbtn=mk('button','sbtn');sbtn.textContent='🔍';sbtn.addEventListener('click',doSearch);
-  sw.appendChild(si);sw.appendChild(sbtn);
-  if(S.sq){var sc=mk('button','sbtn');sc.textContent='✕';sc.style.color='#EF4444';sc.addEventListener('click',function(){S.sq='';S.sr=null;render();});sw.appendChild(sc);}
-  hr.appendChild(sw);
+  // Search mutat pe linia etichetelor (mai jos)
 
   const sdot=sp('sdot','');sdot.id='sdot';
   // Butoane etichete rapide
@@ -2732,8 +2729,26 @@ function rBoard(){
     hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
     (function(){var b=bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();});b.classList.add('btn-file');return b;})(),
     (function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})(),
-    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn, lblBtns);
+    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn);
   ap(h,hl,hr);root.appendChild(h);
+  // Linia search + etichete (fond verde deschis)
+  var searchRow=div('');
+  searchRow.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 10px;background:#052e16;border-bottom:1px solid #166534;flex-wrap:wrap';
+  var sw=div('sw');sw.style.cssText='display:flex;align-items:center;gap:4px;flex-shrink:0';
+  var si=mk('input','si');si.placeholder='Search...';si.value=S.sq;
+  si.style.cssText='background:#0F1117;color:#E2E8F0;border:1px solid #166534;border-radius:7px;padding:5px 9px;font-size:12px;outline:none;width:130px';
+  si.addEventListener('input',function(e){S.sq=e.target.value;});
+  si.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();if(e.key==='Escape'){S.sq='';S.sr=null;si.value='';render();}});
+  var sbtn=mk('button','sbtn');
+  sbtn.textContent='🔍';
+  sbtn.style.cssText='background:#166534;color:#86EFAC;border:none;border-radius:7px;padding:5px 9px;font-size:13px;cursor:pointer;touch-action:manipulation';
+  sbtn.addEventListener('click',doSearch);
+  sbtn.addEventListener('touchend',function(e){e.preventDefault();doSearch();},{passive:false});
+  sw.appendChild(si);sw.appendChild(sbtn);
+  if(S.sq){var sc=mk('button','sbtn');sc.textContent='✕';sc.style.cssText='background:#7F1D1D;color:#FCA5A5;border:none;border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer';sc.addEventListener('click',function(){S.sq='';S.sr=null;render();});sw.appendChild(sc);}
+  searchRow.appendChild(sw);
+  searchRow.appendChild(lblBtns);
+  root.appendChild(searchRow);
 
   // ── Panou Settings ──
   if(S.showSettings){
@@ -4098,6 +4113,24 @@ function sortRestNext(){
   render();
 }
 
+// Aplică addWeekday retroactiv pe toate taskurile care au dată dar nu au zi
+function applyWeekdaysToAll(){
+  var changed=false;
+  S.freeTasks.forEach(function(f){
+    if(f.id&&f.id.startsWith('cal::')) return; // cal events — skip
+    var newName=addWeekday(f.name||'');
+    if(newName!==f.name){f.name=newName;f.modifiedTs=Date.now();changed=true;}
+  });
+  S.items.forEach(function(item){
+    if(item.type!=='project') return;
+    (item.tasks||[]).forEach(function(t){
+      var newName=addWeekday(t.name||'');
+      if(newName!==t.name){t.name=newName;t.modifiedTs=Date.now();changed=true;}
+    });
+  });
+  if(changed){lw(FK,S.freeTasks);lw(SK,S.items);traceLog('applyWeekdays: updated');}
+}
+
 function sortBetweenMarkers(){
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
@@ -4681,7 +4714,11 @@ registerSW();
 // Fetch calendar după render (async, nu blochează UI)
 calCheckAndFetch();
 // Sortare implicită la lansare — după ce render-ul s-a stabilizat
-setTimeout(function(){sortBetweenMarkers();},2500);
+setTimeout(function(){
+  applyWeekdaysToAll();
+  sortBetweenMarkers();
+  setTimeout(function(){sortRestNext();},300);
+},2500);
 </script>
 </body>
 </html>
