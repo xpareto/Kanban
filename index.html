@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V106</title>
+<title>Project Board V107</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -900,9 +900,12 @@ async function calFetchEvents(token){
     }
     var evStart=(ev.start&&(ev.start.date||ev.start.dateTime||'')).slice(0,10);
     var evEnd=(ev.end&&(ev.end.date||ev.end.dateTime||'')).slice(0,10);
+    var isAllDay=!!(ev.start&&ev.start.date&&!ev.start.dateTime);
     if(evStart>tomorrowF) return false; // start după mâine → exclude
-    if(evEnd&&evEnd<todayF) return false; // s-a terminat înainte de azi → exclude
-    // Ongoing activ azi, azi, mâine → include
+    // C1 fix: pentru all-day events, end.date e exclusiva (end="2026-05-24" = terminat ieri)
+    // Timed events: evEnd < todayF (strict, fix V105)
+    if(isAllDay){if(evEnd&&evEnd<=todayF) return false;}
+    else{if(evEnd&&evEnd<todayF) return false;}
     return true;
   });
   traceLog('filtrat: '+events.length+' din '+allItems.length);
@@ -2729,7 +2732,7 @@ function rBoard(){
     hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
     (function(){var b=bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();});b.classList.add('btn-file');return b;})(),
     (function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})(),
-    settBtn, calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn);
+    calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn);
   ap(h,hl,hr);root.appendChild(h);
   // Linia search + etichete (fond verde deschis)
   var searchRow=div('');
@@ -2747,6 +2750,7 @@ function rBoard(){
   sw.appendChild(si);sw.appendChild(sbtn);
   if(S.sq){var sc=mk('button','sbtn');sc.textContent='✕';sc.style.cssText='background:#7F1D1D;color:#FCA5A5;border:none;border-radius:7px;padding:5px 8px;font-size:12px;cursor:pointer';sc.addEventListener('click',function(){S.sq='';S.sr=null;render();});sw.appendChild(sc);}
   searchRow.appendChild(sw);
+  searchRow.appendChild(settBtn);
   searchRow.appendChild(lblBtns);
   root.appendChild(searchRow);
 
@@ -3072,6 +3076,8 @@ function rBoard(){
   var _bandColor=null;
   var _firstFutureFound=false;
   nr.forEach((row,idx)=>{
+    // S1 fix: skip rânduri cu tname gol — previn rânduri fantomă și benzi de culoare spurioase
+    if(!row.tname||!row.tname.trim()) return;
     // Detectează marcator *1/*2/*3
     var _rawName=row.isFree?(S.freeTasks.find(function(f){return f.id===row.id;})||{}).name||'':(function(){var p=S.items.find(function(x){return x.id===row.projectId;});var t=p&&p.tasks&&p.tasks.find(function(tt){return tt.id===row.taskId;});return t?t.name:'';}());
     var _bm=_rawName.match(/^[*]([123])/);
@@ -4042,6 +4048,7 @@ function moveSelectedUnderFirst(){
 // Sortare după timestamp creare/modificare
 function sortByTime(order){
   // order: 'new' = nou-vechi, 'old' = vechi-nou
+  // Srt1: zonele *2 (galbena) si *3 (verde) raman intacte — sortăm doar în afara lor
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
   function getTs(r){
@@ -4054,11 +4061,40 @@ function sortByTime(order){
       return t?(t.modifiedTs||t.ts||0):0;
     }
   }
-  var sorted=nr.slice().sort(function(a,b){
+  // Detectează zonele protejate *2 și *3
+  var m2a=-1,m2b=-1,m3a=-1,m3b=-1;
+  nr.forEach(function(r,i){
+    var name=r.tname||'';
+    if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+    if(name.match(/^\*3/)){if(m3a<0)m3a=i;else if(m3b<0)m3b=i;}
+  });
+  var protectedSet=new Set();
+  if(m2a>=0&&m2b>=0){for(var p2=m2a;p2<=m2b;p2++) protectedSet.add(p2);}
+  if(m3a>=0&&m3b>=0){for(var p3=m3a;p3<=m3b;p3++) protectedSet.add(p3);}
+  // Sortăm doar rândurile din afara zonelor protejate
+  var protectedRows=[];var toSort=[];
+  nr.forEach(function(r,i){
+    if(protectedSet.has(i)) protectedRows.push({r:r,idx:i});
+    else toSort.push(r);
+  });
+  var sorted=toSort.slice().sort(function(a,b){
     var ta=getTs(a),tb=getTs(b);
     return order==='new'?(tb-ta):(ta-tb);
   });
-  S.nextOrder=sorted.map(toOrd);
+  // Reconstruieste ordinea: inserează zonele protejate la pozițiile lor originale
+  // Strategia: construim array-ul final luând din sorted pentru pozitiile neprotejate
+  var finalOrder=new Array(nr.length);
+  var si2=0;
+  for(var fi=0;fi<nr.length;fi++){
+    if(protectedSet.has(fi)){
+      // gasim randul protejat care era la pozitia fi
+      var pr2=protectedRows.find(function(x){return x.idx===fi;});
+      if(pr2) finalOrder[fi]=toOrd(pr2.r);
+    } else {
+      if(si2<sorted.length) finalOrder[fi]=toOrd(sorted[si2++]);
+    }
+  }
+  S.nextOrder=finalOrder.filter(Boolean);
   lw(NK,S.nextOrder);
   save();
   fbToast((order==='new'?'▼ Nou→Vechi':'▲ Vechi→Nou')+' aplicat','#1E2130','#A78BFA',2500);
@@ -4069,13 +4105,14 @@ function sortRestNext(){
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
   function rk(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
-  // Găsește ultima zonă marcată (*2 sau *1)
+  // Găsește ultima zonă marcată (*2 sau *1) și zona *3
   var lastMarkerIdx=-1;
-  var m1a=-1,m1b=-1,m2a=-1,m2b=-1;
+  var m1a=-1,m1b=-1,m2a=-1,m2b=-1,m3a=-1,m3b=-1;
   nr.forEach(function(r,i){
     var name=r.tname||'';
     if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
     if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+    if(name.match(/^\*3/)){if(m3a<0)m3a=i;else if(m3b<0)m3b=i;}
   });
   // Zona protejată = tot ce e până la sfârșitul ultimei zone marcate
   if(m2b>=0) lastMarkerIdx=m2b;
@@ -4085,13 +4122,16 @@ function sortRestNext(){
   if(lastMarkerIdx>=nr.length-1){fbToast('Nu există rânduri după zona marcată','#1E2130','#6B7280',2000);return;}
   // Rândurile protejate: marcatori + free tasks din zone marcate
   // Proj tasks din interiorul *2 NU sunt protejate — se mută în sortare
+  // Zona *3 (verde) este complet protejată (Cul1)
+  var zone3Set=new Set();
+  if(m3a>=0&&m3b>=0){for(var z3i=m3a;z3i<=m3b;z3i++) zone3Set.add(z3i);}
   var protected2=[];
   var rest=nr.slice(lastMarkerIdx+1);
   for(var pi=0;pi<=lastMarkerIdx;pi++){
     var pr=nr[pi];
     // Dacă e proj task în interiorul *2 (nu marcator), îl scoatem la rest
     var inZone2=(m2a>=0&&m2b>=0&&pi>m2a&&pi<m2b);
-    if(inZone2&&!pr.isFree){
+    if(inZone2&&!pr.isFree&&!zone3Set.has(pi)){
       rest.push(pr); // se va sorta cu restul
     } else {
       protected2.push(pr);
@@ -4135,14 +4175,15 @@ function sortBetweenMarkers(){
   var nr=getNR();
   function toOrd(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};}
   function rk(r){return r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
-  // Gaseste marcatorii *1 si *2
-  var m1a=-1,m1b=-1,m2a=-1,m2b=-1;
+  // Gaseste marcatorii *1, *2, *3
+  var m1a=-1,m1b=-1,m2a=-1,m2b=-1,m3a=-1,m3b=-1;
   nr.forEach(function(r,i){
     var name=r.tname||'';
     if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
     if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+    if(name.match(/^\*3/)){if(m3a<0)m3a=i;else if(m3b<0)m3b=i;}
   });
-  traceLog('sortGlobal: *1='+m1a+','+m1b+' *2='+m2a+','+m2b);
+  traceLog('sortGlobal: *1='+m1a+','+m1b+' *2='+m2a+','+m2b+' *3='+m3a+','+m3b);
   if(m1a<0||m1b<0){
     traceLog('sortGlobal: creez marcatori *1 lipsa ('+m1a+','+m1b+')');
     var mkM=function(){var mid=gid();var mft={id:mid,name:'*1------------------------',ts:Date.now(),modifiedTs:Date.now()};
@@ -4152,61 +4193,67 @@ function sortBetweenMarkers(){
     if(m1b<0){mkM();} // al doilea
     render();setTimeout(function(){sortBetweenMarkers();},150);return;
   }
+  // Zona *3 (verde) — protejata, ramane prima in NEXT (Cul1)
+  var zone3Rows=[];var zone3Set=new Set();
+  if(m3a>=0&&m3b>=0){
+    for(var z3i=m3a;z3i<=m3b;z3i++){zone3Set.add(z3i);zone3Rows.push(nr[z3i]);}
+  }
   // Marcatori si zone protejate
   var markerSet=new Set();
   markerSet.add(m1a);markerSet.add(m1b);
   if(m2a>=0)markerSet.add(m2a);
   if(m2b>=0)markerSet.add(m2b);
-  // Zona *2 (rânduri între m2a si m2b inclusiv) - protejată
+  if(m3a>=0)markerSet.add(m3a);
+  if(m3b>=0)markerSet.add(m3b);
+  // Zona *2 (galbena) — protejata, ramane dupa zona rosie (Srt1)
   var zone2Set=new Set();
   if(m2a>=0&&m2b>=0){
     for(var zi=m2a;zi<=m2b;zi++) zone2Set.add(zi);
   }
-  // Cal events (cal::) - merg la inceput, oriunde ar fi in NEXT
+  // Cal events (cal::) - merg la inceput (dupa zona *3)
   var calRows=[];var calSet=new Set();
   nr.forEach(function(r,i){
-    if(markerSet.has(i)) return; // marcatorii ramân
+    if(markerSet.has(i)||zone3Set.has(i)) return;
     if(r.isFree&&r.id&&r.id.startsWith('cal::')){
       calRows.push(r);calSet.add(rk(r));
     }
   });
-  // Rânduri cu termene (au data, nu sunt cal::) - ORIUNDE in NEXT, inclusiv din *2
-  // Cal events sunt excluse — au propria zonă înaintea *1
+  // Rânduri cu termene (au data, nu sunt cal::) - ORIUNDE in NEXT, dar NU din *2 sau *3
   var withDate=[];var withDateSet=new Set();
   nr.forEach(function(r,i){
-    if(markerSet.has(i)) return;
-    if(calSet.has(rk(r))) return; // cal:: exclus
-    if(r.isFree&&r.id&&r.id.startsWith('cal::')) return; // double-check
+    if(markerSet.has(i)||zone3Set.has(i)) return;
+    if(calSet.has(rk(r))) return;
+    if(r.isFree&&r.id&&r.id.startsWith('cal::')) return;
+    // Srt1: nu scoate din zona *2 — zona galbenă rămâne intactă
+    if(zone2Set.has(i)) return;
     var d=extractDateFromRow(r);
     if(d){withDate.push({r:r,d:d});withDateSet.add(rk(r));}
   });
   withDate.sort(function(a,b){return a.d-b.d;});
   traceLog('sortGlobal: cal='+calRows.length+' termene='+withDate.length);
-  // Zona *2: doar rândurile FARA data raman (cele cu data au plecat la *1)
+  // Zona *2: rândurile rămân intacte (Srt1)
   var zone2Rows=[];
   if(m2a>=0&&m2b>=0){
     for(var zi2=m2a;zi2<=m2b;zi2++){
-      var r2=nr[zi2];
-      if(markerSet.has(zi2)||(!withDateSet.has(rk(r2))&&!calSet.has(rk(r2)))){
-        zone2Rows.push(r2);
-      }
+      zone2Rows.push(nr[zi2]);
     }
   }
   // Restul (fara data, fara cal, in afara zonelor marcate)
   var rest=[];
   nr.forEach(function(r,i){
-    if(markerSet.has(i)) return;
+    if(markerSet.has(i)||zone3Set.has(i)) return;
     if(calSet.has(rk(r))||withDateSet.has(rk(r))) return;
-    // Daca e în zona *2 si fara data, e deja in zone2Rows
     if(zone2Set.has(i)) return;
     rest.push(r);
   });
   // Construieste ordinea finala:
-  // 1. Cal events
-  // 2. *1 + termene sortate + *1
-  // 3. Zona *2 (daca exista)
-  // 4. Restul
+  // 1. Zona *3 (verde) — prima, neafectata (Cul1)
+  // 2. Cal events
+  // 3. *1 + termene sortate + *1
+  // 4. Zona *2 intacta (galbena, Srt1)
+  // 5. Restul
   var newOrder=[];
+  zone3Rows.forEach(function(r){newOrder.push(toOrd(r));});
   calRows.forEach(function(r){newOrder.push(toOrd(r));});
   newOrder.push(toOrd(nr[m1a])); // primul *1
   withDate.forEach(function(x){newOrder.push(toOrd(x.r));});
