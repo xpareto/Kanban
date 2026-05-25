@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V108</title>
+<title>Project Board V109</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1610,63 +1610,54 @@ function detectAndSaveZones(){
 
 // S1 Sync: la merge, inserează itemele noi în poziția corectă bazată pe .zone
 function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
-  // Construiește lista locală cu markeri detectați
-  function findMarkerIdx(order, markerRegex){
+  function findMarkers(order, markerRegex){
+    var first=-1,second=-1;
     for(var i=0;i<order.length;i++){
       var e=order[i];
       if(e.type==='free'){
         var f=S.freeTasks.find(function(x){return x.id===e.id;});
-        if(f&&(f.name||'').match(markerRegex)) return i;
+        if(f&&(f.name||'').match(markerRegex)){
+          if(first<0) first=i; else if(second<0){second=i;break;}
+        }
       }
     }
-    return -1;
+    return {a:first,b:second};
   }
-  var m3a=findMarkerIdx(localOrder,/^\*3/);var m3b=-1;
-  var m1a=findMarkerIdx(localOrder,/^\*1/);
-  // Găsește al doilea *1
-  for(var i=m1a+1;i<localOrder.length;i++){
-    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*1/)){m1b=i;break;}}
-  }
-  var m2a=findMarkerIdx(localOrder,/^\*2/);var m2b=-1;
-  for(var i=m2a+1;i<localOrder.length;i++){
-    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*2/)){m2b=i;break;}}
-  }
-  // Găsesc al doilea *3 marker
-  for(var i=m3a+1;i<localOrder.length;i++){
-    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*3/)){m3b=i;break;}}
-  }
+  var mk3=findMarkers(localOrder,/^\*3/);
+  var mk1=findMarkers(localOrder,/^\*1/);
+  var mk2=findMarkers(localOrder,/^\*2/);
 
-  var result=localOrder.slice();
-  // Sortăm remoteNew după zonă: green → inserăm după m3a; red → după m1a; yellow → după m2a; rest → la început
+  // Clasifică remoteNew după zona salvată în freeTask/task
   var greenItems=[],redItems=[],yellowItems=[],restItems=[];
   remoteNew.forEach(function(e){
     var zone=null;
-    if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f)zone=f.zone;}
-    else{var p=S.items.find(function(x){return x.id===e.projectId;});var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});if(t)zone=t.zone;}
+    if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f)zone=f.zone||null;}
+    else{var p=S.items.find(function(x){return x.id===e.projectId;});var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});if(t)zone=t.zone||null;}
     if(zone==='green') greenItems.push(e);
     else if(zone==='red') redItems.push(e);
     else if(zone==='yellow') yellowItems.push(e);
     else restItems.push(e);
   });
 
-  // Inserează în ordinea inversă a pozițiilor (ca să nu schimbe indexele)
-  // green după m3a+1, red după m1a+1, yellow după m2a+1, rest la 0
-  function insertAt(arr,idx,items){
+  // Inserare la poziție: după marcatorul de deschidere al zonei; fallback = la final
+  function insertAfter(arr,idx,items){
     if(!items.length) return arr;
-    var pos=idx>=0?idx+1:0;
+    var pos=(idx>=0)?idx+1:arr.length; // fallback: la final
     return arr.slice(0,pos).concat(items).concat(arr.slice(pos));
   }
-  result=insertAt(result,m3a,greenItems);
-  // Recalculăm pozițiile după inserție
-  var offset=greenItems.length;
-  result=insertAt(result,m1a>=0?m1a+offset:-1,redItems);
-  offset+=redItems.length;
-  result=insertAt(result,m2a>=0?m2a+offset:-1,yellowItems);
-  result=insertAt(result,-1,restItems); // rest la final (va fi înaintea primului element)
-  // De fapt rest la poziția 0
-  if(restItems.length){
-    result=restItems.concat(result.filter(function(e){return restItems.indexOf(e)<0;}));
-  }
+
+  var result=localOrder.slice();
+  // Inserăm în ordine inversă a priorității (primul verde, apoi roșu, galben, rest)
+  // Recalculăm pozițiile după fiecare inserție
+  result=insertAfter(result, mk3.a, greenItems);
+  var off=greenItems.length;
+  result=insertAfter(result, mk1.a>=0?mk1.a+off:-1, redItems);
+  off+=redItems.length;
+  result=insertAfter(result, mk2.a>=0?mk2.a+off:-1, yellowItems);
+  off+=yellowItems.length;
+  // rest → la final (nu la început — nu deranjăm zonele)
+  result=result.concat(restItems);
+
   return result;
 }
 function moveToWait(taskId, projectId){
@@ -3375,7 +3366,15 @@ function rBoard(){
             return;
           }
           newName=addWeekday(newName); // Adaugă ziua săptămânii după dată
-          newTitle=newName;
+          // Dow1 fix: addWeekday trebuie aplicat doar pe prima linie (titlul), nu pe URL-uri
+          if(urlLines.length){
+            var titlePart=addWeekday(newTitle);
+            newName=titlePart+'\n'+urlLines.join('\n');
+            newTitle=titlePart;
+          } else {
+            newName=addWeekday(newName);
+            newTitle=newName;
+          }
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
             if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
