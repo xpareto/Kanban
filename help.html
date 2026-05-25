@@ -336,6 +336,30 @@ tr:nth-child(even)td{background:#F8FAFC}
   <div class="step"><div class="num">2</div><div>Linkul sau textul apare în secțiunea <strong>SHARE</strong>.</div></div>
   <div class="step"><div class="num">3</div><div>Din SHARE, mută în NEXT ce vrei să acționezi.</div></div>
   <div class="card amber">Share Target funcționează DOAR cu varianta PWA instalată din Chrome.</div>
+
+  <h3>Merge — cum se concatenează bucățile de text</h3>
+  <p>Când salvezi fragmente din același articol în momente diferite (mai întâi un fragment, apoi altul, apoi adresa), ele apar ca rânduri separate în SHARE. Funcția <strong>Merge</strong> le combină într-un singur bloc coeziv.</p>
+
+  <p><strong>Cum funcționează:</strong></p>
+  <div class="step"><div class="num">1</div><div>Selectezi (bifezi) rândul de jos al unui grup — cel care marchează <em>finalul</em> fragmentelor ce aparțin aceluiași articol. De obicei acesta e rândul cu adresa URL a articolului sau ultimul fragment relevant.</div></div>
+  <div class="step"><div class="num">2</div><div>Aplicația adună automat toate rândurile de <em>deasupra</em> marcajului selectat — de la cel mai recent (de sus) până la marcajul tău — și le concatenează în ordinea cronologică corectă (primul fragment mai întâi).</div></div>
+  <div class="step"><div class="num">3</div><div>Rezultatul merge-ului apare în clipboard, gata de lipit.</div></div>
+
+  <div class="card blue">
+    <strong>Exemplu practic:</strong><br/>
+    Ai 4 rânduri în SHARE (de sus în jos):<br/>
+    <code>[1] Fragment final din articol (salvat ultimul)</code><br/>
+    <code>[2] Fragment mijloc din articol</code><br/>
+    <code>[3] Fragment început din articol</code><br/>
+    <code>[4] ← bifezi ACESTA = URL-ul articolului</code><br/><br/>
+    Merge produce: <code>[3] + [2] + [1] + [4]</code> — adică ordinea corectă de lectură.
+  </div>
+
+  <p><strong>Mai multe articole în SHARE:</strong> Dacă ai fragmentat mai multe articole, selectezi <em>doar primul rând</em> (cel mai vechi = jos în listă) al fiecărui articol. Fiecare selecție formează un grup independent. Merge-ul produce atâtea blocuri câte selecții ai făcut.</p>
+
+  <div class="card amber">
+    <strong>Atenție:</strong> Rândul selectat este <em>inclus</em> în merge — el închide grupul. Tot ce e deasupra lui (până la selecția anterioară sau până la capătul listei) intră în acel grup.
+  </div>
 </div>
 
 <div class="sec" id="projects">
@@ -351,7 +375,10 @@ tr:nth-child(even)td{background:#F8FAFC}
   <h2>Sincronizare cloud ☁</h2>
   <p>Datele sunt sincronizate automat via Firebase Firestore. La deschiderea aplicației se face un pull automat dacă există date mai noi în cloud.</p>
   <div class="card blue">
-    <strong>Conflict resolution:</strong> La sync, ordinea locală este păstrată. Elementele noi din cloud sunt adăugate la început. Elementele șterse local nu revin din cloud.
+    <strong>Conflict resolution:</strong> La sync, ordinea locală este păstrată. Elementele noi din cloud sunt inserate în <strong>zona corectă de culoare</strong> — un task adăugat în zona verde pe tabletă va apărea în zona verde și pe telefon, nu la capătul listei. Elementele șterse local nu revin din cloud.
+  </div>
+  <div class="card amber">
+    Zonele de culoare sunt salvate automat la fiecare Push (☁). Pentru ca sincronizarea zonelor să funcționeze, trebuie să faci <strong>Push după fiecare rearanjare semnificativă</strong> în NEXT.
   </div>
 </div>
 
