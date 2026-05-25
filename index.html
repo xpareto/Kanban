@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V107</title>
+<title>Project Board V108</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -338,6 +338,8 @@ async function fbPush(){
   if(!fbIsRealData(S.items,S.freeTasks)){
     return {ok:false,err:'Date demo detectate — push anulat pentru protecție'};
   }
+  // S1: salvează zona fiecărui item înainte de push (green/red/yellow/null)
+  detectAndSaveZones();
   try{
     var uid=fbUser.uid;
     var col=fbDb.collection('users');
@@ -352,7 +354,10 @@ async function fbPush(){
 }
 
 // ── Validare: datele sunt reale (nu demo) ──
-var DEMO_IDS=['id_demo_p1','id_demo_p2','id_demo_f1','id_demo_f2','id_demo_s1','id_demo_s2'];
+var DEMO_IDS=['id_demo_p1','id_demo_p2','id_demo_f1','id_demo_f2','id_demo_s1','id_demo_s2',
+  'id_demo_m1a','id_demo_m1b','id_demo_m2a','id_demo_m2b','id_demo_m3a','id_demo_m3b',
+  'id_demo_f_green1','id_demo_f_green2','id_demo_f_red1','id_demo_f_red2',
+  'id_demo_f_yellow1','id_demo_f_yellow2','id_demo_t1','id_demo_t2','id_demo_t3','id_demo_t4'];
 function fbIsRealData(items,freeTasks){
   // Sunt reale dacă există cel puțin un item cu id care nu e demo
   var allIds=(items||[]).map(function(x){return x.id;})
@@ -408,10 +413,9 @@ async function fbPull(mode){
         // ── MERGE per-item: combină local + remote, câștigă modifiedTs mai mare ──
         S.items=mergeProjects(S.items, remoteItems);
         S.freeTasks=mergeItemArray(S.freeTasks, rData.freeTasks||[]);
-        // nextOrder: union dedup
+        // nextOrder: union dedup cu zone-aware insert
         var knownIds=new Set((S.freeTasks).map(function(x){return x.id;}));
         S.items.forEach(function(it){if(it.type==='project')(it.tasks||[]).forEach(function(t){knownIds.add(t.id);});});
-        // Ordinea locală se păstrează; elementele noi din remote se inserează la ÎNCEPUT
         var localOrdSet=new Set((S.nextOrder||[]).map(function(e){
           return e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
         }));
@@ -419,13 +423,17 @@ async function fbPull(mode){
           var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
           return !localOrdSet.has(key)&&knownIds.has(e.type==='free'?e.id:e.taskId);
         });
+        // S1: insert remote-new items into correct color zone based on .zone field
+        if(remoteNew.length){
+          S.nextOrder=mergeNextOrderWithZones(S.nextOrder||[], remoteNew, knownIds);
+        }
+        // Dedup final
         var seenOrd=new Set();
-        var mergedOrd=[];
-        remoteNew.concat(S.nextOrder||[]).forEach(function(e){
+        S.nextOrder=S.nextOrder.filter(function(e){
           var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
-          if(!seenOrd.has(key)&&knownIds.has(e.type==='free'?e.id:e.taskId)){seenOrd.add(key);mergedOrd.push(e);}
+          if(seenOrd.has(key)||!knownIds.has(e.type==='free'?e.id:e.taskId)) return false;
+          seenOrd.add(key);return true;
         });
-        S.nextOrder=mergedOrd;
         S.labels=rData.labels||S.labels;
         lw('pb-last-push-ts',Date.now());
         lw('pb-local-dirty-ts',0);
@@ -699,12 +707,12 @@ const GCAL_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
 const GCAL_REDIRECT=window.location.origin+window.location.pathname;
 const DEF=[
   {type:'project',id:'id_demo_p1',name:'Renovare baie',tasks:[
-    {id:'id_demo_t1',name:'Cumpărat gresie și adeziv de la Dedeman',status:'next',weight:3},
+    {id:'id_demo_t1',name:'Cumpărat gresie și adeziv de la Dedeman',status:'next',weight:3,zone:'red'},
     {id:'id_demo_t2',name:'Plătit factura instalator',status:'done'}
   ]},
   {type:'project',id:'id_demo_p2',name:'Pregătire vacanță',tasks:[
-    {id:'id_demo_t3',name:'Rezervat hotel Mamaia pentru 10–17 august',status:'next'},
-    {id:'id_demo_t4',name:'*Reînnoit asigurare medicală de călătorie',status:'next'}
+    {id:'id_demo_t3',name:'Rezervat hotel Mamaia pentru 10–17 aug (duminică)',status:'next',zone:'yellow'},
+    {id:'id_demo_t4',name:'*Reînnoit asigurare medicală de călătorie',status:'next',zone:null}
   ]},
 ];
 
@@ -714,9 +722,28 @@ function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
 function fmt(ts){const d=new Date(ts);return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});}
+// Demo free tasks — în ordinea optimă, includ marcatori și zone colorate
+// Ordinea optimă: *3 verde (prioritar ales manual) → cal events → *1 roșu (termene) *1 → *2 galben → proj tasks → free simple
 const DEF_FREE=[
-  {id:'id_demo_f1',name:'Cumpărat pâine și lapte',ts:Date.now()-120000},
-  {id:'id_demo_f2',name:'Sunat medicul pentru programare',ts:Date.now()-60000}
+  // ── ZONA VERDE *3: prioritățile alese manual ──
+  {id:'id_demo_m3a',name:'*3------------------------',ts:Date.now()-900000,zone:null},
+  {id:'id_demo_f_green1',name:'Apelat doctorul pentru consultație urgentă',ts:Date.now()-800000,zone:'green'},
+  {id:'id_demo_f_green2',name:'Finalizat oferta pentru clientul nou',ts:Date.now()-750000,zone:'green'},
+  {id:'id_demo_m3b',name:'*3------------------------',ts:Date.now()-700000,zone:null},
+  // ── [Evenimentele din Google Calendar apar aici, aduse automat] ──
+  // ── ZONA ROȘIE *1: task-uri cu termene sortate cronologic ──
+  {id:'id_demo_m1a',name:'*1------------------------',ts:Date.now()-600000,zone:null},
+  {id:'id_demo_f_red1',name:'📅 25.mai Plătit rata bancară (joi)',ts:Date.now()-500000,zone:'red'},
+  {id:'id_demo_f_red2',name:'📅 1.iun Reînnoit abonament anual (lun)',ts:Date.now()-400000,zone:'red'},
+  {id:'id_demo_m1b',name:'*1------------------------',ts:Date.now()-350000,zone:null},
+  // ── ZONA GALBENĂ *2: alte priorități de nivel mediu ──
+  {id:'id_demo_m2a',name:'*2------------------------',ts:Date.now()-300000,zone:null},
+  {id:'id_demo_f_yellow1',name:'Comandat piese auto de schimb',ts:Date.now()-250000,zone:'yellow'},
+  {id:'id_demo_f_yellow2',name:'Răspuns la email-urile în așteptare',ts:Date.now()-200000,zone:'yellow'},
+  {id:'id_demo_m2b',name:'*2------------------------',ts:Date.now()-150000,zone:null},
+  // ── Restul: free tasks simple, fără prioritate specială ──
+  {id:'id_demo_f1',name:'Cumpărat pâine și lapte',ts:Date.now()-120000,zone:null},
+  {id:'id_demo_f2',name:'Sunat medicul pentru programare',ts:Date.now()-60000,zone:null}
 ];
 const DEF_SHARE=[
   {id:'id_demo_s1',name:'Getting Things Done — metodă de organizare a sarcinilor și proiectelor\nhttps://en.wikipedia.org/wiki/Getting_things_done',ts:Date.now()-180000},
@@ -728,7 +755,26 @@ function init(){
   const storedFree=ls(FK);
   S.freeTasks=(storedFree&&storedFree.length)?storedFree:JSON.parse(JSON.stringify(DEF_FREE));
   const storedNK=ls(NK);
-  S.nextOrder=storedNK?storedNK:(S.freeTasks.map(function(f){return {type:'free',id:f.id};}));
+  if(storedNK){
+    S.nextOrder=storedNK;
+  } else {
+    // Demo: construiește ordinea optimă — free tasks în ordinea din DEF_FREE,
+    // cu task-urile de proiect intercalate în zona corectă (*2 galben, după *2a)
+    var demoOrder=S.freeTasks.map(function(f){return {type:'free',id:f.id};});
+    // Inserăm proj tasks în zona galbenă (*2): după id_demo_m2a
+    var m2aIdx=demoOrder.findIndex(function(e){return e.id==='id_demo_m2a';});
+    var projEntries=[
+      {type:'proj',projectId:'id_demo_p2',taskId:'id_demo_t3'}, // Rezervat hotel — zona galbenă
+      {type:'proj',projectId:'id_demo_p1',taskId:'id_demo_t1'}, // Gresie — zona roșie
+    ];
+    // Gresie (red) → după id_demo_m1a
+    var m1aIdx=demoOrder.findIndex(function(e){return e.id==='id_demo_m1a';});
+    if(m1aIdx>=0) demoOrder.splice(m1aIdx+1,0,{type:'proj',projectId:'id_demo_p1',taskId:'id_demo_t1'});
+    // Hotel (yellow) → după id_demo_m2a (recalculăm după inserție)
+    m2aIdx=demoOrder.findIndex(function(e){return e.id==='id_demo_m2a';});
+    if(m2aIdx>=0) demoOrder.splice(m2aIdx+1,0,{type:'proj',projectId:'id_demo_p2',taskId:'id_demo_t3'});
+    S.nextOrder=demoOrder;
+  }
   S.waitOrder=ls(WK)||[];S.waitFreeTasks=ls(WFK)||[];S.mergeFlags=ls(MK)||{};
   const storedShare=ls(SHK);
   S.shareTasks=(storedShare&&storedShare.length)?storedShare:JSON.parse(JSON.stringify(DEF_SHARE));
@@ -1535,8 +1581,94 @@ function addFree(){
   triggerAutoSort(name);
   render();
 }
-// ── /w command — mută task din Next în Wait ──
-// Funcționează pentru: free tasks din Next și task-uri de proiect din Next
+// S1 Sync: detectează zona unui item în nextOrder (green=*3, red=*1, yellow=*2, null=rest)
+// Această zonă e salvată în freeTask.zone / task.zone și sincronizată cu Firebase
+function detectAndSaveZones(){
+  var nr=getNR();
+  var m1a=-1,m1b=-1,m2a=-1,m2b=-1,m3a=-1,m3b=-1;
+  nr.forEach(function(r,i){
+    var name=r.tname||'';
+    if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
+    if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
+    if(name.match(/^\*3/)){if(m3a<0)m3a=i;else if(m3b<0)m3b=i;}
+  });
+  nr.forEach(function(r,i){
+    var zone=null;
+    if(m3a>=0&&m3b>=0&&i>m3a&&i<m3b) zone='green';
+    else if(m1a>=0&&m1b>=0&&i>m1a&&i<m1b) zone='red';
+    else if(m2a>=0&&m2b>=0&&i>m2a&&i<m2b) zone='yellow';
+    if(r.isFree){
+      var ft=S.freeTasks.find(function(x){return x.id===r.id;});
+      if(ft&&ft.zone!==zone){ft.zone=zone;ft.modifiedTs=Date.now();}
+    } else {
+      var p=S.items.find(function(x){return x.id===r.projectId;});
+      var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===r.taskId;});
+      if(t&&t.zone!==zone){t.zone=zone;t.modifiedTs=Date.now();}
+    }
+  });
+}
+
+// S1 Sync: la merge, inserează itemele noi în poziția corectă bazată pe .zone
+function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
+  // Construiește lista locală cu markeri detectați
+  function findMarkerIdx(order, markerRegex){
+    for(var i=0;i<order.length;i++){
+      var e=order[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(markerRegex)) return i;
+      }
+    }
+    return -1;
+  }
+  var m3a=findMarkerIdx(localOrder,/^\*3/);var m3b=-1;
+  var m1a=findMarkerIdx(localOrder,/^\*1/);
+  // Găsește al doilea *1
+  for(var i=m1a+1;i<localOrder.length;i++){
+    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*1/)){m1b=i;break;}}
+  }
+  var m2a=findMarkerIdx(localOrder,/^\*2/);var m2b=-1;
+  for(var i=m2a+1;i<localOrder.length;i++){
+    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*2/)){m2b=i;break;}}
+  }
+  // Găsesc al doilea *3 marker
+  for(var i=m3a+1;i<localOrder.length;i++){
+    var e=localOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&(f.name||'').match(/^\*3/)){m3b=i;break;}}
+  }
+
+  var result=localOrder.slice();
+  // Sortăm remoteNew după zonă: green → inserăm după m3a; red → după m1a; yellow → după m2a; rest → la început
+  var greenItems=[],redItems=[],yellowItems=[],restItems=[];
+  remoteNew.forEach(function(e){
+    var zone=null;
+    if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f)zone=f.zone;}
+    else{var p=S.items.find(function(x){return x.id===e.projectId;});var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});if(t)zone=t.zone;}
+    if(zone==='green') greenItems.push(e);
+    else if(zone==='red') redItems.push(e);
+    else if(zone==='yellow') yellowItems.push(e);
+    else restItems.push(e);
+  });
+
+  // Inserează în ordinea inversă a pozițiilor (ca să nu schimbe indexele)
+  // green după m3a+1, red după m1a+1, yellow după m2a+1, rest la 0
+  function insertAt(arr,idx,items){
+    if(!items.length) return arr;
+    var pos=idx>=0?idx+1:0;
+    return arr.slice(0,pos).concat(items).concat(arr.slice(pos));
+  }
+  result=insertAt(result,m3a,greenItems);
+  // Recalculăm pozițiile după inserție
+  var offset=greenItems.length;
+  result=insertAt(result,m1a>=0?m1a+offset:-1,redItems);
+  offset+=redItems.length;
+  result=insertAt(result,m2a>=0?m2a+offset:-1,yellowItems);
+  result=insertAt(result,-1,restItems); // rest la final (va fi înaintea primului element)
+  // De fapt rest la poziția 0
+  if(restItems.length){
+    result=restItems.concat(result.filter(function(e){return restItems.indexOf(e)<0;}));
+  }
+  return result;
+}
 function moveToWait(taskId, projectId){
   if(projectId){
     // Task de proiect — schimbă status în proiect și mută în waitOrder
@@ -1846,8 +1978,18 @@ function promoteToProject(freeId,taskName){
     pb.addEventListener('click',function(){
       doClose();
       var newTaskId=gid();
-      proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
-      S.nextOrder=[...S.nextOrder,{type:'proj',projectId:proj.id,taskId:newTaskId}];
+      proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()}];
+      // C1: inserăm noul task-proiect la ACEEAȘI poziție ca free task-ul original (păstrăm zona)
+      var freePos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===freeId;});
+      var newProjEntry={type:'proj',projectId:proj.id,taskId:newTaskId};
+      if(freePos>=0){
+        // Înlocuiește exact poziția free task-ului cu noul task de proiect
+        var ord=S.nextOrder.slice();
+        ord.splice(freePos,1,newProjEntry);
+        S.nextOrder=ord;
+      } else {
+        S.nextOrder=[...S.nextOrder,newProjEntry];
+      }
       S.freeTasks=S.freeTasks.filter(function(x){return x.id!==freeId;});
       S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===freeId);});
       lw(FK,S.freeTasks);lw(NK,S.nextOrder);
@@ -2727,14 +2869,9 @@ function rBoard(){
   sortOldBtn.addEventListener('click',function(){sortByTime('old');});
   sortOldBtn.addEventListener('touchend',function(e){e.preventDefault();sortByTime('old');},{passive:false});
   ap(hr, sdot,
-    hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();}),
-    hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();}),
-    hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();}),
-    (function(){var b=bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();});b.classList.add('btn-file');return b;})(),
-    (function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})(),
-    calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn, resetBtn, traceBtn);
+    calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn);
   ap(h,hl,hr);root.appendChild(h);
-  // Linia search + etichete (fond verde deschis)
+  // Linia 2: search + settings + etichete (fond verde deschis)
   var searchRow=div('');
   searchRow.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 10px;background:#052e16;border-bottom:1px solid #166534;flex-wrap:wrap';
   var sw=div('sw');sw.style.cssText='display:flex;align-items:center;gap:4px;flex-shrink:0';
@@ -2753,6 +2890,18 @@ function rBoard(){
   searchRow.appendChild(settBtn);
   searchRow.appendChild(lblBtns);
   root.appendChild(searchRow);
+  // Linia 3: date/jurnal/share/sec/proj + reset/trace (utilitar)
+  var toolRow=div('');
+  toolRow.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 10px;background:#0F1117;border-bottom:1px solid #1F2937;flex-wrap:wrap';
+  var trData=hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();});
+  var trJournal=hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();});
+  var trShare=hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();});
+  var trSec=(function(){var b=bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();});b.classList.add('btn-file');return b;})();
+  var trProj=(function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})();
+  // Separator vizual
+  var trSep=sp('','');trSep.style.cssText='flex:1';
+  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,resetBtn,traceBtn);
+  root.appendChild(toolRow);
 
   // ── Panou Settings ──
   if(S.showSettings){
@@ -4477,7 +4626,7 @@ function calcMergeGroups(){
   var rows=S.shareTasks.map(function(item){
     return {
       rk: 's:'+item.id,
-      text: getTaskDisplayText(item.name),
+      text: item.name, // Sm1 fix: text complet, nu trunchiat la titlu+url
       id: item.id
     };
   });
