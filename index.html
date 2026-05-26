@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V109</title>
+<title>Project Board V110</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1158,11 +1158,17 @@ function calLogout(){
 var _autoSortTimer=null;
 // Adaugă ziua de săptămână după o dată detectată în text (dacă nu e deja)
 var _ziSapt=['dum','lun','mar','mie','joi','vin','sam'];
+// Dow1: verifică dacă textul conține deja o zi de săptămână ca token independent
+// (nu ca substring din cuvinte ca "vine", "martor", "luna", "samsar")
+function _hasWeekdayToken(text){
+  return !!(text.match(/\((lun|mar|mie|joi|vin|sam|dum)\)/i)||
+            text.match(/(^|[\s.,\[])(?:lun|mar|mie|joi|vin|sam|dum)(?=$|[\s.,\)\]])/i));
+}
+
 function addWeekdayFromDate(text, dateObj){
   if(!dateObj||!text) return text;
-  if(text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
+  if(_hasWeekdayToken(text)) return text;
   var zi=_ziSapt[dateObj.getDay()];
-  // Inserează după primul ] dacă există
   if(text.indexOf(']')>=0) return text.replace(']','] ('+zi+')');
   return '('+zi+') '+text;
 }
@@ -1179,7 +1185,7 @@ function addWeekday(text){
     if(ivD>=1&&ivD<=31&&ivMn>=1&&ivMn<=12){
       var ivDate=new Date((new Date()).getFullYear(),ivMn-1,ivD,12,0,0);
       var ivZi=_ziSapt[ivDate.getDay()];
-      if(!text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)){
+      if(!_hasWeekdayToken(text)){
         return text.replace(mIv[0],mIv[0]+' ('+ivZi+')');
       }
       return text;
@@ -1192,7 +1198,7 @@ function addWeekday(text){
     if(scD>=1&&scD<=31&&scM>=1&&scM<=12){
       var scDate=new Date((new Date()).getFullYear(),scM-1,scD,12,0,0);
       var scZi=_ziSapt[scDate.getDay()];
-      if(!text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)){
+      if(!_hasWeekdayToken(text)){
         return text.replace(/(\/c\d{1,2}\.\d{1,2})/,'$1 ('+scZi+')');
       }
       return text;
@@ -1202,9 +1208,7 @@ function addWeekday(text){
   var d=extractDateFromRow({tname:text,isFree:true,id:''});
   if(!d) return text;
   var zi=_ziSapt[d.getDay()];
-  // Nu adăuga dacă există deja o zi de săptămână lângă dată
-  if(text.match(/(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
-  // Găsește pattern-ul datei în text și inserează ziua după el
+  if(_hasWeekdayToken(text)) return text;
   var patterns=[
     /(\d{1,2}[-\u2013]\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2}))/,
     /(\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2})(?!\d))/
@@ -1216,8 +1220,7 @@ function addWeekday(text){
       var idx=text.indexOf(insertAfter);
       if(idx>=0){
         var after=text.slice(idx+insertAfter.length);
-        // Nu adăuga dacă urmează deja un shortname de zi
-        if(after.match(/^\s*(lun|mar|mie|joi|vin|sam|dum)/i)) return text;
+        if(_hasWeekdayToken(after.slice(0,8))) return text;
         return text.slice(0,idx+insertAfter.length)+' ('+zi+')'+text.slice(idx+insertAfter.length);
       }
     }
@@ -1582,30 +1585,40 @@ function addFree(){
   render();
 }
 // S1 Sync: detectează zona unui item în nextOrder (green=*3, red=*1, yellow=*2, null=rest)
-// Această zonă e salvată în freeTask.zone / task.zone și sincronizată cu Firebase
+// Lucrează pe S.nextOrder direct (nu getNR) — acoperă toate items, inclusiv edge cases
 function detectAndSaveZones(){
-  var nr=getNR();
-  var m1a=-1,m1b=-1,m2a=-1,m2b=-1,m3a=-1,m3b=-1;
-  nr.forEach(function(r,i){
-    var name=r.tname||'';
-    if(name.match(/^\*1/)){if(m1a<0)m1a=i;else if(m1b<0)m1b=i;}
-    if(name.match(/^\*2/)){if(m2a<0)m2a=i;else if(m2b<0)m2b=i;}
-    if(name.match(/^\*3/)){if(m3a<0)m3a=i;else if(m3b<0)m3b=i;}
-  });
-  nr.forEach(function(r,i){
+  var order=S.nextOrder||[];
+  function getMarkerPos(regex){
+    var first=-1,second=-1;
+    for(var i=0;i<order.length;i++){
+      var e=order[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(regex)){
+          if(first<0) first=i; else if(second<0){second=i;break;}
+        }
+      }
+    }
+    return {a:first,b:second};
+  }
+  var mk3=getMarkerPos(/^\*3/);
+  var mk1=getMarkerPos(/^\*1/);
+  var mk2=getMarkerPos(/^\*2/);
+  order.forEach(function(e,i){
     var zone=null;
-    if(m3a>=0&&m3b>=0&&i>m3a&&i<m3b) zone='green';
-    else if(m1a>=0&&m1b>=0&&i>m1a&&i<m1b) zone='red';
-    else if(m2a>=0&&m2b>=0&&i>m2a&&i<m2b) zone='yellow';
-    if(r.isFree){
-      var ft=S.freeTasks.find(function(x){return x.id===r.id;});
+    if(mk3.a>=0&&mk3.b>=0&&i>mk3.a&&i<mk3.b) zone='green';
+    else if(mk1.a>=0&&mk1.b>=0&&i>mk1.a&&i<mk1.b) zone='red';
+    else if(mk2.a>=0&&mk2.b>=0&&i>mk2.a&&i<mk2.b) zone='yellow';
+    if(e.type==='free'){
+      var ft=S.freeTasks.find(function(x){return x.id===e.id;});
       if(ft&&ft.zone!==zone){ft.zone=zone;ft.modifiedTs=Date.now();}
     } else {
-      var p=S.items.find(function(x){return x.id===r.projectId;});
-      var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===r.taskId;});
+      var p=S.items.find(function(x){return x.id===e.projectId;});
+      var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});
       if(t&&t.zone!==zone){t.zone=zone;t.modifiedTs=Date.now();}
     }
   });
+  lw(FK,S.freeTasks);
 }
 
 // S1 Sync: la merge, inserează itemele noi în poziția corectă bazată pe .zone
