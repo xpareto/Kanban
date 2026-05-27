@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V111</title>
+<title>Project Board V112</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1193,6 +1193,19 @@ function addWeekdayFromDate(text, dateObj){
   return '('+zi+') '+text;
 }
 
+// Ed1: înlocuiește ziua de săptămână existentă lângă o dată cu cea nouă
+// Caută pattern (zi) imediat după data detectată și o înlocuiește
+function _replaceWeekdayNearDate(text, datePattern, newZi){
+  // Înlocuiește (lun|mar|...) imediat după datePattern
+  var escaped=datePattern.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  var rx=new RegExp('('+escaped+')\\s*\\((lun|mar|mie|joi|vin|sam|dum)\\)','i');
+  if(rx.test(text)) return text.replace(rx,'$1 ('+newZi+')');
+  // Înlocuiește (zi) la începutul textului (format: "(joi) task 29.mai")
+  var rxStart=/^\((lun|mar|mie|joi|vin|sam|dum)\)\s*/i;
+  if(rxStart.test(text)) return text.replace(rxStart,'('+newZi+') ');
+  return null; // nu am găsit ziua lângă dată — caller va insera normal
+}
+
 function addWeekday(text){
   if(!text) return text;
   // Pattern interval N-N2.L sau N-N2.luna (ex: 3-10.5, 3-10.mai)
@@ -1205,22 +1218,23 @@ function addWeekday(text){
     if(ivD>=1&&ivD<=31&&ivMn>=1&&ivMn<=12){
       var ivDate=new Date((new Date()).getFullYear(),ivMn-1,ivD,12,0,0);
       var ivZi=_ziSapt[ivDate.getDay()];
-      if(!_hasWeekdayToken(text)){
-        return text.replace(mIv[0],mIv[0]+' ('+ivZi+')');
-      }
+      // Ed1: înlocuiește ziua existentă dacă e lângă dată
+      var replaced=_replaceWeekdayNearDate(text,mIv[0],ivZi);
+      if(replaced) return replaced;
+      if(!_hasWeekdayToken(text)) return text.replace(mIv[0],mIv[0]+' ('+ivZi+')');
       return text;
     }
   }
-  // Pentru rânduri cu /c, extrage data din /cDD.MM
+  // Pentru rânduri cu /c
   var slashC=text.match(/\/c(\d{1,2})\.(\d{1,2})/);
   if(slashC){
     var scD=parseInt(slashC[1]),scM=parseInt(slashC[2]);
     if(scD>=1&&scD<=31&&scM>=1&&scM<=12){
       var scDate=new Date((new Date()).getFullYear(),scM-1,scD,12,0,0);
       var scZi=_ziSapt[scDate.getDay()];
-      if(!_hasWeekdayToken(text)){
-        return text.replace(/(\/c\d{1,2}\.\d{1,2})/,'$1 ('+scZi+')');
-      }
+      var replaced2=_replaceWeekdayNearDate(text,slashC[0],scZi);
+      if(replaced2) return replaced2;
+      if(!_hasWeekdayToken(text)) return text.replace(/(\/c\d{1,2}\.\d{1,2})/,'$1 ('+scZi+')');
       return text;
     }
   }
@@ -1228,7 +1242,6 @@ function addWeekday(text){
   var d=extractDateFromRow({tname:text,isFree:true,id:''});
   if(!d) return text;
   var zi=_ziSapt[d.getDay()];
-  if(_hasWeekdayToken(text)) return text;
   var patterns=[
     /(\d{1,2}[-\u2013]\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2}))/,
     /(\d{1,2}\.(?:[a-zA-Z]{2,}|\d{1,2})(?!\d))/
@@ -1236,12 +1249,15 @@ function addWeekday(text){
   for(var pi=0;pi<patterns.length;pi++){
     var m=text.match(patterns[pi]);
     if(m){
-      var insertAfter=m[1];
-      var idx=text.indexOf(insertAfter);
+      // Ed1: încearcă înlocuirea zilei existente lângă această dată
+      var rep=_replaceWeekdayNearDate(text,m[1],zi);
+      if(rep) return rep;
+      // Nu există zi lângă dată — inserează
+      var idx=text.indexOf(m[1]);
       if(idx>=0){
-        var after=text.slice(idx+insertAfter.length);
-        if(_hasWeekdayToken(after.slice(0,8))) return text;
-        return text.slice(0,idx+insertAfter.length)+' ('+zi+')'+text.slice(idx+insertAfter.length);
+        var after=text.slice(idx+m[1].length);
+        if(_hasWeekdayToken(after.slice(0,8))) return text; // ziua e deja imediat după
+        return text.slice(0,idx+m[1].length)+' ('+zi+')'+text.slice(idx+m[1].length);
       }
     }
   }
@@ -1639,6 +1655,7 @@ function detectAndSaveZones(){
     }
   });
   lw(FK,S.freeTasks);
+  lw(SK,S.items); // S1: salvează și items (conțin task.zone pentru project tasks)
 }
 
 // Sv1b: Re-poziționează items existente în localOrder care au zone diferit față de poziția curentă
