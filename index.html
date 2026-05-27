@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V110</title>
+<title>Project Board V111</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -254,10 +254,22 @@ function fbLogout(){
 
 // ── Construiește payload pentru Firestore ──
 function fbPayloadData(){
+  // Sv1a: includem și tombstone-urile (freeTasks cu _deleted:true) în payload
+  // Astfel celălalt device știe că item-ul a fost șters
+  var allFreeTasks=S.freeTasks.concat(
+    (function(){
+      try{
+        var del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
+        return Object.keys(del).map(function(id){
+          return {id:id,_deleted:true,modifiedTs:del[id]};
+        });
+      }catch(_){return [];}
+    })()
+  );
   return {
     items:S.items,
     nextOrder:S.nextOrder,
-    freeTasks:S.freeTasks,
+    freeTasks:allFreeTasks,
     waitOrder:S.waitOrder,
     waitFreeTasks:S.waitFreeTasks,
     labels:S.labels,
@@ -427,7 +439,15 @@ async function fbPull(mode){
         if(remoteNew.length){
           S.nextOrder=mergeNextOrderWithZones(S.nextOrder||[], remoteNew, knownIds);
         }
-        // Dedup final
+        // Sv1b: re-poziționează items EXISTENTE în nextOrder care au zone actualizat de remote
+        // (ex: un item era la coadă pe telefon, dar pe tabletă a fost mutat în zona verde)
+        S.nextOrder=repositionByZone(S.nextOrder, rData.nextOrder||[], rData.freeTasks||[]);
+        // Sv1a: elimină din nextOrder items șterse (tombstone de pe remote)
+        var deletedIds=new Set((rData.freeTasks||[]).filter(function(x){return x._deleted;}).map(function(x){return x.id;}));
+        S.nextOrder=S.nextOrder.filter(function(e){
+          return !(e.type==='free'&&deletedIds.has(e.id));
+        });
+        // Dedup final + curăță items necunoscuți
         var seenOrd=new Set();
         S.nextOrder=S.nextOrder.filter(function(e){
           var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
@@ -1621,7 +1641,92 @@ function detectAndSaveZones(){
   lw(FK,S.freeTasks);
 }
 
-// S1 Sync: la merge, inserează itemele noi în poziția corectă bazată pe .zone
+// Sv1b: Re-poziționează items existente în localOrder care au zone diferit față de poziția curentă
+// Compară zone din remoteFT (sursa de adevăr) cu zona în care se află în localOrder
+function repositionByZone(localOrder, remoteOrder, remoteFT){
+  // Construiește map zone din remote: id → zone
+  var remoteZoneMap={};
+  (remoteFT||[]).forEach(function(x){if(!x._deleted&&x.zone) remoteZoneMap[x.id]=x.zone;});
+  // Dacă nu există zone remote, nimic de repoziționat
+  if(!Object.keys(remoteZoneMap).length) return localOrder;
+
+  // Găsește marcatorii în localOrder
+  function findMarkers(order, regex){
+    var a=-1,b=-1;
+    for(var i=0;i<order.length;i++){
+      var e=order[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(regex)){if(a<0)a=i;else if(b<0){b=i;break;}}
+      }
+    }
+    return {a:a,b:b};
+  }
+
+  var mk3=findMarkers(localOrder,/^\*3/);
+  var mk1=findMarkers(localOrder,/^\*1/);
+  var mk2=findMarkers(localOrder,/^\*2/);
+
+  // Determină zona curentă a unui item din localOrder
+  function currentZone(idx){
+    if(mk3.a>=0&&mk3.b>=0&&idx>mk3.a&&idx<mk3.b) return 'green';
+    if(mk1.a>=0&&mk1.b>=0&&idx>mk1.a&&idx<mk1.b) return 'red';
+    if(mk2.a>=0&&mk2.b>=0&&idx>mk2.a&&idx<mk2.b) return 'yellow';
+    return null;
+  }
+
+  // Găsește items care trebuie mutate (zone remote ≠ zone curentă locală)
+  var toMove=[]; // {entry, targetZone}
+  var result=localOrder.slice();
+  // Prima trecere: identifică și extrage items de mutat
+  var filteredResult=[];
+  result.forEach(function(e,i){
+    if(e.type!=='free') {filteredResult.push(e);return;}
+    var remoteZone=remoteZoneMap[e.id];
+    if(!remoteZone) {filteredResult.push(e);return;} // nu avem info zone din remote
+    var curZone=currentZone(i);
+    if(curZone===remoteZone) {filteredResult.push(e);return;} // deja în zona corectă
+    // Trebuie mutat — îl scoatem de aici și îl adăugăm în zona corectă
+    toMove.push({entry:e,targetZone:remoteZone});
+    // Nu îl adăugăm în filteredResult — va fi reinsertat
+  });
+
+  if(!toMove.length) return localOrder;
+
+  // Grupează items de mutat pe zonă
+  var byZone={green:[],red:[],yellow:[],null_zone:[]};
+  toMove.forEach(function(x){
+    var z=x.targetZone;
+    if(z==='green') byZone.green.push(x.entry);
+    else if(z==='red') byZone.red.push(x.entry);
+    else if(z==='yellow') byZone.yellow.push(x.entry);
+    else byZone.null_zone.push(x.entry);
+  });
+
+  // Reinserare: recalculăm marcatorii în filteredResult după fiecare inserție
+  function insertAfterMarker(arr, markerRegex, items){
+    if(!items.length) return arr;
+    var idx=-1;
+    for(var i=0;i<arr.length;i++){
+      var e=arr[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(markerRegex)){idx=i;break;}
+      }
+    }
+    var pos=idx>=0?idx+1:arr.length;
+    return arr.slice(0,pos).concat(items).concat(arr.slice(pos));
+  }
+
+  var res=filteredResult;
+  res=insertAfterMarker(res,/^\*3/,byZone.green);
+  res=insertAfterMarker(res,/^\*1/,byZone.red);
+  res=insertAfterMarker(res,/^\*2/,byZone.yellow);
+  res=res.concat(byZone.null_zone);
+  return res;
+}
+
+// S1 Sync: la merge, inserează itemele NOI (absent din local) în poziția corectă bazată pe .zone
 function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
   function findMarkers(order, markerRegex){
     var first=-1,second=-1;

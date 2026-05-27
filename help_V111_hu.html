@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ProjectBoard — Súgó V111</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#F8FAFC;color:#1E293B;line-height:1.7;padding-bottom:60px}
+.hdr{background:#1A1D2E;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:18px;font-weight:800}
+.hdr .ver{font-size:11px;color:#9CA3AF;margin-left:auto}
+.sec{padding:20px 20px 0}
+.sec h2{font-size:17px;font-weight:800;color:#1A1D2E;border-bottom:2px solid #E2E8F0;padding-bottom:8px;margin-bottom:14px;margin-top:24px}
+.sec h3{font-size:14px;font-weight:700;color:#334155;margin:16px 0 6px}
+p{font-size:13px;margin-bottom:10px;color:#374151}
+code{background:#F1F5F9;border:1px solid #E2E8F0;border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace;color:#0F172A}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 14px}
+th{background:#1A1D2E;color:#fff;padding:7px 10px;text-align:left;font-weight:700}
+td{padding:7px 10px;border-bottom:1px solid #E2E8F0;vertical-align:top}
+tr:nth-child(even)td{background:#F8FAFC}
+.card{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:12px 16px;margin:8px 0;font-size:13px}
+.card.blue{border-left:4px solid #3B82F6}
+.card.amber{border-left:4px solid #F59E0B}
+.card.green{border-left:4px solid #10B981}
+.card.indigo{border-left:4px solid #6366F1}
+.card.red{border-left:4px solid #EF4444}
+.card.purple{border-left:4px solid #8B5CF6}
+.step{display:flex;gap:10px;align-items:flex-start;margin:8px 0;padding:8px 12px;background:#F8FAFC;border-radius:7px;border:1px solid #E2E8F0;font-size:13px}
+.num{background:#1A1D2E;color:#F59E0B;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0;margin-top:1px}
+.toc{background:#EFF6FF;border-left:4px solid #3B82F6;padding:14px 18px;margin:16px 20px;border-radius:6px}
+.toc a{display:block;color:#1D4ED8;font-size:13px;text-decoration:none;margin:3px 0}
+.toc .toc-cat{font-size:10px;font-weight:800;color:#6B7280;letter-spacing:.08em;margin:10px 0 2px;text-transform:uppercase}
+.badge{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;margin-right:3px}
+.b-blue{background:#DBEAFE;color:#1E40AF}
+.b-amber{background:#FEF9C3;color:#854D0E}
+.b-green{background:#DCFCE7;color:#166534}
+.b-red{background:#FEE2E2;color:#991B1B}
+.b-purple{background:#EDE9FE;color:#3730A3}
+.intro-hero{background:linear-gradient(135deg,#1A1D2E 0%,#2D3048 100%);color:#fff;padding:28px 20px;margin:0}
+.intro-hero h2{font-size:22px;font-weight:900;color:#F59E0B;margin-bottom:8px}
+.intro-hero p{color:#CBD5E1;font-size:14px}
+.quote{background:#FFF8EC;border-left:4px solid #F59E0B;padding:12px 16px;border-radius:6px;font-style:italic;font-size:13px;color:#78350F;margin:12px 0}
+.light-section{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:16px;margin:12px 0}
+.light-section h3{color:#065F46;font-size:15px}
+.alpha-table td:first-child{font-weight:700;color:#1D4ED8;white-space:nowrap;width:30%}
+.section-divider{height:4px;background:linear-gradient(90deg,#6366F1,#F59E0B,#10B981);margin:28px 0 0;border-radius:2px}
+.btn-pink{display:inline-block;background:#FCE7F3;color:#9D174D;border:1px solid #F9A8D4;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px}
+.btn-blue{display:inline-block;background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px}
+.btn-yellow{display:inline-block;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px}
+.btn-green{display:inline-block;background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin:1px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <span style="font-size:22px;color:#F59E0B">📋</span>
+  <h1>ProjectBoard Súgó</h1>
+  <span class="ver">V111</span>
+</div>
+
+<div class="toc">
+  <strong style="font-size:12px;color:#1E40AF;font-weight:800;letter-spacing:.06em">TARTALOMJEGYZÉK</strong>
+  <div class="toc-cat">Bevezetés</div>
+  <a href="#why">Miért van szükséged feladatkezelő alkalmazásra?</a>
+  <a href="#sources">A három információforrás</a>
+  <a href="#light">Gyors útmutató kezdőknek</a>
+  <div class="toc-cat">Teljes súgó</div>
+  <a href="#daily">Napi rutin</a>
+  <a href="#next">NEXT szekció — szerkezet és rendezés</a>
+  <a href="#sorting">Feladatok rendezési módjai</a>
+  <a href="#markers">Színjelölők (*1, *2, *3)</a>
+  <a href="#wait">WAITING szekció</a>
+  <a href="#notes">Feladathoz csatolt jegyzetek</a>
+  <a href="#attachments">Mellékletek 📎</a>
+  <a href="#search">Keresés</a>
+  <a href="#calendar">/c Naptár szintaxis</a>
+  <a href="#gcal">Google Naptár import</a>
+  <a href="#share">SHARE szekció</a>
+  <a href="#projects">Projektek és feladatok</a>
+  <a href="#sync">Felhő-szinkronizáció</a>
+  <a href="#export">Export / Import</a>
+  <a href="#header">Fejléc gombok</a>
+  <a href="#android">Android alkalmazás (TWA/PWA)</a>
+  <div class="toc-cat">Gyors hivatkozás</div>
+  <a href="#alpha">Alfabetikus index — Mit szeretnék csinálni?</a>
+</div>
+
+<div class="section-divider"></div>
+<div class="intro-hero" id="why">
+  <h2>„Fejben tartom vagy papírra írom" — miért nem elég ez?</h2>
+  <p>Könnyű leírni 30–40 elvégzendő feladatot. De sokkal nehezebb úgy rendezni őket, hogy a legfontosabbak, a következőként elvégzendők kerüljenek előre — szem elé.</p>
+</div>
+
+<div class="sec">
+  <p>Az emberi agy nem arra lett tervezve, hogy feladatlistákat tartson meg. Egy átlagos embernek <strong>30–100 aktív feladata</strong> van egyszerre. Senki sem tudja mindezt fejben tartani anélkül, hogy valamit ne hagyjon ki.</p>
+  <div class="quote">„Az elme arra való, hogy ötleteket generáljon, nem hogy tárolja őket." — David Allen, Getting Things Done</div>
+  <div class="card red">
+    <strong>1. Nem rendezi magát újra.</strong> Leírtál 10 dolgot. A prioritások megváltoztak. Mindent újramásolsz, vagy egy firkált papírral dolgozol.<br/><br/>
+    <strong>2. Nem tudja, mi sürgős ma.</strong> Egy papír nem mondja meg, hogy holnap lejár egy határidő, vagy hogy 3 hete megígértél valamit.<br/><br/>
+    <strong>3. Elvész.</strong> Vagy otthon felejted.
+  </div>
+  <div class="card green">
+    <strong>NEXT</strong> = amit ma vagy a lehető leghamarabb csinálsz<br/>
+    <strong>WAITING</strong> = amit átadtál valakinek vagy valami blokkolja<br/>
+    <strong>Projektek</strong> = bármi, aminek egynél több lépése van<br/>
+    <strong>SHARE</strong> = bejövő linkek és telefonról kapott információk
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="sources">
+  <h2>A három információforrás</h2>
+  <p>A NEXT-be három különböző forrásból érkeznek információk:</p>
+  <div class="step"><div class="num">1</div><div><strong>Manuálisan beírt</strong> — a zöld <strong>+</strong> gombbal (FAB) vagy a NEXT szekció alján lévő beviteli mezővel.</div></div>
+  <div class="step"><div class="num">2</div><div><strong>Google Naptárból hozva</strong> — automatikusan, naponta egyszer az első indításkor, a mai és holnapi eseményekhez. Kék háttérrel és 📅 ikonnal jelennek meg. A sor 📅 gombjára koppintva megnyílik a Google Naptár az adott napra.</div></div>
+  <div class="step"><div class="num">3</div><div><strong>Megosztással hozva bármely más alkalmazásból</strong> (böngésző, YouTube, WhatsApp stb.) — először a <strong>SHARE</strong> szekcióba kerülnek. Onnan a saját teendők alapjául szolgáló részeket manuálisan kell áthelyezni a NEXT-be.</div></div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="light">
+  <h2>🟢 Gyors útmutató kezdőknek</h2>
+  <div class="light-section">
+    <h3>Az 5 legtöbbet használt funkció</h3>
+    <div class="step"><div class="num">1</div><div><strong>Feladat hozzáadása:</strong> Koppints a zöld <strong>+</strong> gombra jobb alul → írd be a feladatot → Enter</div></div>
+    <div class="step"><div class="num">2</div><div><strong>Feladat szerkesztése:</strong> Dupla koppintás a feladat szövegére → szerkesztés → Enter vagy koppints máshova</div></div>
+    <div class="step"><div class="num">3</div><div><strong>Feladat befejezése:</strong> Koppints a ✓ gombra a feladat bal oldalán</div></div>
+    <div class="step"><div class="num">4</div><div><strong>Átrendezés:</strong> Hosszan nyomd meg és húzd a ⠿ ikont</div></div>
+    <div class="step"><div class="num">5</div><div><strong>Google Naptár csatlakoztatása:</strong> Koppints a 📅 gombra a fejlécben → Google bejelentkezés</div></div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="daily">
+  <h2>Napi rutin</h2>
+  <p>A hatékony használat javasolt napi menete:</p>
+  <div class="step"><div class="num">1</div><div><strong>Reggel:</strong> Nyisd meg az alkalmazást — a Google Naptár eseményei automatikusan megjelennek a NEXT-ben.</div></div>
+  <div class="step"><div class="num">2</div><div><strong>Rendezés:</strong> Koppints a <strong>⧸✱</strong> gombra — a határidős feladatok automatikusan kronológiai sorrendbe kerülnek a piros zónában.</div></div>
+  <div class="step"><div class="num">3</div><div><strong>Prioritás:</strong> Húzd a legfontosabb feladatokat a zöld zónába (*3 és *3 közé).</div></div>
+  <div class="step"><div class="num">4</div><div><strong>Este:</strong> Koppints a ☁ gombra a szinkronizáláshoz a többi eszközzel.</div></div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="next">
+  <h2>NEXT szekció — szerkezet és rendezés</h2>
+  <p>A NEXT az összes elvégzendő feladat fő listája. A feladatok három típusba sorolhatók:</p>
+  <table>
+    <tr><th>Típus</th><th>Megjelenés</th><th>Leírás</th></tr>
+    <tr><td>Szabad feladat</td><td>Narancssárga pont</td><td>Egyszerű, projekthez nem kötött feladat</td></tr>
+    <tr><td>Projekt feladat</td><td>Zöld ⊞ gomb</td><td>Egy projekthez tartozó feladat</td></tr>
+    <tr><td>Naptári esemény</td><td>Kék 📅 ikon</td><td>Google Naptárból automatikusan hozva</td></tr>
+  </table>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="sorting">
+  <h2>Feladatok rendezési módjai</h2>
+  <table>
+    <tr><th>Gomb</th><th>Mit csinál</th></tr>
+    <tr><td><strong>⧸✱</strong></td><td>Globális rendezés — minden dátumos feladatot a *1…*1 közé helyez, kronológiai sorrendben. Ez az ajánlott napi rendezés.</td></tr>
+    <tr><td><strong>⋯⧸</strong></td><td>A jelölt zónán kívüli feladatok rendezése — projektek a szabad feladatok elé.</td></tr>
+    <tr><td><strong>▼T</strong></td><td>Rendezés módosítás szerint: legújabb elöl. A *2 és *3 zónák érintetlenek maradnak.</td></tr>
+    <tr><td><strong>▲T</strong></td><td>Rendezés módosítás szerint: legrégebbi elöl. A *2 és *3 zónák érintetlenek maradnak.</td></tr>
+  </table>
+  <div class="card amber">A ▼T és ▲T rendezések <strong>nem érintik</strong> a zöld (*3) és sárga (*2) zónákat. Csak a zónákon kívüli feladatok rendeződnek át.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="markers">
+  <h2>Színjelölők (*1, *2, *3) — a zónák szerepe</h2>
+  <p>Az áljelölők (szabad feladatok, amelyek szövege <code>*1</code>, <code>*2</code> vagy <code>*3</code> karakterekkel kezdődik) vizuális színzónákat határolnak a NEXT-ben. Minden zónának meghatározott szemantikai szerepe van:</p>
+  <table>
+    <tr><th>Zóna</th><th>Szín</th><th>Szerep és használat</th></tr>
+    <tr><td><code>*3…*3</code></td><td style="background:#DCFCE7;padding:4px 8px;border-radius:4px">🟢 Zöld</td><td><strong>Az általad választott abszolút prioritások.</strong> Amit te sürgősnek tartasz ebben a pillanatban — dátumoktól és projektektől függetlenül. Ez a zóna mindig az első, és semmilyen automatikus rendezés nem érinti.</td></tr>
+    <tr><td>(naptári események)</td><td style="background:#DBEAFE;padding:4px 8px;border-radius:4px">🔵 Kék</td><td>A Google Naptárból automatikusan hozott események — a zöld zóna után jelennek meg.</td></tr>
+    <tr><td><code>*1…*1</code></td><td style="background:#FEE2E2;padding:4px 8px;border-radius:4px">🔴 Piros</td><td><strong>Határidős feladatok</strong> — automatikusan kronológiai sorrendbe rendezve a ⧸✱ gombbal. Ide kerül minden, aminek van határideje.</td></tr>
+    <tr><td><code>*2…*2</code></td><td style="background:#FEF9C3;padding:4px 8px;border-radius:4px">🟡 Sárga</td><td><strong>Másodlagos prioritások</strong> — amit fontosnak tartasz a maradék feladatok közül, de kevésbé sürgős, mint a zöld zóna vagy a piros határidők. Ezt a zónát nem érinti a ▼T/▲T vagy a ⧸✱ rendezés.</td></tr>
+    <tr><td>(*2 után)</td><td style="background:#F1F5F9;padding:4px 8px;border-radius:4px">⚪ Normál</td><td>A többi feladat — először a projektek (rendezi a ⋯⧸), majd a sima szabad feladatok különösebb prioritás nélkül.</td></tr>
+  </table>
+
+  <h3>Az optimális sorrend a NEXT-ben</h3>
+  <div class="card green">
+    <strong>🟢 Zöld zóna</strong> (*3) — az általad választott abszolút prioritások<br/>
+    <strong>🔵 Naptár</strong> — a mai / heti események<br/>
+    <strong>🔴 Piros zóna</strong> (*1) — határidős feladatok, kronológiai sorrendben<br/>
+    <strong>🟡 Sárga zóna</strong> (*2) — általad választott egyéb prioritások<br/>
+    <strong>⚪ Többi</strong> — projektek, egyszerű pontszerű feladatok
+  </div>
+  <p>A <strong>⧸✱</strong> gomb automatikusan felépíti ezt a sorrendet. A *3 és *2 zónák érintetlenek maradnak — tartalmukat csak manuális húzással módosítod.</p>
+
+  <h3>Eszközök közötti szinkronizáció és zónák</h3>
+  <p>Amikor hozzáadsz egy feladatot az A eszközön a zöld zónába, majd szinkronizálsz, a B eszközön a feladat szintén a zöld zónában jelenik meg. Ugyanez vonatkozik a pirosra és a sárgára. Ez a mechanizmus a Push előtt automatikusan mentett <code>zone</code> mező segítségével működik.</p>
+  <div class="card amber">A ⧸✱ rendezés automatikusan létrehozza a két <code>*1</code> jelölőt, ha hiányoznak. A <code>*2</code> és <code>*3</code> zónákat semmilyen automatikus rendezés nem módosítja.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="wait">
+  <h2>WAITING szekció</h2>
+  <p>A WAITING azokat a feladatokat tartalmazza, amelyeket átadtál valakinek, vagy valami blokkolja a végrehajtásukat.</p>
+  <div class="step"><div class="num">1</div><div>Szerkesztd a feladatot → írd be a szövegbe: <code>/w</code> → Enter. A feladat automatikusan átkerül a WAITING-be.</div></div>
+  <div class="step"><div class="num">2</div><div>A WAITING-ből visszahelyezni: koppints a feladatra → <strong>↩ Vissza NEXT-be</strong>.</div></div>
+  <div class="card blue">A WAITING feladatai nem jelennek meg a NEXT-ben — így tisztán látod, min kell neked dolgoznod.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="notes">
+  <h2>Feladathoz csatolt jegyzetek</h2>
+  <p>Minden feladathoz privát, csak neked látható megjegyzés fűzhető.</p>
+  <div class="step"><div class="num">1</div><div>Koppints a ✎ gombra a feladat sorában.</div></div>
+  <div class="step"><div class="num">2</div><div>Írd be a megjegyzést → koppints a ✓ Save gombra.</div></div>
+  <p>Ha egy feladatnak van megjegyzése, a ✎ gomb más színnel jelenik meg.</p>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="attachments">
+  <h2>Mellékletek 📎 — tervezett, még nincs megvalósítva</h2>
+  <p>A fájlok feladatokhoz csatolásának funkciója <strong>tervezett</strong>, de a jelenlegi verzióban <strong>még nincs megvalósítva</strong>.</p>
+  <p>Megvalósítása után a 📎 gomb megjelenik a NEXT, WAIT szekciókban és a projekt oszlopaiban, lehetővé téve dokumentumok, képek vagy egyéb fájlok csatolását közvetlenül egy feladathoz.</p>
+  <div class="card amber"><strong>Státusz: tervezés alatt.</strong> A V111-ben még nincs működő 📎 gomb. Ez a szekció a megvalósításkor frissül.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="search">
+  <h2>Keresés</h2>
+  <p>A fejléc alatti zöld sávban lévő <strong>Search…</strong> mezőbe írva azonnal szűr a NEXT-ben. Nyomd le az Enter billentyűt vagy koppints a 🔍 gombra. Az ✕ gomb törli a keresést.</p>
+  <div class="card blue">A keresés a feladatok szövegében és a megjegyzésekben is keres.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="calendar">
+  <h2>/c Naptár szintaxis</h2>
+  <p>Egy feladatban írd be a <code>/c</code> parancsot, majd közvetlenül utána a dátumot, pl. <code>/c5.5</code> (május 5.) vagy <code>/c14.06</code> (június 14.).</p>
+  <p>Mentéskor a feladat szövegén megjelenik a naptár ikon 📅. Erre koppintva megnyílik a Google Naptár az adott napra, ahol létrehozhatsz egy eseményt.</p>
+  <div class="card amber">A <code>/c</code> szintaxis csak akkor működik, ha a Google Naptár csatlakoztatva van (kék ✓ gomb a fejlécben).</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="gcal">
+  <h2>Google Naptár import 📅</h2>
+  <p>Az alkalmazás automatikusan lehívja a mai és holnapi Google Naptár eseményeket az első napi indításkor.</p>
+  <div class="step"><div class="num">1</div><div>Koppints a 📅 gombra a fejlécben → Google-fiókkal való bejelentkezés.</div></div>
+  <div class="step"><div class="num">2</div><div>A hitelesítés után az eseményeket automatikusan behúzza a NEXT szekció elejére.</div></div>
+  <div class="step"><div class="num">3</div><div>Az esemény során lévő 📅 gombra koppintva megnyílik a Google Naptár az adott napra.</div></div>
+  <div class="card blue">Az események kék háttérrel jelennek meg. Csak a ma és holnap kezdődő vagy folyamatban lévő eseményeket hozza le — a tegnapi és régebbi múlt idejű eseményeket kizárja.</div>
+  <div class="card amber">Ha az események nem frissülnek, koppints a 🔄 Reset gombra, majd újra a 📅 gombra a teljes újrahitelesítéshez.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="share">
+  <h2>SHARE szekció</h2>
+  <p>Bejövő üzenetek fogadója az Android Share funkciójával más alkalmazásokból érkező információknak. Linkek, szövegek, weboldalcímek automatikusan ide kerülnek.</p>
+  <div class="step"><div class="num">1</div><div>Bármely alkalmazásban → <strong>Megosztás</strong> gomb → válaszd a <strong>Project Board</strong>-ot.</div></div>
+  <div class="step"><div class="num">2</div><div>A link vagy szöveg megjelenik a <strong>SHARE</strong> szekcióban.</div></div>
+  <div class="step"><div class="num">3</div><div>A SHARE-ből helyezd át a NEXT-be, amit cselekvésre szánszol.</div></div>
+  <div class="card amber">A Share Target CSAK a Chrome-ból telepített PWA verzióval működik.</div>
+
+  <h3>Összefűzés (Merge) — hogyan kapcsolódnak össze a szövegrészek</h3>
+  <p>Ha ugyanabból a cikkből különböző pillanatokban mentesz részleteket (először egy részt, majd egy másikat, végül a cikk címét), ezek külön sorokban jelennek meg a SHARE-ben. A <strong>Merge</strong> funkció egyetlen összefüggő blokká kombinálja őket.</p>
+  <p><strong>Hogyan működik:</strong></p>
+  <div class="step"><div class="num">1</div><div>Jelöld be (pipálj be) egy csoport utolsó sorát — azt, amelyik az ugyanahhoz a cikkhez tartozó részletek <em>végét</em> jelöli. Ez általában a cikk URL-jét vagy az utolsó releváns részletet tartalmazó sor.</div></div>
+  <div class="step"><div class="num">2</div><div>Az alkalmazás automatikusan összegyűjti az összes sort <em>a jelölés felett</em> — a legújabbtól (felül) a te jelölésedig — és a helyes kronológiai sorrendben fűzi össze őket (az első részlet kerül előre).</div></div>
+  <div class="step"><div class="num">3</div><div>Az összefűzés eredménye a vágólapra kerül, készen az illesztésre.</div></div>
+  <div class="card blue">
+    <strong>Gyakorlati példa:</strong><br/>
+    4 sor van a SHARE-ben (felülről lefelé):<br/>
+    <code>[1] Cikk záró részlete (utoljára mentve)</code><br/>
+    <code>[2] Cikk középső részlete</code><br/>
+    <code>[3] Cikk bevezető részlete</code><br/>
+    <code>[4] ← EZT pipálod be = a cikk URL-je</code><br/><br/>
+    Az összefűzés eredménye: <code>[3] + [2] + [1] + [4]</code> — azaz az olvasási sorrend.
+  </div>
+  <p><strong>Több cikk a SHARE-ben:</strong> Ha több cikket töredékeltél, minden cikk <em>első sorát</em> (a legrégebbit = lent a listában) pipálod be. Minden jelölés független csoportot alkot. Az összefűzés annyi blokkot hoz létre, ahány jelölést tettél.</p>
+  <div class="card amber"><strong>Figyelem:</strong> A bejelölt sor <em>belekerül</em> az összefűzésbe — ő zárja le a csoportot. Minden, ami fölötte van (az előző jelölésig vagy a lista végéig) beletartozik a csoportba.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="projects">
+  <h2>Projektek és feladatok</h2>
+  <p>Egy projekt bármilyen célkitűzés, amelynek egynél több lépése van.</p>
+  <div class="step"><div class="num">1</div><div>Projekt létrehozása: koppints a <strong>+ Proj</strong> gombra a harmadik fejlécsávban.</div></div>
+  <div class="step"><div class="num">2</div><div>Feladat hozzáadása a projekthez: a projekt kártyáján lévő <strong>+</strong> gombra koppintva.</div></div>
+  <div class="step"><div class="num">3</div><div>Szabad feladat projekthez csatolása: a ⊞ gombra koppintva → válaszd ki a projektet. A feladat megőrzi pozícióját a NEXT-ben (zónáját is).</div></div>
+  <div class="card blue">Ha egy szabad feladatot projekthez csatolsz, az új projekt-feladat ugyanabban a zónában marad (zöld, piros vagy sárga), ahol a szabad feladat volt.</div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="sync">
+  <h2>Felhő-szinkronizáció ☁</h2>
+  <p>Az adatok Firebase Firestore-on keresztül szinkronizálódnak automatikusan. Az alkalmazás megnyitásakor automatikus lehívás történik, ha vannak újabb adatok a felhőben.</p>
+  <div class="card blue">
+    <strong>Ütközésfeloldás:</strong> Szinkronizáláskor a helyi sorrend megmarad. A felhőből érkező új elemek a <strong>megfelelő színzónába</strong> kerülnek — a tableten a zöld zónában hozzáadott feladat a telefonon is a zöld zónában jelenik meg, nem a lista végén. A helyileg törölt elemek nem térnek vissza a felhőből.
+  </div>
+  <div class="card amber">
+    A színzónák automatikusan mentődnek minden Push (☁) során. Hogy a zónaszinkronizálás működjön, minden jelentős NEXT-átrendezés után csinálj <strong>Push-t</strong>.
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="export">
+  <h2>Export / Import</h2>
+  <p>A <strong>Data</strong> nézetben (harmadik fejlécsáv → Data gomb) megtalálod:</p>
+  <table>
+    <tr><th>Funkció</th><th>Leírás</th></tr>
+    <tr><td>EJD Export</td><td>Minden adat exportálása JSON formátumban — biztonsági mentéshez vagy más eszközre való átvitelhez</td></tr>
+    <tr><td>Import</td><td>Korábban exportált EJD fájl visszatöltése</td></tr>
+    <tr><td>Firebase Sync panel</td><td>Manuális Push/Pull vezérlők és szinkronizációs állapot</td></tr>
+  </table>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="header">
+  <h2>Fejléc gombok</h2>
+  <p>A fejlécnek három sora van. Az első sor tartalmazza a műveleti gombokat, a második sor (zöld) a Keresést és a gyors címkéket, a harmadik sor az adatkezelési és diagnosztikai funkciókat.</p>
+
+  <h3>1. sor — Naptár, szinkron, rendezés, súgó</h3>
+  <table>
+    <tr><th>Gomb</th><th>Művelet</th></tr>
+    <tr><td><span class="btn-blue">📅</span></td><td>Google Naptár — nincs csatlakoztatva (sötétkék) vagy csatlakoztatva (világoskék ✓). Koppintás csatlakoztatott állapotban = kényszerített lehívás.</td></tr>
+    <tr><td><span class="btn-blue">☁</span></td><td>Manuális Firebase szinkronizáció</td></tr>
+    <tr><td><span class="btn-yellow">⧸✱</span></td><td>Globális rendezés — minden dátumos feladatot *1…*1 közé rendez kronológiailag</td></tr>
+    <tr><td><span class="btn-yellow">⋯⧸</span></td><td>Maradék rendezése — projektek a szabad feladatok elé, a jelölt zónán kívül</td></tr>
+    <tr><td><span class="btn-yellow">▼T</span></td><td>Rendezés új→régi (módosítás dátuma szerint)</td></tr>
+    <tr><td><span class="btn-yellow">▲T</span></td><td>Rendezés régi→új (módosítás dátuma szerint)</td></tr>
+    <tr><td><strong>?</strong></td><td>Ez a súgó oldal</td></tr>
+  </table>
+
+  <h3>2. sor — Keresés és címkék (zöld sáv)</h3>
+  <table>
+    <tr><th>Elem</th><th>Funkció</th></tr>
+    <tr><td>Search… mező</td><td>Azonnali szűrés a NEXT-ben</td></tr>
+    <tr><td>⚙</td><td>Gyors címkék beállításai</td></tr>
+    <tr><td>#a #u #c…</td><td>Gyors szűrőcímkék — koppintásra azonnal szűr</td></tr>
+  </table>
+
+  <h3>3. sor — Adatok és diagnosztika</h3>
+  <table>
+    <tr><th>Gomb</th><th>Művelet</th></tr>
+    <tr><td><span class="btn-pink">Data</span></td><td>Export/import adatok + Firebase Sync panel</td></tr>
+    <tr><td><span class="btn-pink">Journal</span></td><td>Műveletek kronologikus naplója</td></tr>
+    <tr><td><span class="btn-pink">Share</span></td><td>Share napló</td></tr>
+    <tr><td><span class="btn-pink">+ Sec</span></td><td>Szekció-elválasztó hozzáadása</td></tr>
+    <tr><td><span class="btn-pink">+ Proj</span></td><td>Új projekt hozzáadása</td></tr>
+    <tr><td><strong>🔄</strong></td><td>Naptár cache reset (diagnosztika)</td></tr>
+    <tr><td><strong>📋</strong></td><td>TRACE naptár — napló overlay megjelenítése másolás gombbal</td></tr>
+  </table>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="android">
+  <h2>A ProjectBoard telepítése Androidra</h2>
+  <p><strong>A PWA verzió javasolt</strong> — biztosítja a Share funkciót bármely alkalmazásból és az automatikus frissítést.</p>
+  <div class="step"><div class="num">1</div><div>Nyisd meg a <strong>Chrome</strong>-ot és lépj a <code>https://xpareto.github.io/Kanban/</code> oldalra (K nagy betű — kisbetűvel 404 hibát ad)</div></div>
+  <div class="step"><div class="num">2</div><div>Koppints a <strong>⋮ → Hozzáadás a kezdőképernyőhöz</strong> vagy <strong>Alkalmazás telepítése</strong> opcióra</div></div>
+  <div class="step"><div class="num">3</div><div>Megjelenik a piros pöttyös ikon a kezdőképernyőn — az alkalmazás böngésző sáv nélkül nyílik meg</div></div>
+  <div class="card blue">
+    ✅ Share Target (bármely appból → Megosztás → ProjectBoard)<br/>
+    ✅ Automatikus frissítés új verziókra<br/>
+    ✅ Offline az első betöltés után<br/>
+    ✅ Google Naptár + Firebase szinkron működik
+  </div>
+</div>
+
+<div class="section-divider"></div>
+<div class="sec" id="alpha">
+  <h2>📖 Alfabetikus index — Mit szeretnék csinálni?</h2>
+  <table class="alpha-table">
+    <tr><th>Szeretnék…</th><th>Hogyan</th></tr>
+    <tr><td>Gyors feladat hozzáadása</td><td>Zöld <strong>+</strong> gomb jobb alul (FAB)</td></tr>
+    <tr><td>Feladat hozzáadása a NEXT aljára</td><td>Beviteli mező a NEXT szekció alján</td></tr>
+    <tr><td>Dátum hozzáadása feladathoz</td><td>Írd be: <code>21.mai</code> vagy <code>14.5</code> — a hét napja automatikusan hozzáadódik</td></tr>
+    <tr><td>Dátum hozzáadása naptárhoz</td><td>Írd be: <code>/c5.5</code> → koppints 📅 → Google Naptár</td></tr>
+    <tr><td>Megjegyzés hozzáadása feladathoz</td><td>✎ gomb → írd be a megjegyzést → ✓ Save</td></tr>
+    <tr><td>Feladat befejezése</td><td>✓ gomb</td></tr>
+    <tr><td>Keresés</td><td>Search… mező a zöld sávban a fejléc alatt</td></tr>
+    <tr><td>Google Naptár csatlakoztatása</td><td>📅 gomb a fejlécben → Google bejelentkezés</td></tr>
+    <tr><td>Feladat delegálása (WAIT)</td><td>Szerkesztés → írd be: <code>/w</code> → Enter</td></tr>
+    <tr><td>Google Naptárban esemény megnyitása</td><td>Koppints a sor 📅 gombjára a NEXT-ben</td></tr>
+    <tr><td>Feladat szerkesztése</td><td>Dupla koppintás a feladat szövegére</td></tr>
+    <tr><td>Adatok exportálása</td><td>Data nézet → EJD</td></tr>
+    <tr><td>Naptár kényszerített frissítése</td><td>Koppints a 📅 ✓ (kék pipával) gombra</td></tr>
+    <tr><td>Feladat áthelyezése WAITING-be</td><td>Írd be: <code>/w</code> a feladatba → mentés</td></tr>
+    <tr><td>Kijelölt feladatok mozgatása fel/le</td><td>Hosszú nyomás → kijelölés → ↑ Tetejére / ↓ Aljára</td></tr>
+    <tr><td>Kijelölt feladatok projektbe helyezése</td><td>Hosszú nyomás → kijelölés → ⊞ Projekt</td></tr>
+    <tr><td>Szabad feladat projekthez csatolása</td><td>⊞ gomb → válaszd ki a projektet</td></tr>
+    <tr><td>Feladatok egyenkénti átrendezése</td><td>Húzd a ⠿ ikont</td></tr>
+    <tr><td>Naptár reset</td><td>🔄 gomb a fejlécben → koppints 📅 gombra</td></tr>
+    <tr><td>Határidős feladatok rendezése</td><td>⧸✱ gomb a fejlécben (vagy automatikusan létrehozáskor/szerkesztéskor)</td></tr>
+    <tr><td>Maradék rendezése (projektek elöl)</td><td>⋯⧸ gomb a fejlécben</td></tr>
+    <tr><td>Rendezés létrehozási dátum szerint</td><td>▼T / ▲T gombok a fejlécben</td></tr>
+    <tr><td>Manuális felhő-szinkronizáció</td><td>☁ gomb a fejlécben</td></tr>
+    <tr><td>TRACE naptár megtekintése</td><td>📋 gomb → overlay napló + Másolás gomb</td></tr>
+    <tr><td>Mai események megtekintése</td><td>Automatikus az első megnyitáskor. Vagy koppints 📅 ✓ a frissítéshez.</td></tr>
+    <tr><td>Művelettörténet megtekintése</td><td>Journal gomb a fejlécben</td></tr>
+  </table>
+</div>
+
+<div style="padding:20px;text-align:center;color:#94A3B8;font-size:11px;margin-top:20px">
+  ProjectBoard V111 · xpareto.github.io/Kanban
+</div>
+
+<div class="sec" id="debug-tools">
+  <h2>🔄 Reset és 📋 Trace — diagnosztikai eszközök</h2>
+  <p>Ez a két gomb a fejléc harmadik sorában található, jobb oldalon. Nem napi használatra valók — a Google Naptár vagy a felhő-szinkronizáció problémáinak diagnosztizálására szolgálnak.</p>
+  <table>
+    <tr><th>Gomb</th><th>Mit csinál</th><th>Mikor használd</th></tr>
+    <tr>
+      <td><strong>🔄 Reset</strong></td>
+      <td>Teljesen törli a Google Naptár összes hitelesítési adatát és gyorsítótárát (OAuth token, utolsó lehívási nap, csendes hitelesítési jelzők). Nem törli a feladatokat vagy az alkalmazás adatait.</td>
+      <td>Ha a naptár nem frissül, ismétlődő hitelesítési hiba jelenik meg, vagy teljes újrahitelesítést szeretnél kényszeríteni. Reset után koppints a 📅 gombra az újracsatlakozáshoz.</td>
+    </tr>
+    <tr>
+      <td><strong>📋 Trace</strong></td>
+      <td>Megnyit egy overlay-t a naptárműveletek belső naplójával (utolsó 100 bejegyzés). Tartalmaz időbélyegeket, lehívási eredményeket, szűrt eseményszámokat, OAuth hibákat. A „Másolás" gomb a naplót a vágólapra másolja.</td>
+      <td>Ha naptárproblémát jelentesz — másold ki a trace-t és küldd el diagnosztizálásra. Vagy ha meg szeretnéd érteni, miért jelenik meg vagy nem jelenik meg egy esemény a NEXT-ben.</td>
+    </tr>
+  </table>
+  <div class="card amber">
+    <strong>Megjegyzés:</strong> A trace a <code>localStorage</code>-ban tárolódik, és törlődik a 🔄 Reset megnyomásakor vagy manuálisan. Nem tartalmaz személyes adatokat — csak technikai metaadatokat a naptárműveletekről.
+  </div>
+</div>
+
+</body>
+</html>
