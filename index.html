@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V113</title>
+<title>Project Board V114</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -4654,10 +4654,12 @@ function exportSelectedOPML(){
       var id=key.slice(3);
       var ft=S.freeTasks.find(function(x){return x.id===id;});
       if(!ft) return null;
-      // Separă titlul (prima linie) de notă (restul)
+      // Titlul = prima linie a numelui; URL-urile din liniile 2+ merg în notă
       var lines=(ft.name||'').split('\n');
       var title=lines[0];
-      var note=lines.slice(1).join('\n').trim();
+      var urlPart=lines.slice(1).join('\n').trim();
+      // Sel1 fix: nota e stocată în ft.note, nu în name
+      var note=[ft.note||'', urlPart].filter(Boolean).join('\n').trim();
       return {title:title,note:note,isProject:false,projectName:null};
     } else if(key.startsWith('p::')){
       var parts=key.split('::');
@@ -4667,10 +4669,9 @@ function exportSelectedOPML(){
       if(!task) return null;
       var lines2=(task.name||'').split('\n');
       var title2=lines2[0];
-      var note2=lines2.slice(1).join('\n').trim();
-      // Adaugă nota task-ului dacă există
-      var taskNote=S.nt&&S.nt[tid]?S.nt[tid]:'';
-      var fullNote=[note2,taskNote].filter(Boolean).join('\n').trim();
+      var urlPart2=lines2.slice(1).join('\n').trim();
+      // Sel1 fix: nota e stocată în task.note
+      var fullNote=[task.note||'', urlPart2].filter(Boolean).join('\n').trim();
       return {title:title2,note:fullNote,isProject:true,projectName:proj?proj.name:''};
     }
     return null;
