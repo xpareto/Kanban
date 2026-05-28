@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V112</title>
+<title>Project Board V113</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -441,7 +441,7 @@ async function fbPull(mode){
         }
         // Sv1b: re-poziționează items EXISTENTE în nextOrder care au zone actualizat de remote
         // (ex: un item era la coadă pe telefon, dar pe tabletă a fost mutat în zona verde)
-        S.nextOrder=repositionByZone(S.nextOrder, rData.nextOrder||[], rData.freeTasks||[]);
+        S.nextOrder=repositionByZone(S.nextOrder, rData.nextOrder||[], rData.freeTasks||[], remoteItems);
         // Sv1a: elimină din nextOrder items șterse (tombstone de pe remote)
         var deletedIds=new Set((rData.freeTasks||[]).filter(function(x){return x._deleted;}).map(function(x){return x.id;}));
         S.nextOrder=S.nextOrder.filter(function(e){
@@ -1660,10 +1660,16 @@ function detectAndSaveZones(){
 
 // Sv1b: Re-poziționează items existente în localOrder care au zone diferit față de poziția curentă
 // Compară zone din remoteFT (sursa de adevăr) cu zona în care se află în localOrder
-function repositionByZone(localOrder, remoteOrder, remoteFT){
+function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   // Construiește map zone din remote: id → zone
+  // S1 fix: include și project tasks din remoteItems (nu doar freeTasks)
   var remoteZoneMap={};
   (remoteFT||[]).forEach(function(x){if(!x._deleted&&x.zone) remoteZoneMap[x.id]=x.zone;});
+  (remoteItems||[]).forEach(function(proj){
+    if(proj.type==='project')(proj.tasks||[]).forEach(function(t){
+      if(t.zone) remoteZoneMap[t.id]=t.zone;
+    });
+  });
   // Dacă nu există zone remote, nimic de repoziționat
   if(!Object.keys(remoteZoneMap).length) return localOrder;
 
@@ -1693,19 +1699,19 @@ function repositionByZone(localOrder, remoteOrder, remoteFT){
   }
 
   // Găsește items care trebuie mutate (zone remote ≠ zone curentă locală)
-  var toMove=[]; // {entry, targetZone}
   var result=localOrder.slice();
-  // Prima trecere: identifică și extrage items de mutat
+  var toMove=[];
   var filteredResult=[];
   result.forEach(function(e,i){
-    if(e.type!=='free') {filteredResult.push(e);return;}
-    var remoteZone=remoteZoneMap[e.id];
-    if(!remoteZone) {filteredResult.push(e);return;} // nu avem info zone din remote
+    // S1: lookup zone pentru ambele tipuri
+    var remoteZone=e.type==='free'
+      ? remoteZoneMap[e.id]
+      : remoteZoneMap[e.taskId];
+    if(!remoteZone){filteredResult.push(e);return;}
     var curZone=currentZone(i);
-    if(curZone===remoteZone) {filteredResult.push(e);return;} // deja în zona corectă
-    // Trebuie mutat — îl scoatem de aici și îl adăugăm în zona corectă
+    if(curZone===remoteZone){filteredResult.push(e);return;}
     toMove.push({entry:e,targetZone:remoteZone});
-    // Nu îl adăugăm în filteredResult — va fi reinsertat
+    // nu adăugăm în filteredResult — va fi reinsertat în zona corectă
   });
 
   if(!toMove.length) return localOrder;
@@ -3332,14 +3338,19 @@ function rBoard(){
     var sbClear=mk('button','sel-clear');sbClear.textContent='✕ Cancel';
     sbClear.addEventListener('click',function(){S.selectedNext={};S.selectMode=false;_selOrder=0;render();});
     sbClear.addEventListener('touchend',function(e){e.preventDefault();S.selectedNext={};S.selectMode=false;_selOrder=0;render();},{passive:false});
+    var sbOpml=mk('button','sel-btn');sbOpml.textContent='📋 OPML';
+    sbOpml.style.background='#0369A1';sbOpml.style.color='#fff';
+    sbOpml.title='Export selecție în OPML (WorkFlowy)';
+    sbOpml.addEventListener('click',function(){exportSelectedOPML();});
+    sbOpml.addEventListener('touchend',function(e){e.preventDefault();exportSelectedOPML();},{passive:false});
     if(selCount===2){
       var sbSort=mk('button','sel-btn');sbSort.textContent='⇅ Sortare dată';
       sbSort.style.background='#7C3AED';
       sbSort.addEventListener('click',function(){sortSelectedByDate();});
       sbSort.addEventListener('touchend',function(e){e.preventDefault();sortSelectedByDate();},{passive:false});
-      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbSort,sbClear);
+      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbSort,sbOpml,sbClear);
     } else {
-      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbClear);
+      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbOpml,sbClear);
     }
     root.appendChild(sb);
   }
@@ -4629,6 +4640,79 @@ function sortSelectedByDate(){
   S.selectedNext={};S.selectMode=false;_selOrder=0;
   save(); // forțează save ca să nu fie suprascris de Firebase pull
   render();
+}
+
+// Sel1: Export selecție în format OPML pentru WorkFlowy
+function exportSelectedOPML(){
+  var selKeys=Object.keys(S.selectedNext);
+  if(!selKeys.length){fbToast('Nicio selecție','#1E2130','#6B7280',2000);return;}
+  // Sortează după ordinea de selecție
+  var sortedKeys=selKeys.slice().sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  function escXml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+  function getTaskData(key){
+    if(key.startsWith('f::')){
+      var id=key.slice(3);
+      var ft=S.freeTasks.find(function(x){return x.id===id;});
+      if(!ft) return null;
+      // Separă titlul (prima linie) de notă (restul)
+      var lines=(ft.name||'').split('\n');
+      var title=lines[0];
+      var note=lines.slice(1).join('\n').trim();
+      return {title:title,note:note,isProject:false,projectName:null};
+    } else if(key.startsWith('p::')){
+      var parts=key.split('::');
+      var pid=parts[1],tid=parts[2];
+      var proj=S.items.find(function(x){return x.id===pid;});
+      var task=proj&&proj.tasks&&proj.tasks.find(function(x){return x.id===tid;});
+      if(!task) return null;
+      var lines2=(task.name||'').split('\n');
+      var title2=lines2[0];
+      var note2=lines2.slice(1).join('\n').trim();
+      // Adaugă nota task-ului dacă există
+      var taskNote=S.nt&&S.nt[tid]?S.nt[tid]:'';
+      var fullNote=[note2,taskNote].filter(Boolean).join('\n').trim();
+      return {title:title2,note:fullNote,isProject:true,projectName:proj?proj.name:''};
+    }
+    return null;
+  }
+  // Construiește OPML
+  var lines=['<?xml version="1.0" encoding="UTF-8"?>',
+    '<opml version="2.0">',
+    '  <head><title>ProjectBoard Export</title></head>',
+    '  <body>'];
+  sortedKeys.forEach(function(key){
+    var d=getTaskData(key);
+    if(!d) return;
+    var titleAttr=escXml(d.title);
+    var noteAttr=d.note?(' _note="'+escXml(d.note)+'"'):'';
+    if(d.isProject&&d.projectName){
+      // Task de proiect: indent sub proiect
+      lines.push('    <outline text="'+escXml(d.projectName)+'">');
+      lines.push('      <outline text="'+titleAttr+'"'+noteAttr+'/>');
+      lines.push('    </outline>');
+    } else {
+      lines.push('    <outline text="'+titleAttr+'"'+noteAttr+'/>');
+    }
+  });
+  lines.push('  </body>','</opml>');
+  var opmlText=lines.join('\n');
+  // Copiază în clipboard
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(opmlText).then(function(){
+      fbToast('📋 OPML copiat ('+sortedKeys.length+' items)','#1E2130','#34D399',3000);
+    }).catch(function(){_opmlFallback(opmlText,sortedKeys.length);});
+  } else {
+    _opmlFallback(opmlText,sortedKeys.length);
+  }
+}
+function _opmlFallback(text,count){
+  // Fallback: textarea temporar
+  var ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');fbToast('📋 OPML copiat ('+count+' items)','#1E2130','#34D399',3000);}
+  catch(_){fbToast('Copierea a eșuat — deschide consola','#1E2130','#EF4444',3000);}
+  document.body.removeChild(ta);
 }
 
 function moveSelectedNext(where){

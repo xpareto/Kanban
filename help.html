@@ -206,11 +206,20 @@ tr:nth-child(even)td{background:#F8FAFC}
     <tr><td><strong>⊞ Project</strong></td><td>Mută toate rândurile selectate într-un proiect (existent sau nou)</td><td>Verde</td></tr>
     <tr><td><strong>↳ Sub primul</strong></td><td>Rândurile 2..n se inserează sub primul selectat, în ordinea selectării</td><td>Galben</td></tr>
     <tr><td><strong>⇅ Sortare dată</strong></td><td>Apare doar când sunt selectate exact 2 rânduri — sortează cronologic toate rândurile dintre ele</td><td>Violet</td></tr>
+    <tr><td><strong>📋 OPML</strong></td><td>Exportă rândurile selectate în format OPML și le copiază în clipboard — pentru import în WorkFlowy sau alte aplicații compatibile OPML. Textul taskului devine <code>text</code>, nota devine <code>_note</code>. Taskurile de proiect sunt imbricate sub numele proiectului.</td><td>Albastru închis</td></tr>
     <tr><td><strong>✕ Cancel</strong></td><td>Anulează selecția</td><td>Gri</td></tr>
   </table>
 
   <div class="card blue">
     <strong>↳ Sub primul — ordinea selectării contează:</strong> Primul rând pe care faci long-press devine ancora. Rândurile tapate ulterior vin după el în ordinea în care le-ai selectat, indiferent de poziția lor vizuală.
+  </div>
+
+  <div class="card indigo">
+    <strong>📋 OPML Export — format WorkFlowy:</strong><br/>
+    Selectează oricâte rânduri dorești → apasă <strong>📋 OPML</strong> → conținutul se copiază în clipboard.<br/>
+    În WorkFlowy: <strong>Import → OPML</strong> → lipește. Structura produsă:<br/>
+    <code>&lt;outline text="Titlu task" _note="Nota sau URL-ul"&gt;</code><br/>
+    Taskurile de proiect apar imbricate: proiectul e nodul părinte, taskul e copilul.
   </div>
 
   <h3>C3 — Sortare globală prin butoanele din header</h3>
