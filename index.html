@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V114</title>
+<title>Project Board V116</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -175,6 +175,7 @@ input{font-family:inherit;outline:none}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
 <script>
 window.onerror=function(msg,src,line,col,err){
   var d=document.createElement('div');
@@ -194,9 +195,10 @@ const FB_CFG={
   projectId:"project-board-1fe7c",
   storageBucket:"project-board-1fe7c.firebasestorage.app",
   messagingSenderId:"435410220864",
-  appId:"1:435410220864:web:bd601ccad6e5e60ae96ca5"
+  appId:"1:435410220864:web:bd601ccad6e5e60ae96ca5",
+  measurementId:"G-2X4E1HJ581"
 };
-var fbApp=null,fbAuth=null,fbDb=null,fbUser=null;
+var fbApp=null,fbAuth=null,fbDb=null,fbUser=null,fbAnalytics=null;
 /* Firestore Rules necesare (console.firebase.google.com → Firestore → Rules):
 rules_version = '2';
 service cloud.firestore {
@@ -212,6 +214,11 @@ function fbInitCore(){
   fbApp=firebase.apps.length?firebase.apps[0]:firebase.initializeApp(FB_CFG);
   fbAuth=firebase.auth();
   fbDb=firebase.firestore();
+  // Analytics — loghează app_open la fiecare sesiune
+  try{
+    fbAnalytics=firebase.analytics();
+    fbAnalytics.logEvent('app_open',{version:VERSION});
+  }catch(_){}
   fbAuth.onAuthStateChanged(function(user){
     fbUser=user;
     S.fbUser=user?{uid:user.uid,name:user.displayName,email:user.email,photo:user.photoURL}:null;
@@ -799,6 +806,8 @@ function init(){
   const storedShare=ls(SHK);
   S.shareTasks=(storedShare&&storedShare.length)?storedShare:JSON.parse(JSON.stringify(DEF_SHARE));
   S.labels=ls(LBLK)||['#a','#u','#c'];S.shareJournal=ls(SHJK)||[];
+  // A1: modal de dimineață — se va afișa după render (cu delay pentru date complete)
+  setTimeout(function(){showMorningModal();},1500);
 }
 let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);lw('pb-local-dirty-ts',Date.now());const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
@@ -1063,6 +1072,98 @@ function calInjectEvents(events){
   S.nextOrder=newOrders.concat(S.nextOrder);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   // CAL_DK este setat de calCheckAndFetch după inject reușit
+  // A1: la prima injecție a zilei, afișăm modalul de dimineață
+  setTimeout(function(){showMorningModal();},800);
+}
+
+// ── A1: Modal de dimineață — termene azi și mâine ──
+var MORNING_KEY='pb-morning-shown';
+function showMorningModal(){
+  var today=calTodayStr();
+  if(localStorage.getItem(MORNING_KEY)===today) return; // deja arătat azi
+  localStorage.setItem(MORNING_KEY,today);
+
+  // Calculează mâine
+  var todayD=new Date(); todayD.setHours(0,0,0,0);
+  var tomorrowD=new Date(todayD); tomorrowD.setDate(tomorrowD.getDate()+1);
+  var todayF=today;
+  var tomorrowF=tomorrowD.toLocaleDateString('ro-RO',{year:'numeric',month:'2-digit',day:'2-digit'}).split('.').reverse().join('-');
+  // Format YYYY-MM-DD pentru mâine
+  var ty=tomorrowD.getFullYear(),tm=String(tomorrowD.getMonth()+1).padStart(2,'0'),td=String(tomorrowD.getDate()).padStart(2,'0');
+  tomorrowF=ty+'-'+tm+'-'+td;
+
+  // Colectează tasks cu dată azi sau mâine din NEXT
+  var nr=getNR();
+  var todayItems=[],tomorrowItems=[],calToday=[],calTomorrow=[];
+  nr.forEach(function(r){
+    // Cal events
+    if(r.isFree&&r.id&&r.id.startsWith('cal::')){
+      var ft=S.freeTasks.find(function(x){return x.id===r.id;});
+      if(!ft) return;
+      var n=ft.name||'';
+      if(n.indexOf('[tomorrow]')>=0||n.indexOf('[mie]')>=0) calTomorrow.push(ft.name);
+      else if(!n.match(/^\[/)) calToday.push(ft.name);
+      else if(n.match(/^\[today\]/i)) calToday.push(ft.name);
+      return;
+    }
+    var d=extractDateFromRow(r);
+    if(!d) return;
+    d.setHours(0,0,0,0);
+    var dStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(dStr===todayF) todayItems.push(r.tname||'');
+    else if(dStr===tomorrowF) tomorrowItems.push(r.tname||'');
+  });
+
+  // Nu arăta dacă nu e nimic relevant
+  if(!todayItems.length&&!tomorrowItems.length&&!calToday.length&&!calTomorrow.length) return;
+
+  // Construiește modal
+  var overlay=div('morning-overlay');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px';
+  var box=div('morning-box');
+  box.style.cssText='background:#1A1D2E;border-radius:14px;padding:20px;max-width:420px;width:92%;max-height:75vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)';
+
+  // Header
+  var hd=div('');hd.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:14px';
+  var htitle=div('');htitle.style.cssText='font-size:16px;font-weight:800;color:#F59E0B';
+  htitle.textContent='📅 '+new Date().toLocaleDateString('ro-RO',{weekday:'long',day:'numeric',month:'long'});
+  var closeBtn=mk('button','');closeBtn.textContent='✕';
+  closeBtn.style.cssText='background:none;border:none;color:#6B7280;font-size:18px;cursor:pointer;padding:4px 8px';
+  closeBtn.addEventListener('click',function(){document.body.removeChild(overlay);});
+  closeBtn.addEventListener('touchend',function(e){e.preventDefault();document.body.removeChild(overlay);},{passive:false});
+  hd.appendChild(htitle);hd.appendChild(closeBtn);
+  box.appendChild(hd);
+
+  function addSection(title,items,color){
+    if(!items.length) return;
+    var sec=div('');sec.style.cssText='margin-bottom:12px';
+    var stitle=div('');stitle.style.cssText='font-size:11px;font-weight:800;color:'+color+';letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px';
+    stitle.textContent=title;sec.appendChild(stitle);
+    items.forEach(function(txt){
+      var row=div('');row.style.cssText='background:#0F1117;border-radius:7px;padding:8px 10px;margin-bottom:4px;font-size:12px;color:#E2E8F0;border-left:3px solid '+color;
+      // Arată doar prima linie
+      row.textContent=(txt||'').split('\n')[0].slice(0,120);
+      sec.appendChild(row);
+    });
+    box.appendChild(sec);
+  }
+
+  addSection('Azi — Calendar',''.length?[]:calToday,'#60A5FA');
+  addSection('Azi — Termene',todayItems,'#F87171');
+  addSection('Mâine — Calendar',calTomorrow,'#93C5FD');
+  addSection('Mâine — Termene',tomorrowItems,'#FCA5A5');
+
+  // Buton OK
+  var okBtn=mk('button','');okBtn.textContent='OK, mulțumesc!';
+  okBtn.style.cssText='width:100%;background:#F59E0B;color:#1A1D2E;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:800;cursor:pointer;margin-top:8px';
+  okBtn.addEventListener('click',function(){document.body.removeChild(overlay);});
+  okBtn.addEventListener('touchend',function(e){e.preventDefault();document.body.removeChild(overlay);},{passive:false});
+  box.appendChild(okBtn);
+
+  overlay.appendChild(box);
+  // Închide și la tap pe overlay în afara box-ului
+  overlay.addEventListener('click',function(e){if(e.target===overlay)document.body.removeChild(overlay);});
+  document.body.appendChild(overlay);
 }
 
 // Verifică dacă e prima rulare a zilei și dacă avem token
@@ -1783,20 +1884,20 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
   // Inserare la poziție: după marcatorul de deschidere al zonei; fallback = la final
   function insertAfter(arr,idx,items){
     if(!items.length) return arr;
-    var pos=(idx>=0)?idx+1:arr.length; // fallback: la final
+    // Sv1 fix: dacă marcatorul lipsește (idx<0), inserăm la ÎNCEPUT (pos=0), nu la final
+    // Altfel itemele verzi/roșii/galbene ar ajunge la coada listei
+    var pos=(idx>=0)?idx+1:0;
     return arr.slice(0,pos).concat(items).concat(arr.slice(pos));
   }
 
   var result=localOrder.slice();
-  // Inserăm în ordine inversă a priorității (primul verde, apoi roșu, galben, rest)
-  // Recalculăm pozițiile după fiecare inserție
   result=insertAfter(result, mk3.a, greenItems);
   var off=greenItems.length;
   result=insertAfter(result, mk1.a>=0?mk1.a+off:-1, redItems);
   off+=redItems.length;
   result=insertAfter(result, mk2.a>=0?mk2.a+off:-1, yellowItems);
   off+=yellowItems.length;
-  // rest → la final (nu la început — nu deranjăm zonele)
+  // rest → la final (fără prioritate specială)
   result=result.concat(restItems);
 
   return result;
