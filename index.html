@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V116</title>
+<title>Project Board V117</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1562,6 +1562,8 @@ document.addEventListener('touchend',()=>{
       S.freeTasks.forEach(f=>{if(!newFreeTasks.find(x=>x.id===f.id))newFreeTasks.push(f);});
       S.freeTasks=newFreeTasks;
       lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+      // Sv1 fix: salvează zona imediat după drag-drop (nu doar la Push)
+      detectAndSaveZones();
     }
     clr();drag=null;render();return;
   }
@@ -1765,13 +1767,15 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   // Construiește map zone din remote: id → zone
   // S1 fix: include și project tasks din remoteItems (nu doar freeTasks)
   var remoteZoneMap={};
-  (remoteFT||[]).forEach(function(x){if(!x._deleted&&x.zone) remoteZoneMap[x.id]=x.zone;});
+  (remoteFT||[]).forEach(function(x){
+    if(!x._deleted&&'zone' in x) remoteZoneMap[x.id]=x.zone||null;
+  });
   (remoteItems||[]).forEach(function(proj){
     if(proj.type==='project')(proj.tasks||[]).forEach(function(t){
-      if(t.zone) remoteZoneMap[t.id]=t.zone;
+      if('zone' in t) remoteZoneMap[t.id]=t.zone||null;
     });
   });
-  // Dacă nu există zone remote, nimic de repoziționat
+  // Dacă nu există niciun item cu zone în remote, nimic de repoziționat
   if(!Object.keys(remoteZoneMap).length) return localOrder;
 
   // Găsește marcatorii în localOrder
@@ -1799,20 +1803,18 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
     return null;
   }
 
-  // Găsește items care trebuie mutate (zone remote ≠ zone curentă locală)
   var result=localOrder.slice();
   var toMove=[];
   var filteredResult=[];
   result.forEach(function(e,i){
-    // S1: lookup zone pentru ambele tipuri
     var remoteZone=e.type==='free'
       ? remoteZoneMap[e.id]
       : remoteZoneMap[e.taskId];
-    if(!remoteZone){filteredResult.push(e);return;}
+    // Sv1 fix: undefined = nu avem info din remote → păstrăm; null/string = avem info → comparăm
+    if(remoteZone===undefined){filteredResult.push(e);return;}
     var curZone=currentZone(i);
     if(curZone===remoteZone){filteredResult.push(e);return;}
     toMove.push({entry:e,targetZone:remoteZone});
-    // nu adăugăm în filteredResult — va fi reinsertat în zona corectă
   });
 
   if(!toMove.length) return localOrder;
