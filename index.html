@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V117</title>
+<title>Project Board V118</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1767,15 +1767,12 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   // Construiește map zone din remote: id → zone
   // S1 fix: include și project tasks din remoteItems (nu doar freeTasks)
   var remoteZoneMap={};
-  (remoteFT||[]).forEach(function(x){
-    if(!x._deleted&&'zone' in x) remoteZoneMap[x.id]=x.zone||null;
-  });
+  (remoteFT||[]).forEach(function(x){if(!x._deleted&&x.zone) remoteZoneMap[x.id]=x.zone;});
   (remoteItems||[]).forEach(function(proj){
     if(proj.type==='project')(proj.tasks||[]).forEach(function(t){
-      if('zone' in t) remoteZoneMap[t.id]=t.zone||null;
+      if(t.zone) remoteZoneMap[t.id]=t.zone;
     });
   });
-  // Dacă nu există niciun item cu zone în remote, nimic de repoziționat
   if(!Object.keys(remoteZoneMap).length) return localOrder;
 
   // Găsește marcatorii în localOrder
@@ -1810,10 +1807,9 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
     var remoteZone=e.type==='free'
       ? remoteZoneMap[e.id]
       : remoteZoneMap[e.taskId];
-    // Sv1 fix: undefined = nu avem info din remote → păstrăm; null/string = avem info → comparăm
-    if(remoteZone===undefined){filteredResult.push(e);return;}
+    if(!remoteZone){filteredResult.push(e);return;} // no zone info → keep in place
     var curZone=currentZone(i);
-    if(curZone===remoteZone){filteredResult.push(e);return;}
+    if(curZone===remoteZone){filteredResult.push(e);return;} // already correct
     toMove.push({entry:e,targetZone:remoteZone});
   });
 
@@ -1974,10 +1970,10 @@ function doSearch(){
     });
   });
   // Free tasks din Next — cu id pentru navigare și editare
-  S.freeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0||(f.note&&f.note.toLowerCase().indexOf(q)>=0)) res.push({k:'fn',name:f.name,id:f.id});});
+  S.freeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0) res.push({k:'fn',name:f.name||'',id:f.id});});
   // Free tasks din Wait — cu id
-  S.waitFreeTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0||(f.note&&f.note.toLowerCase().indexOf(q)>=0)) res.push({k:'fw',name:f.name,id:f.id});});
-  S.shareTasks.forEach(function(f){if(f.name.toLowerCase().indexOf(q)>=0) res.push({k:'sh',name:f.name,id:f.id});});
+  S.waitFreeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0) res.push({k:'fw',name:f.name||'',id:f.id});});
+  S.shareTasks.forEach(function(f){if(((f.name||'').toLowerCase()).indexOf(q)>=0) res.push({k:'sh',name:f.name||'',id:f.id});});
   // Jurnal principal
   S.journal.forEach(function(e){
     var txt=(e.taskName||e.projectName||'').toLowerCase();
