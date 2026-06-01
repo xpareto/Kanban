@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V118</title>
+<title>Project Board V119</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -806,8 +806,6 @@ function init(){
   const storedShare=ls(SHK);
   S.shareTasks=(storedShare&&storedShare.length)?storedShare:JSON.parse(JSON.stringify(DEF_SHARE));
   S.labels=ls(LBLK)||['#a','#u','#c'];S.shareJournal=ls(SHJK)||[];
-  // A1: modal de dimineață — se va afișa după render (cu delay pentru date complete)
-  setTimeout(function(){showMorningModal();},1500);
 }
 let saveT=null;
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{lw(SK,S.items);lw('pb-local-dirty-ts',Date.now());const d=document.getElementById('sdot');if(d){d.textContent='✓';d.style.color='#10B981';setTimeout(()=>d.textContent='',2000);}},400);}
@@ -1072,16 +1070,19 @@ function calInjectEvents(events){
   S.nextOrder=newOrders.concat(S.nextOrder);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   // CAL_DK este setat de calCheckAndFetch după inject reușit
-  // A1: la prima injecție a zilei, afișăm modalul de dimineață
-  setTimeout(function(){showMorningModal();},800);
+  // A1+Wt1: modal de dimineață + verificare termene din WAIT
+  setTimeout(function(){
+    var waitMoved=checkWaitingDeadlines()||[];
+    if(waitMoved.length) render(); // re-render dacă s-au mutat items
+    showMorningModal(waitMoved);
+  },800);
 }
 
 // ── A1: Modal de dimineață — termene azi și mâine ──
 var MORNING_KEY='pb-morning-shown';
-function showMorningModal(){
+function showMorningModal(waitMovedItems){
   var today=calTodayStr();
   if(localStorage.getItem(MORNING_KEY)===today) return; // deja arătat azi
-  localStorage.setItem(MORNING_KEY,today);
 
   // Calculează mâine
   var todayD=new Date(); todayD.setHours(0,0,0,0);
@@ -1114,10 +1115,12 @@ function showMorningModal(){
     else if(dStr===tomorrowF) tomorrowItems.push(r.tname||'');
   });
 
+  var waitMoved=waitMovedItems||[];
   // Nu arăta dacă nu e nimic relevant
-  if(!todayItems.length&&!tomorrowItems.length&&!calToday.length&&!calTomorrow.length) return;
+  if(!todayItems.length&&!tomorrowItems.length&&!calToday.length&&!calTomorrow.length&&!waitMoved.length) return;
 
-  // Construiește modal
+  // M1 fix: setăm cheia ACUM (după ce am confirmat că avem ce arăta)
+  localStorage.setItem(MORNING_KEY,today);
   var overlay=div('morning-overlay');
   overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px';
   var box=div('morning-box');
@@ -1148,10 +1151,15 @@ function showMorningModal(){
     box.appendChild(sec);
   }
 
-  addSection('Azi — Calendar',''.length?[]:calToday,'#60A5FA');
+  addSection('Azi — Calendar',calToday,'#60A5FA');
   addSection('Azi — Termene',todayItems,'#F87171');
   addSection('Mâine — Calendar',calTomorrow,'#93C5FD');
   addSection('Mâine — Termene',tomorrowItems,'#FCA5A5');
+  if(waitMoved.length){
+    var sep=div('');sep.style.cssText='text-align:center;color:#6B7280;font-size:11px;margin:8px 0;letter-spacing:.1em';
+    sep.textContent='* * *';box.appendChild(sep);
+    addSection('Aduse din Waiting (termen ≤ 7 zile)',waitMoved,'#A78BFA');
+  }
 
   // Buton OK
   var okBtn=mk('button','');okBtn.textContent='OK, mulțumesc!';
@@ -1164,6 +1172,104 @@ function showMorningModal(){
   // Închide și la tap pe overlay în afara box-ului
   overlay.addEventListener('click',function(e){if(e.target===overlay)document.body.removeChild(overlay);});
   document.body.appendChild(overlay);
+}
+
+// ── Wt1: Mută din WAIT în zona roșie din NEXT cu 7 zile înainte de termen ──
+var WAIT_CHECK_KEY='pb-wait-check-day';
+function checkWaitingDeadlines(){
+  var today=calTodayStr();
+  if(localStorage.getItem(WAIT_CHECK_KEY)===today) return;
+  localStorage.setItem(WAIT_CHECK_KEY,today);
+
+  var todayD=new Date(); todayD.setHours(0,0,0,0);
+  var limitD=new Date(todayD); limitD.setDate(limitD.getDate()+7);
+
+  var moved=[];
+
+  // Colectează candidații: free tasks din WAIT
+  S.waitFreeTasks.forEach(function(ft){
+    var d=extractDateFromRow({tname:ft.name||'',isFree:true,id:ft.id});
+    if(!d) return;
+    d.setHours(0,0,0,0);
+    if(d<=limitD){
+      moved.push({type:'free',item:ft});
+    }
+  });
+
+  // Project tasks din WAIT (status='wait')
+  S.items.forEach(function(proj){
+    if(proj.type!=='project') return;
+    (proj.tasks||[]).forEach(function(t){
+      if(t.status!=='wait') return;
+      var d=extractDateFromRow({tname:t.name||'',isFree:false,id:t.id});
+      if(!d) return;
+      d.setHours(0,0,0,0);
+      if(d<=limitD){
+        moved.push({type:'proj',item:t,projectId:proj.id});
+      }
+    });
+  });
+
+  if(!moved.length) return;
+
+  // Găsește sau creează marcatorii *1 în nextOrder
+  function findMk1(){
+    var a=-1,b=-1;
+    for(var i=0;i<S.nextOrder.length;i++){
+      var e=S.nextOrder[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(/^\*1/)){if(a<0)a=i;else if(b<0){b=i;break;}}
+      }
+    }
+    return {a:a,b:b};
+  }
+  var mk1=findMk1();
+  if(mk1.a<0||mk1.b<0){
+    // Creează marcatorii *1 dacă lipsesc
+    var m1id1=gid(),m1id2=gid();
+    S.freeTasks.push({id:m1id1,name:'*1------------------------',ts:Date.now(),modifiedTs:Date.now()});
+    S.freeTasks.push({id:m1id2,name:'*1------------------------',ts:Date.now()+1,modifiedTs:Date.now()+1});
+    S.nextOrder.push({type:'free',id:m1id1});
+    S.nextOrder.push({type:'free',id:m1id2});
+    mk1=findMk1();
+  }
+
+  // Inserează fiecare item după mk1.a (în zona roșie)
+  var insertPos=mk1.a+1;
+  moved.forEach(function(m){
+    if(m.type==='free'){
+      var ft=m.item;
+      // Adaugă în freeTasks și nextOrder la insertPos
+      if(!S.freeTasks.find(function(x){return x.id===ft.id;})) S.freeTasks.push(ft);
+      S.nextOrder.splice(insertPos,0,{type:'free',id:ft.id});
+      insertPos++;
+      // Șterge din waitFreeTasks și waitOrder
+      S.waitFreeTasks=S.waitFreeTasks.filter(function(x){return x.id!==ft.id;});
+      S.waitOrder=S.waitOrder.filter(function(x){return!(x.type==='free'&&x.id===ft.id);});
+      traceLog('Wt1: mutat din WAIT→NEXT zona rosie: '+(ft.name||'').slice(0,30));
+    } else {
+      // Project task: schimbă status wait→next, inserează în nextOrder
+      S.items=S.items.map(function(proj){
+        if(proj.id!==m.projectId) return proj;
+        return {...proj,tasks:proj.tasks.map(function(t){
+          if(t.id!==m.item.id) return t;
+          return {...t,status:'next',modifiedTs:Date.now()};
+        })};
+      });
+      S.nextOrder.splice(insertPos,0,{type:'proj',projectId:m.projectId,taskId:m.item.id});
+      insertPos++;
+      S.waitOrder=S.waitOrder.filter(function(x){return!(x.type==='proj'&&x.taskId===m.item.id);});
+      traceLog('Wt1: mutat proj din WAIT→NEXT zona rosie: '+(m.item.name||'').slice(0,30));
+    }
+  });
+
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(WK,S.waitOrder);lw(WFK,S.waitFreeTasks);lw(SK,S.items);
+  detectAndSaveZones();
+  save();
+
+  // Returnează lista de items mutați pentru modalul de dimineață
+  return moved.map(function(m){return (m.item.name||'').split('\n')[0];});
 }
 
 // Verifică dacă e prima rulare a zilei și dacă avem token
@@ -1558,12 +1664,22 @@ document.addEventListener('touchend',()=>{
       // Reorder freeTasks array to match new order
       const newFreeTasks=[];
       ordered.forEach(x=>{if(x.type==='free'){const f=S.freeTasks.find(ft=>ft.id===x.id);if(f)newFreeTasks.push(f);}});
-      // Add any freeTasks not in order (safety)
       S.freeTasks.forEach(f=>{if(!newFreeTasks.find(x=>x.id===f.id))newFreeTasks.push(f);});
       S.freeTasks=newFreeTasks;
+      // V1 fix: bump modifiedTs pe item mutat — garantează că post-drag câștigă merge-ul
+      var movedEntry=moved;
+      if(movedEntry&&movedEntry.type==='free'){
+        var mft=S.freeTasks.find(function(f){return f.id===movedEntry.id;});
+        if(mft){mft.modifiedTs=Date.now()+1;}
+      } else if(movedEntry&&movedEntry.type==='proj'){
+        var mp=S.items.find(function(x){return x.id===movedEntry.projectId;});
+        var mt=mp&&mp.tasks&&mp.tasks.find(function(x){return x.id===movedEntry.taskId;});
+        if(mt){mt.modifiedTs=Date.now()+1;}
+      }
       lw(NK,S.nextOrder);lw(FK,S.freeTasks);
-      // Sv1 fix: salvează zona imediat după drag-drop (nu doar la Push)
+      // Sv1: salvează zona imediat după drag-drop + trace
       detectAndSaveZones();
+      traceLog('drag-drop: from='+fromIdx+' to='+toIdx+(movedEntry?' id='+(movedEntry.id||movedEntry.taskId):''));
     }
     clr();drag=null;render();return;
   }
@@ -1743,6 +1859,7 @@ function detectAndSaveZones(){
   var mk3=getMarkerPos(/^\*3/);
   var mk1=getMarkerPos(/^\*1/);
   var mk2=getMarkerPos(/^\*2/);
+  var changed=[];
   order.forEach(function(e,i){
     var zone=null;
     if(mk3.a>=0&&mk3.b>=0&&i>mk3.a&&i<mk3.b) zone='green';
@@ -1750,15 +1867,16 @@ function detectAndSaveZones(){
     else if(mk2.a>=0&&mk2.b>=0&&i>mk2.a&&i<mk2.b) zone='yellow';
     if(e.type==='free'){
       var ft=S.freeTasks.find(function(x){return x.id===e.id;});
-      if(ft&&ft.zone!==zone){ft.zone=zone;ft.modifiedTs=Date.now();}
+      if(ft&&ft.zone!==zone){changed.push((ft.name||'').slice(0,20)+':'+ft.zone+'→'+zone);ft.zone=zone;ft.modifiedTs=Date.now();}
     } else {
       var p=S.items.find(function(x){return x.id===e.projectId;});
       var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});
-      if(t&&t.zone!==zone){t.zone=zone;t.modifiedTs=Date.now();}
+      if(t&&t.zone!==zone){changed.push((t.name||'').slice(0,20)+':'+t.zone+'→'+zone);t.zone=zone;t.modifiedTs=Date.now();}
     }
   });
+  if(changed.length) traceLog('detectZones changed: '+changed.join(', '));
   lw(FK,S.freeTasks);
-  lw(SK,S.items); // S1: salvează și items (conțin task.zone pentru project tasks)
+  lw(SK,S.items);
 }
 
 // Sv1b: Re-poziționează items existente în localOrder care au zone diferit față de poziția curentă
@@ -1814,6 +1932,10 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   });
 
   if(!toMove.length) return localOrder;
+  traceLog('repositionByZone: mută '+toMove.length+' items: '+toMove.map(function(x){
+    var id=x.entry.type==='free'?x.entry.id:x.entry.taskId;
+    return id.slice(-6)+'→'+x.targetZone;
+  }).join(', '));
 
   // Grupează items de mutat pe zonă
   var byZone={green:[],red:[],yellow:[],null_zone:[]};
@@ -1879,7 +2001,9 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
     else restItems.push(e);
   });
 
-  // Inserare la poziție: după marcatorul de deschidere al zonei; fallback = la final
+  traceLog('mergeNewZones: green='+greenItems.length+' red='+redItems.length+' yellow='+yellowItems.length+' rest='+restItems.length+' mk3='+mk3.a+'/'+mk3.b+' mk1='+mk1.a+'/'+mk1.b);
+
+  // Inserare la poziție: după marcatorul de deschidere al zonei; fallback = la început
   function insertAfter(arr,idx,items){
     if(!items.length) return arr;
     // Sv1 fix: dacă marcatorul lipsește (idx<0), inserăm la ÎNCEPUT (pos=0), nu la final
@@ -4321,20 +4445,33 @@ function moveSelectedToProject(){
     selRows.forEach(function(row){
       var taskLabel=row.tname||row.name||row.taskName||'';
       var newTaskId=gid();
-      if(isNew){
-        // proiect nou: primul rând l-am deja creat în doCreateProject, restul adăugăm
-        proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
-        S.nextOrder=[...S.nextOrder,{type:'proj',projectId:projId,taskId:newTaskId}];
-      } else {
-        proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next'}];
-        S.nextOrder=[...S.nextOrder,{type:'proj',projectId:projId,taskId:newTaskId}];
-      }
-      // Elimină din freeTasks și nextOrder dacă era free
+      var newEntry={type:'proj',projectId:projId,taskId:newTaskId};
+      proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()}];
+      // P1 fix: inserează la aceeași poziție ca task-ul original (păstrează zona)
       if(row.isFree){
+        var origPos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===row.id;});
+        if(origPos>=0){
+          var ord=S.nextOrder.slice();
+          ord.splice(origPos,1,newEntry); // înlocuiește exact poziția
+          S.nextOrder=ord;
+        } else {
+          S.nextOrder=[...S.nextOrder,newEntry];
+        }
         S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
-        S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
+      } else {
+        // era deja proj task — înlocuiește la aceeași poziție
+        var origPos2=S.nextOrder.findIndex(function(x){return x.type==='proj'&&x.taskId===row.taskId;});
+        if(origPos2>=0){
+          var ord2=S.nextOrder.slice();
+          ord2.splice(origPos2,1,newEntry);
+          S.nextOrder=ord2;
+        } else {
+          S.nextOrder=[...S.nextOrder,newEntry];
+        }
       }
     });
+    // P1: salvează zona după atașare (task-ul nou moștenește zona celui vechi)
+    detectAndSaveZones();
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SK,S.items);
     S.selectedNext={};S.selectMode=false;
     save();render();
