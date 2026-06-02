@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V119</title>
+<title>Project Board V120</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -744,7 +744,7 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
@@ -1860,6 +1860,7 @@ function detectAndSaveZones(){
   var mk1=getMarkerPos(/^\*1/);
   var mk2=getMarkerPos(/^\*2/);
   var changed=[];
+  var now=Date.now();
   order.forEach(function(e,i){
     var zone=null;
     if(mk3.a>=0&&mk3.b>=0&&i>mk3.a&&i<mk3.b) zone='green';
@@ -1867,11 +1868,20 @@ function detectAndSaveZones(){
     else if(mk2.a>=0&&mk2.b>=0&&i>mk2.a&&i<mk2.b) zone='yellow';
     if(e.type==='free'){
       var ft=S.freeTasks.find(function(x){return x.id===e.id;});
-      if(ft&&ft.zone!==zone){changed.push((ft.name||'').slice(0,20)+':'+ft.zone+'→'+zone);ft.zone=zone;ft.modifiedTs=Date.now();}
+      if(ft&&ft.zone!==zone){
+        changed.push((ft.name||'').slice(0,20)+':'+ft.zone+'→'+zone);
+        ft.zone=zone;
+        // Rev ver1 fix: modifiedTs+1 garantează că post-move câștigă merge-ul
+        ft.modifiedTs=Math.max((ft.modifiedTs||0)+1, now);
+      }
     } else {
       var p=S.items.find(function(x){return x.id===e.projectId;});
       var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});
-      if(t&&t.zone!==zone){changed.push((t.name||'').slice(0,20)+':'+t.zone+'→'+zone);t.zone=zone;t.modifiedTs=Date.now();}
+      if(t&&t.zone!==zone){
+        changed.push((t.name||'').slice(0,20)+':'+t.zone+'→'+zone);
+        t.zone=zone;
+        t.modifiedTs=Math.max((t.modifiedTs||0)+1, now);
+      }
     }
   });
   if(changed.length) traceLog('detectZones changed: '+changed.join(', '));
@@ -3255,7 +3265,26 @@ function rBoard(){
   var trProj=(function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})();
   // Separator vizual
   var trSep=sp('','');trSep.style.cssText='flex:1';
-  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,resetBtn,traceBtn);
+  // Modal1: buton temporar de testare modal dimineață
+  var trModal=mk('button','sel-btn');trModal.textContent='🔔 Modal';
+  trModal.style.cssText='background:#7C3AED;color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;touch-action:manipulation';
+  trModal.title='Test modal dimineață (șterge cheia și redeschide)';
+  trModal.addEventListener('click',function(){
+    localStorage.removeItem(MORNING_KEY);
+    localStorage.removeItem(WAIT_CHECK_KEY);
+    var wm=checkWaitingDeadlines()||[];
+    if(wm.length) render();
+    showMorningModal(wm);
+  });
+  trModal.addEventListener('touchend',function(e){
+    e.preventDefault();
+    localStorage.removeItem(MORNING_KEY);
+    localStorage.removeItem(WAIT_CHECK_KEY);
+    var wm=checkWaitingDeadlines()||[];
+    if(wm.length) render();
+    showMorningModal(wm);
+  },{passive:false});
+  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,trModal,resetBtn,traceBtn);
   root.appendChild(toolRow);
 
   // ── Panou Settings ──
@@ -3938,9 +3967,37 @@ function rBoard(){
     if(!row.isFree) r.appendChild(sp('nproj',row.pname));
     if(!row.isFree) r.appendChild(sp('narr','›'));
     const tn=sp('ntask','');
-    renderTaskText(tn,row.tname);
-    if(row.isFree) tn.style.fontStyle='italic';
-    r.appendChild(tn);
+    // Wup1: dacă e în editare, afișăm input inline
+    if(S.editWaitId&&((row.isFree&&S.editWaitId===row.id)||(!row.isFree&&S.editWaitId===row.taskId))){
+      const wei=mk('input','einp');
+      wei.value=row.tname||'';
+      wei.style.cssText='flex:1;min-width:0;font-size:12px;background:#1A1D2E;color:#E2E8F0;border:1px solid #6366F1;border-radius:6px;padding:4px 7px;outline:none';
+      var _wSaveDone=false;
+      function saveWaitEdit(){
+        if(_wSaveDone) return; _wSaveDone=true;
+        var v=wei.value.trim();
+        if(v&&row.isFree){
+          var ft=S.waitFreeTasks.find(function(x){return x.id===row.id;});
+          if(ft){ft.name=addWeekday(v);ft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+        } else if(v&&!row.isFree){
+          var proj=S.items.find(function(x){return x.id===row.projectId;});
+          var task=proj&&proj.tasks&&proj.tasks.find(function(t){return t.id===row.taskId;});
+          if(task){task.name=addWeekday(v);task.modifiedTs=Date.now();lw(SK,S.items);}
+        }
+        S.editWaitId=null;save();render();
+      }
+      wei.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveWaitEdit();}if(e.key==='Escape'){S.editWaitId=null;render();}});
+      wei.addEventListener('blur',saveWaitEdit);
+      r.appendChild(wei);setTimeout(function(){wei.focus();},40);
+    } else {
+      renderTaskText(tn,row.tname);
+      if(row.isFree) tn.style.fontStyle='italic';
+      // Wup1: dublu-tap pentru editare
+      var _wEditId=row.isFree?row.id:row.taskId;
+      tn.addEventListener('dblclick',function(){S.editWaitId=_wEditId;render();});
+      tn.addEventListener('touchend',function(){dbt(_wEditId,function(){S.editWaitId=_wEditId;render();});});
+      r.appendChild(tn);
+    }
     // Buton ▶ navigare la proiect — doar pentru task-uri cu proiect
     if(!row.isFree){
       // Buton 📅 Calendar
@@ -4567,6 +4624,8 @@ function moveSelectedUnderFirst(){
   S.freeTasks.forEach(function(f){if(!newFT.find(function(x){return x.id===f.id;}))newFT.push(f);});
   S.freeTasks=newFT;
   lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+  detectAndSaveZones();
+  traceLog('moveSelectedUnderFirst: done');
   S.selectedNext={};S.selectMode=false;
   render();
 }
@@ -4981,6 +5040,9 @@ function moveSelectedNext(where){
   S.freeTasks.forEach(function(f){if(!newFT.find(function(x){return x.id===f.id;}))newFT.push(f);});
   S.freeTasks=newFT;
   lw(NK,S.nextOrder);lw(FK,S.freeTasks);
+  // Rev ver1 fix: salvează zona după mutare prin selecție
+  detectAndSaveZones();
+  traceLog('moveSelectedNext: '+selKeys.length+' items→'+where);
   S.selectedNext={};S.selectMode=false;
   render();
 }
