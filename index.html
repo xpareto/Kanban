@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V121</title>
+<title>Project Board V122</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -301,26 +301,52 @@ function fbPayloadShareJournal(){
 function mergeItemArray(localArr, remoteArr){
   var map={};
   (localArr||[]).forEach(function(x){map[x.id]=x;});
-  // Construiește set de id-uri șterse local (din localStorage, dacă există)
   var localDeleted=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
   (remoteArr||[]).forEach(function(x){
     var l=map[x.id];
     if(!l){
-      // Nou în remote — adaugă doar dacă nu e tombstone și nu e în lista locală de șterse
       if(!x._deleted && !localDeleted[x.id]) map[x.id]=x;
     } else {
       var lt=l.modifiedTs||l.ts||0;
       var rt=x.modifiedTs||x.ts||0;
-      if(rt>lt) map[x.id]=x; // remote mai recent — câștigă
-      // altfel local rămâne
+      // P1/P2 fix: zone/zoneRank folosesc zoneMts ca arbitru independent
+      var lzt=l.zoneMts||0;
+      var rzt=x.zoneMts||0;
+      var winner=rt>lt?x:l;
+      // Dacă remote are zone mai recente, aplicăm zona din remote peste câștigătorul de conținut
+      if(rzt>lzt){
+        winner=Object.assign({},winner,{zone:x.zone,zoneRank:x.zoneRank,zoneMts:x.zoneMts});
+      } else if(lzt>rzt){
+        winner=Object.assign({},winner,{zone:l.zone,zoneRank:l.zoneRank,zoneMts:l.zoneMts});
+      }
+      map[x.id]=winner;
     }
   });
-  // Filtrează tombstone-urile (eliminate din array — nu le afișăm)
   return Object.values(map).filter(function(x){return !x._deleted;});
 }
 // Merge tasks în interiorul unui proiect
 function mergeProjectTasks(localTasks, remoteTasks){
-  return mergeItemArray(localTasks||[], remoteTasks||[]);
+  // P1/P2: același mecanism zoneMts pentru project tasks
+  var map={};
+  (localTasks||[]).forEach(function(x){map[x.id]=x;});
+  (remoteTasks||[]).forEach(function(x){
+    var l=map[x.id];
+    if(!l){map[x.id]=x;}
+    else{
+      var lt=l.modifiedTs||l.ts||0;
+      var rt=x.modifiedTs||x.ts||0;
+      var lzt=l.zoneMts||0;
+      var rzt=x.zoneMts||0;
+      var winner=rt>lt?x:l;
+      if(rzt>lzt){
+        winner=Object.assign({},winner,{zone:x.zone,zoneRank:x.zoneRank,zoneMts:x.zoneMts});
+      } else if(lzt>rzt){
+        winner=Object.assign({},winner,{zone:l.zone,zoneRank:l.zoneRank,zoneMts:l.zoneMts});
+      }
+      map[x.id]=winner;
+    }
+  });
+  return Object.values(map);
 }
 // Merge array de proiecte/secțiuni, inclusiv tasks-urile din fiecare proiect
 function mergeProjects(localItems, remoteItems){
@@ -1870,10 +1896,14 @@ function detectAndSaveZones(){
     var rank=rankCounters[zk]; rankCounters[zk]++;
     if(e.type==='free'){
       var ft=S.freeTasks.find(function(x){return x.id===e.id;});
+      // Skip cal:: events — nu au zone permanentă
+      if(!ft||!ft.name||(ft.id&&ft.id.startsWith('cal::'))) return;
       if(ft){
         if(ft.zone!==zone||ft.zoneRank!==rank){
           changed.push((ft.name||'?').slice(0,18)+':'+ft.zone+'->'+zone+'#'+rank);
           ft.zone=zone; ft.zoneRank=rank;
+          // P1/P2: zoneMts = timestamp dedicat pentru zona, independent de modifiedTs
+          ft.zoneMts=now; now++;
           ft.modifiedTs=Math.max((ft.modifiedTs||0)+1, now);
         }
       }
@@ -1884,6 +1914,7 @@ function detectAndSaveZones(){
         if(t.zone!==zone||t.zoneRank!==rank){
           changed.push((t.name||'?').slice(0,18)+':'+t.zone+'->'+zone+'#'+rank);
           t.zone=zone; t.zoneRank=rank;
+          t.zoneMts=now; now++;
           t.modifiedTs=Math.max((t.modifiedTs||0)+1, now);
         }
       }
@@ -3317,26 +3348,7 @@ function rBoard(){
   var trProj=(function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})();
   // Separator vizual
   var trSep=sp('','');trSep.style.cssText='flex:1';
-  // Modal1: buton temporar de testare modal dimineață
-  var trModal=mk('button','sel-btn');trModal.textContent='🔔 Modal';
-  trModal.style.cssText='background:#7C3AED;color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;touch-action:manipulation';
-  trModal.title='Test modal dimineață (șterge cheia și redeschide)';
-  trModal.addEventListener('click',function(){
-    localStorage.removeItem(MORNING_KEY);
-    localStorage.removeItem(WAIT_CHECK_KEY);
-    var wm=checkWaitingDeadlines()||[];
-    if(wm.length) render();
-    showMorningModal(wm);
-  });
-  trModal.addEventListener('touchend',function(e){
-    e.preventDefault();
-    localStorage.removeItem(MORNING_KEY);
-    localStorage.removeItem(WAIT_CHECK_KEY);
-    var wm=checkWaitingDeadlines()||[];
-    if(wm.length) render();
-    showMorningModal(wm);
-  },{passive:false});
-  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,trModal,resetBtn,traceBtn);
+  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,resetBtn,traceBtn);
   root.appendChild(toolRow);
 
   // ── Panou Settings ──
