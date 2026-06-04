@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V122</title>
+<title>Project Board V123</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1894,26 +1894,34 @@ function detectAndSaveZones(){
     else if(mk2.a>=0&&mk2.b>=0&&i>mk2.a&&i<mk2.b) zone='yellow';
     var zk=zone||'null_z';
     var rank=rankCounters[zk]; rankCounters[zk]++;
+    // Skip cal:: events și items fără name
+    // Skip marker rows — marcatorii *1/*2/*3 au întotdeauna zone=null
+    var isMarker=false;
+    if(e.type==='free'){
+      var _f=S.freeTasks.find(function(x){return x.id===e.id;});
+      if(_f&&(_f.name||'').match(/^\*[123]/)) isMarker=true;
+    }
+
     if(e.type==='free'){
       var ft=S.freeTasks.find(function(x){return x.id===e.id;});
-      // Skip cal:: events — nu au zone permanentă
+      // Skip cal:: events și items fără name
       if(!ft||!ft.name||(ft.id&&ft.id.startsWith('cal::'))) return;
-      if(ft){
-        if(ft.zone!==zone||ft.zoneRank!==rank){
-          changed.push((ft.name||'?').slice(0,18)+':'+ft.zone+'->'+zone+'#'+rank);
-          ft.zone=zone; ft.zoneRank=rank;
-          // P1/P2: zoneMts = timestamp dedicat pentru zona, independent de modifiedTs
-          ft.zoneMts=now; now++;
-          ft.modifiedTs=Math.max((ft.modifiedTs||0)+1, now);
-        }
+      // Marcatorii au întotdeauna zone=null
+      var effectiveZone=isMarker?null:zone;
+      if(ft.zone!==effectiveZone||ft.zoneRank!==rank){
+        changed.push((ft.name||'?').slice(0,18)+':'+ft.zone+'->'+effectiveZone+'#'+rank);
+        ft.zone=effectiveZone; ft.zoneRank=rank;
+        ft.zoneMts=now; now++;
+        ft.modifiedTs=Math.max((ft.modifiedTs||0)+1, now);
       }
     } else {
       var p=S.items.find(function(x){return x.id===e.projectId;});
       var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});
       if(t){
-        if(t.zone!==zone||t.zoneRank!==rank){
-          changed.push((t.name||'?').slice(0,18)+':'+t.zone+'->'+zone+'#'+rank);
-          t.zone=zone; t.zoneRank=rank;
+        var effectiveZone2=zone; // project tasks nu sunt marcatori
+        if(t.zone!==effectiveZone2||t.zoneRank!==rank){
+          changed.push((t.name||'?').slice(0,18)+':'+t.zone+'->'+effectiveZone2+'#'+rank);
+          t.zone=effectiveZone2; t.zoneRank=rank;
           t.zoneMts=now; now++;
           t.modifiedTs=Math.max((t.modifiedTs||0)+1, now);
         }
@@ -1927,13 +1935,15 @@ function detectAndSaveZones(){
 
 // O1/Sv1: Construiește un map complet zone+rank din remote (freeTasks + items)
 function buildRemoteZoneMap(remoteFT, remoteItems){
-  var map={}; // id → {zone, zoneRank}
+  var map={};
   (remoteFT||[]).forEach(function(x){
-    if(!x._deleted&&x.zone) map[x.id]={zone:x.zone, rank:x.zoneRank||0};
+    // Excludem marcatorii *1/*2/*3 si cal:: events
+    if(!x._deleted&&x.zone&&x.name&&!x.name.match(/^\*[123]/)&&!(x.id||'').startsWith('cal::'))
+      map[x.id]={zone:x.zone, rank:x.zoneRank||0, zoneMts:x.zoneMts||0};
   });
   (remoteItems||[]).forEach(function(proj){
     if(proj.type==='project')(proj.tasks||[]).forEach(function(t){
-      if(t.zone) map[t.id]={zone:t.zone, rank:t.zoneRank||0};
+      if(t.zone) map[t.id]={zone:t.zone, rank:t.zoneRank||0, zoneMts:t.zoneMts||0};
     });
   });
   return map;
@@ -1959,73 +1969,81 @@ function findZoneMarkers(order){
 // Găsește itemul cu rank-1 din aceeași zonă și inserează după el
 // Dacă nu există, inserează după marcatorul de deschidere al zonei
 function insertByZoneRank(order, entry, targetZone, targetRank){
+  // Recalculează markerii pe ordinea curentă (după inserții precedente)
   var markers=findZoneMarkers(order);
   var mk=targetZone==='green'?markers.mk3:targetZone==='red'?markers.mk1:markers.mk2;
 
-  // Construiește lista id-urilor din zona țintă cu rankul lor
-  var zoneItems=[]; // [{idx, id, rank}]
+  // Colectează items din zona țintă cu pozițiile lor curente
+  var zoneItems=[];
   order.forEach(function(e,i){
-    var id=e.type==='free'?e.id:e.taskId;
     var itemZone=null;
     if(markers.mk3.a>=0&&markers.mk3.b>=0&&i>markers.mk3.a&&i<markers.mk3.b) itemZone='green';
     else if(markers.mk1.a>=0&&markers.mk1.b>=0&&i>markers.mk1.a&&i<markers.mk1.b) itemZone='red';
     else if(markers.mk2.a>=0&&markers.mk2.b>=0&&i>markers.mk2.a&&i<markers.mk2.b) itemZone='yellow';
-    if(itemZone===targetZone) zoneItems.push({idx:i,id:id});
+    if(itemZone===targetZone) zoneItems.push({idx:i});
   });
 
   var insertPos;
-  if(targetRank===0||zoneItems.length===0){
-    // Primul în zonă → după marcatorul de deschidere
-    insertPos=mk.a>=0?mk.a+1:0;
+  if(mk.a<0){
+    // Zona nu există — inserează la început
+    insertPos=0;
+  } else if(targetRank<=0||zoneItems.length===0){
+    insertPos=mk.a+1;
   } else if(targetRank>=zoneItems.length){
-    // Ultimul → înaintea marcatorului de închidere
-    insertPos=mk.b>=0?mk.b:order.length;
+    // După ultimul item din zonă (înaintea marcatorului de închidere)
+    insertPos=zoneItems[zoneItems.length-1].idx+1;
   } else {
-    // Inserează după itemul cu rank targetRank-1
+    // După itemul cu index targetRank-1 din zonă
     insertPos=zoneItems[Math.min(targetRank,zoneItems.length)-1].idx+1;
   }
 
-  // Dacă zona nu există deloc, inserează la poziția 0
-  if(mk.a<0) insertPos=0;
-
   var result=order.slice();
   result.splice(insertPos,0,entry);
-  traceLog('insertByRank: zone='+targetZone+' rank='+targetRank+' pos='+insertPos+' id='+(entry.id||entry.taskId||'').slice(-6));
+  traceLog('insertByRank: zone='+targetZone+' rank='+targetRank+' pos='+insertPos+' id='+(entry.id||entry.taskId||'').slice(-6)+' zoneSize='+zoneItems.length);
   return result;
 }
 
-// O1/Sv1: Re-poziționează items existente în localOrder cu zone/rank diferit față de remote
+// O1/Sv1: Re-poziționează items existente în localOrder cu zone diferit față de remote
+// Recalculează markerii după fiecare inserție pentru a evita cascada de erori
 function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   var remoteMap=buildRemoteZoneMap(remoteFT, remoteItems);
   if(!Object.keys(remoteMap).length) return localOrder;
 
-  var markers=findZoneMarkers(localOrder);
-  function currentZone(idx){
-    if(markers.mk3.a>=0&&markers.mk3.b>=0&&idx>markers.mk3.a&&idx<markers.mk3.b) return 'green';
-    if(markers.mk1.a>=0&&markers.mk1.b>=0&&idx>markers.mk1.a&&idx<markers.mk1.b) return 'red';
-    if(markers.mk2.a>=0&&markers.mk2.b>=0&&idx>markers.mk2.a&&idx<markers.mk2.b) return 'yellow';
+  // Identifică items care trebuie mutate — zona locală ≠ zona remote
+  var toMove=[];
+  var filteredResult=[];
+
+  // Calculează zona curentă a fiecărui item în localOrder
+  var initMarkers=findZoneMarkers(localOrder);
+  function getZone(idx){
+    if(initMarkers.mk3.a>=0&&initMarkers.mk3.b>=0&&idx>initMarkers.mk3.a&&idx<initMarkers.mk3.b) return 'green';
+    if(initMarkers.mk1.a>=0&&initMarkers.mk1.b>=0&&idx>initMarkers.mk1.a&&idx<initMarkers.mk1.b) return 'red';
+    if(initMarkers.mk2.a>=0&&initMarkers.mk2.b>=0&&idx>initMarkers.mk2.a&&idx<initMarkers.mk2.b) return 'yellow';
     return null;
   }
 
-  var toMove=[];
-  var filteredResult=[];
   localOrder.forEach(function(e,i){
     var id=e.type==='free'?e.id:e.taskId;
     var rem=remoteMap[id];
     if(!rem){filteredResult.push(e);return;}
-    var curZone=currentZone(i);
-    if(curZone===rem.zone){filteredResult.push(e);return;} // zona corectă
+    var curZone=getZone(i);
+    if(curZone===rem.zone){filteredResult.push(e);return;}
     toMove.push({entry:e, zone:rem.zone, rank:rem.rank});
   });
 
   if(!toMove.length) return localOrder;
+
   traceLog('repositionByZone: '+toMove.map(function(x){
-    return (x.entry.id||x.entry.taskId||'').slice(-6)+'→'+x.zone+'#'+x.rank;
+    return (x.entry.id||x.entry.taskId||'').slice(-6)+'->'+x.zone+'#'+x.rank;
   }).join(', '));
 
-  // Sortăm items de mutat după rank (pentru inserare în ordine)
-  toMove.sort(function(a,b){return a.rank-b.rank;});
+  // Sortăm după rank pentru inserare în ordine
+  toMove.sort(function(a,b){
+    if(a.zone!==b.zone) return 0;
+    return a.rank-b.rank;
+  });
 
+  // Inserăm unul câte unul — insertByZoneRank recalculează markerii la fiecare pas
   var result=filteredResult;
   toMove.forEach(function(x){
     result=insertByZoneRank(result, x.entry, x.zone, x.rank);
@@ -2047,7 +2065,6 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds, remoteFT, r
     else restItems.push(e);
   });
 
-  // Sortează după rank
   greenItems.sort(function(a,b){return a.rank-b.rank;});
   redItems.sort(function(a,b){return a.rank-b.rank;});
   yellowItems.sort(function(a,b){return a.rank-b.rank;});
@@ -2055,7 +2072,6 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds, remoteFT, r
   traceLog('mergeNewZones: green='+greenItems.length+' red='+redItems.length+' yellow='+yellowItems.length+' rest='+restItems.length);
 
   var result=localOrder.slice();
-  // Inserează în ordine rank
   greenItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'green',x.rank);});
   redItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'red',x.rank);});
   yellowItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'yellow',x.rank);});
@@ -2063,60 +2079,6 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds, remoteFT, r
   return result;
 }
 
-// S1 Sync: la merge, inserează itemele NOI (absent din local) în poziția corectă bazată pe .zone
-function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds){
-  function findMarkers(order, markerRegex){
-    var first=-1,second=-1;
-    for(var i=0;i<order.length;i++){
-      var e=order[i];
-      if(e.type==='free'){
-        var f=S.freeTasks.find(function(x){return x.id===e.id;});
-        if(f&&(f.name||'').match(markerRegex)){
-          if(first<0) first=i; else if(second<0){second=i;break;}
-        }
-      }
-    }
-    return {a:first,b:second};
-  }
-  var mk3=findMarkers(localOrder,/^\*3/);
-  var mk1=findMarkers(localOrder,/^\*1/);
-  var mk2=findMarkers(localOrder,/^\*2/);
-
-  // Clasifică remoteNew după zona salvată în freeTask/task
-  var greenItems=[],redItems=[],yellowItems=[],restItems=[];
-  remoteNew.forEach(function(e){
-    var zone=null;
-    if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f)zone=f.zone||null;}
-    else{var p=S.items.find(function(x){return x.id===e.projectId;});var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===e.taskId;});if(t)zone=t.zone||null;}
-    if(zone==='green') greenItems.push(e);
-    else if(zone==='red') redItems.push(e);
-    else if(zone==='yellow') yellowItems.push(e);
-    else restItems.push(e);
-  });
-
-  traceLog('mergeNewZones: green='+greenItems.length+' red='+redItems.length+' yellow='+yellowItems.length+' rest='+restItems.length+' mk3='+mk3.a+'/'+mk3.b+' mk1='+mk1.a+'/'+mk1.b);
-
-  // Inserare la poziție: după marcatorul de deschidere al zonei; fallback = la început
-  function insertAfter(arr,idx,items){
-    if(!items.length) return arr;
-    // Sv1 fix: dacă marcatorul lipsește (idx<0), inserăm la ÎNCEPUT (pos=0), nu la final
-    // Altfel itemele verzi/roșii/galbene ar ajunge la coada listei
-    var pos=(idx>=0)?idx+1:0;
-    return arr.slice(0,pos).concat(items).concat(arr.slice(pos));
-  }
-
-  var result=localOrder.slice();
-  result=insertAfter(result, mk3.a, greenItems);
-  var off=greenItems.length;
-  result=insertAfter(result, mk1.a>=0?mk1.a+off:-1, redItems);
-  off+=redItems.length;
-  result=insertAfter(result, mk2.a>=0?mk2.a+off:-1, yellowItems);
-  off+=yellowItems.length;
-  // rest → la final (fără prioritate specială)
-  result=result.concat(restItems);
-
-  return result;
-}
 function moveToWait(taskId, projectId){
   if(projectId){
     // Task de proiect — schimbă status în proiect și mută în waitOrder
