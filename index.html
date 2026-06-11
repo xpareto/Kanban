@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V124</title>
+<title>Project Board V125</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1492,18 +1492,16 @@ function addWeekday(text){
       return text;
     }
   }
-  // Pentru rânduri cu /c
-  var slashC=text.match(/\/c(\d{1,2})\.(\d{1,2})/);
-  if(slashC){
-    var scD=parseInt(slashC[1]),scM=parseInt(slashC[2]);
-    if(scD>=1&&scD<=31&&scM>=1&&scM<=12){
-      var scDate=new Date((new Date()).getFullYear(),scM-1,scD,12,0,0);
-      var scZi=_ziSapt[scDate.getDay()];
-      var replaced2=_replaceWeekdayNearDate(text,slashC[0],scZi);
-      if(replaced2) return replaced2;
-      if(!_hasWeekdayToken(text)) return text.replace(/(\/c\d{1,2}\.\d{1,2})/,'$1 ('+scZi+')');
-      return text;
-    }
+  // Pentru rânduri cu /c (numeric /cZZ.LL sau litera /cl /cma etc.)
+  var _scParsed=parseCalCmd(text);
+  if(_scParsed){
+    var scDate2=new Date((new Date()).getFullYear(),_scParsed.month-1,_scParsed.day,12,0,0);
+    var scZi2=_ziSapt[scDate2.getDay()];
+    var replaced2=_replaceWeekdayNearDate(text,_scParsed.full,scZi2);
+    traceLog('Dzs addWeekday /c: token="'+_scParsed.full+'" -> '+_scParsed.day+'.'+_scParsed.month+' ('+scZi2+') replaced2='+(replaced2?'"'+replaced2.slice(0,30)+'"':'null'));
+    if(replaced2) return replaced2;
+    if(!_hasWeekdayToken(text)) return text.replace(_scParsed.full,_scParsed.full+' ('+scZi2+')');
+    return text;
   }
   // Găsește prima dată din text
   var d=extractDateFromRow({tname:text,isFree:true,id:''});
@@ -2248,19 +2246,55 @@ function renderTaskText(node, text){
   });
 }
 // ── /c parser ──────────────────────────────────────────────────
-var RE_CCMD=/\/c(\d{1,2})(?:\.(\d{1,2}))?(rz|rs|rl|ra)?(?:\s+(\d{1,2}:\d{2}))?/i;
+// Dzs: suportă /cZZ.LL (numeric), /cl /cma /cmi /cj /cv /cs /cd (ziua săpt. curentă),
+//      /cnl /cnma /cnmi /cnj /cnv /cns /cnd (ziua din săptămâna viitoare)
+var RE_CCMD=/\/c(n?(?:ma|mi|l|j|v|s|d)|\d{1,2})(?:\.(\d{1,2}))?(rz|rs|rl|ra)?(?:\s+(\d{1,2}:\d{2}))?/i;
 // Detectează și formatul deja-setat: 📅 2.apr 14:00 (zil)
 var RE_CALFMT=/📅\s*(\d{1,2})\.(ian|feb|mar|apr|mai|iun|iul|aug|sep|oct|nov|dec)(?:\s+(\d{1,2}:\d{2}))?(?:\s+\((zil|sapt|lunar|anual)\))?/i;
 var MONTHS_IDX={ian:1,feb:2,mar:3,apr:4,mai:5,iun:6,iul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+// Dzs: mapare literă zi → index getDay() (0=dum,1=lun,...,6=sam)
+var _ZI_MAP={d:0,l:1,ma:2,mi:3,j:4,v:5,s:6};
+// Dzs: calculează obiectul Date pentru o literă zi
+// Fără prefix n: ziua din SĂPTĂMÂNA CURENTĂ (lun-dum), chiar dacă a trecut
+// Cu prefix n:   ziua din SĂPTĂMÂNA VIITOARE
+// Săptămâna curentă: luni = today - (today===0?6:today-1)
+function _ziLiteraToDate(token){
+  var nextWeek=token.charAt(0)==='n';
+  var key=nextWeek?token.slice(1):token;
+  var targetDow=_ZI_MAP[key.toLowerCase()]; // 0=dum,1=lun,...,6=sam
+  if(targetDow===undefined) return null;
+  var now=new Date();
+  var today=now.getDay(); // 0=dum
+  // Calculează offsetul față de luni a săptămânii curente (lun=ziua 1)
+  // today=0(dum) → offset de la luni = +6 zile în urmă (dum e a 7-a zi a săpt)
+  var monOffset=today===0?-6:1-today; // zile de la today până la luni curentă (negativ=trecut)
+  // Ziua țintă față de luni curentă
+  var targetOffsetFromMon=targetDow===0?6:targetDow-1; // lun=0,mar=1,...,dum=6
+  var diff=monOffset+targetOffsetFromMon;
+  if(nextWeek) diff+=7; // săptămâna viitoare
+  return new Date(now.getFullYear(),now.getMonth(),now.getDate()+diff,12,0,0);
+}
 function parseCalCmd(text){
   var m=text.match(RE_CCMD);
-  if(!m) return null;
+  if(!m){traceLog('Dzs parseCalCmd: no match in "'+(text||'').slice(0,40)+'"');return null;}
   var now=new Date();
-  var day=parseInt(m[1]);
-  var month=m[2]?parseInt(m[2]):now.getMonth()+1;
+  var token=m[1];
+  var day,month;
+  var isLitera=!/^\d/.test(token); // e literă dacă nu începe cu cifră
+  if(isLitera){
+    var resolved=_ziLiteraToDate(token.toLowerCase());
+    if(!resolved){traceLog('Dzs parseCalCmd: token necunoscut="'+token+'"');return null;}
+    day=resolved.getDate();
+    month=resolved.getMonth()+1;
+    traceLog('Dzs parseCalCmd: token="'+token+'" -> '+day+'.'+month+' ('+_ziSapt[resolved.getDay()]+')');
+  } else {
+    day=parseInt(token);
+    month=m[2]?parseInt(m[2]):now.getMonth()+1;
+    traceLog('Dzs parseCalCmd: full="'+m[0]+'" day='+day+' month='+month+' rep='+(m[3]||'none')+' time='+(m[4]||'09:00'));
+  }
   var rep=(m[3]||'').toLowerCase()||null;
-  var timeStr=m[4]||'09:00'; // default 09:00 dacă ora lipsește
-  return {day:day,month:month,rep:rep,timeStr:timeStr,full:m[0]};
+  var timeStr=m[4]||'09:00';
+  return {day:day,month:month,rep:rep,timeStr:timeStr,full:m[0],fromLitera:isLitera};
 }
 function buildGCalUrl(taskTitle, parsed){
   var year=new Date().getFullYear();
@@ -2363,11 +2397,29 @@ function navigateTo(projectId){
 function doCreateProject(freeId,projName,taskLabel){
   var newId=gid();
   var newTaskId=gid();
+  // Np1-trace: poziția free task-ului înainte de creare proiect
+  var _np1Pos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===freeId;});
+  var _np1FT=S.freeTasks.find(function(x){return x.id===freeId;});
+  traceLog('Np1 doCreateProject: freeId='+freeId.slice(-6)+' pos='+_np1Pos+' zone='+(_np1FT?_np1FT.zone:'?')+' rank='+(_np1FT?_np1FT.zoneRank:'?')+' label="'+(taskLabel||'').slice(0,25)+'"');
   S.items=[...S.items,{type:'project',id:newId,name:projName,tasks:[{id:newTaskId,name:taskLabel,status:'next'}]}];
-  S.nextOrder=[...S.nextOrder,{type:'proj',projectId:newId,taskId:newTaskId}];
+  var _np1Entry={type:'proj',projectId:newId,taskId:newTaskId};
+  // Np1 fix: inserează la poziția originală a free task-ului (păstrează zona)
+  if(_np1Pos>=0){
+    var _np1Ord=S.nextOrder.slice();
+    _np1Ord.splice(_np1Pos,1,_np1Entry);
+    S.nextOrder=_np1Ord;
+  } else {
+    S.nextOrder=[...S.nextOrder,_np1Entry];
+  }
   markDeleted(freeId);
   S.freeTasks=S.freeTasks.filter(function(x){return x.id!==freeId;});
+  // Curăță eventuale rămășițe ale free task-ului (fără a afecta entry-ul nou)
   S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===freeId);});
+  detectAndSaveZones();
+  // Np1-trace: poziția finală a noului entry în nextOrder
+  var _np1FinalPos=S.nextOrder.findIndex(function(x){return x.type==='proj'&&x.taskId===newTaskId;});
+  var _np1NewT=S.items[S.items.length-1]&&S.items[S.items.length-1].tasks&&S.items[S.items.length-1].tasks[0];
+  traceLog('Np1 doCreateProject: newTaskId='+newTaskId.slice(-6)+' finalPos='+_np1FinalPos+' zone='+(_np1NewT?_np1NewT.zone:'?')+' nextOrder.length='+S.nextOrder.length);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   je({kind:'project-create',projectName:projName,fromFree:taskLabel,ts:Date.now()});
   save();render();
@@ -4957,6 +5009,12 @@ function extractDateFromRow(row){
   // 3. "N.luna" sau "N.L" ex: "21.mai", "14.5", "5.iun"
   r=text.match(/(\d{1,2})\.([a-zA-Z]{2,}|\d{1,2})(?!\d)/);
   if(r){d=parseInt(r[1]);m=mo(r[2]);var v3=mkD(d,m);if(v3)return v3;}
+  // Dzs: 4. /c cu literă zi (/cl /cma /cnv etc.) — rezolvă via parseCalCmd
+  var _pcEx=parseCalCmd(text);
+  if(_pcEx&&_pcEx.fromLitera){
+    var _dEx=new Date(now.getFullYear(),_pcEx.month-1,_pcEx.day,12,0,0);
+    if(!isNaN(_dEx.getTime())) return _dEx;
+  }
   return null; // fără pattern N singur — prea ambiguu
 }
 
