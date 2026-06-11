@@ -2340,6 +2340,18 @@ function fmtCalLabel(parsed){
   return base;
 }
 
+function resolveCalCmd(text){
+  if(!text||text.indexOf('/c')<0) return text;
+  var parsed=parseCalCmd(text);
+  if(!parsed) return text;
+  var numDate=parsed.day+'.'+parsed.month;
+  var replacement=numDate;
+  if(parsed.timeStr&&parsed.timeStr!=='09:00') replacement+=' '+parsed.timeStr;
+  var result=text.replace(parsed.full,replacement).replace(/\s{2,}/g,' ').trim();
+  traceLog('Dzs resolveCalCmd: "'+parsed.full+'" -> "'+replacement+'" result="'+result.slice(0,40)+'"');
+  return result;
+}
+
 // Adaugă buton 📅 dacă taskul conține /c SAU 📅 dată — butonul rămâne activ mereu
 function maybeAddCalBtn(rowEl, taskName, saveFn){
   var parsed=parseCalCmd(taskName);
@@ -2369,10 +2381,21 @@ function maybeAddCalBtn(rowEl, taskName, saveFn){
     var url=buildGCalUrl(cleanTitle,parsed);
     window.open(url,'_blank');
     if(isNew){
-      // Prima setare: înlocuiește /c cu 📅 dată formatată
-      var label='📅 '+fmtCalLabel(parsed);
-      var newName=taskName.replace(RE_CCMD,label).replace(/\s{2,}/g,' ').trim();
+      // Prima setare: înlocuiește /c cu 📅 + dată
+      // Dzs: dacă vine din literă (/cl /cmi etc.) folosim ZZ.LL numeric, nu ZZ.mon
+      var calLabel;
+      if(parsed.fromLitera){
+        calLabel='📅 '+parsed.day+'.'+parsed.month;
+        if(parsed.timeStr&&parsed.timeStr!=='09:00') calLabel+=' '+parsed.timeStr;
+        if(parsed.rep){var _rl={rz:'zil',rs:'sapt',rl:'lunar',ra:'anual'};calLabel+=' ('+(_rl[parsed.rep]||parsed.rep)+')';}
+      } else {
+        calLabel='📅 '+fmtCalLabel(parsed);
+      }
+      var newName=taskName.replace(RE_CCMD,calLabel).replace(/\s{2,}/g,' ').trim();
+      newName=addWeekday(newName); // adaugă (zi) lângă dată
       saveFn(newName);
+      // Dzs: sortare automată după setare dată
+      triggerAutoSort(newName,false);
     }
     // Dacă deja setat (📅 format) — nu modificăm textul, doar redeschide Calendar
   }
@@ -3880,13 +3903,14 @@ function rBoard(){
             moveToWait(tid,pid);
             return;
           }
-          newName=addWeekday(newName); // Adaugă ziua săptămânii după dată
-          // Dow1 fix: addWeekday trebuie aplicat doar pe prima linie (titlul), nu pe URL-uri
+          // Dzs: înlocuiește /cXX cu data numerică înainte de addWeekday
           if(urlLines.length){
+            newTitle=resolveCalCmd(newTitle);
             var titlePart=addWeekday(newTitle);
             newName=titlePart+'\n'+urlLines.join('\n');
             newTitle=titlePart;
           } else {
+            newName=resolveCalCmd(newName);
             newName=addWeekday(newName);
             newTitle=newName;
           }
@@ -4093,13 +4117,14 @@ function rBoard(){
       function saveWaitEdit(){
         if(_wSaveDone) return; _wSaveDone=true;
         var v=wei.value.trim();
-        if(v&&row.isFree){
+        var _wv=resolveCalCmd(v); // Dzs: /cXX → ZZ.LL
+        if(_wv&&row.isFree){
           var ft=S.waitFreeTasks.find(function(x){return x.id===row.id;});
-          if(ft){ft.name=addWeekday(v);ft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
-        } else if(v&&!row.isFree){
+          if(ft){ft.name=addWeekday(_wv);ft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+        } else if(_wv&&!row.isFree){
           var proj=S.items.find(function(x){return x.id===row.projectId;});
           var task=proj&&proj.tasks&&proj.tasks.find(function(t){return t.id===row.taskId;});
-          if(task){task.name=addWeekday(v);task.modifiedTs=Date.now();lw(SK,S.items);}
+          if(task){task.name=addWeekday(_wv);task.modifiedTs=Date.now();lw(SK,S.items);}
         }
         S.editWaitId=null;save();render();
       }
@@ -5462,11 +5487,14 @@ function fetchMetaWithFallback(urlToFetch, shareTitle, cb){
 // ── Service Worker + Share Target ──
 function addToNext(taskText){
   if(!taskText||!taskText.trim())return;
-  var ft={id:gid(),name:taskText.trim(),ts:Date.now()};
+  var _resolved=resolveCalCmd(taskText.trim()); // Dzs: /cXX → ZZ.LL
+  var _named=addWeekday(_resolved);
+  var ft={id:gid(),name:_named,ts:Date.now(),modifiedTs:Date.now()};
   je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
   S.freeTasks=[...S.freeTasks,ft];
   S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  if(extractDateFromRow({tname:_named,isFree:true,id:''})) triggerAutoSort(_named,false);
   render();
 }
 
