@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V123</title>
+<title>Project Board V124</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -479,13 +479,15 @@ async function fbPull(mode){
         S.nextOrder=S.nextOrder.filter(function(e){
           return !(e.type==='free'&&deletedIds.has(e.id));
         });
-        // Dedup final + curăță items necunoscuți
+        // Dedup final + curăță items necunoscuți + dedup marcatori
         var seenOrd=new Set();
         S.nextOrder=S.nextOrder.filter(function(e){
           var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
           if(seenOrd.has(key)||!knownIds.has(e.type==='free'?e.id:e.taskId)) return false;
           seenOrd.add(key);return true;
         });
+        S.nextOrder=dedupMarkers(S.nextOrder, S.freeTasks);
+        traceLog('fbPull merge done: nextOrder='+S.nextOrder.length+' freeTasks='+S.freeTasks.length);
         S.labels=rData.labels||S.labels;
         lw('pb-last-push-ts',Date.now());
         lw('pb-local-dirty-ts',0);
@@ -801,14 +803,47 @@ const DEF_SHARE=[
   {id:'id_demo_s1',name:'Getting Things Done — metodă de organizare a sarcinilor și proiectelor\nhttps://en.wikipedia.org/wiki/Getting_things_done',ts:Date.now()-180000},
   {id:'id_demo_s2',name:'Metoda Kanban — sistem vizual de gestionare a fluxului de lucru\nhttps://en.wikipedia.org/wiki/Kanban_(development)',ts:Date.now()-90000}
 ];
+// ── Dedup agresiv — curăță duplicate din nextOrder și freeTasks ──
+function dedupNextOrder(order){
+  var seen=new Set();
+  return (order||[]).filter(function(e){
+    var key=e.type==='free'?'f:'+e.id:'p:'+e.projectId+':'+e.taskId;
+    if(seen.has(key)) return false;
+    seen.add(key);return true;
+  });
+}
+function dedupFreeTasks(arr){
+  var seen=new Set();
+  return (arr||[]).filter(function(x){
+    if(seen.has(x.id)) return false;
+    seen.add(x.id);return true;
+  });
+}
+// Dedup markeri — păstrează maxim 2 din fiecare tip *1/*2/*3 în nextOrder
+function dedupMarkers(order, freeTasks){
+  var counts={'*1':0,'*2':0,'*3':0};
+  return order.filter(function(e){
+    if(e.type!=='free') return true;
+    var ft=freeTasks.find(function(x){return x.id===e.id;});
+    if(!ft) return true;
+    var m=(ft.name||'').match(/^(\*[123])/);
+    if(!m) return true;
+    var k=m[1];
+    counts[k]++;
+    // Mantinem maxim 2 marcatori din fiecare tip
+    return counts[k]<=2;
+  });
+}
+
 function init(){
   const s=ls(SK);S.items=(s&&Array.isArray(s)&&s.length)?s:JSON.parse(JSON.stringify(DEF));
   S.journal=ls(JK)||[];
   const storedFree=ls(FK);
-  S.freeTasks=(storedFree&&storedFree.length)?storedFree:JSON.parse(JSON.stringify(DEF_FREE));
+  S.freeTasks=dedupFreeTasks((storedFree&&storedFree.length)?storedFree:JSON.parse(JSON.stringify(DEF_FREE)));
   const storedNK=ls(NK);
   if(storedNK){
-    S.nextOrder=storedNK;
+    // Dedup la încărcare — curăță duplicate acumulate din sync-uri anterioare
+    S.nextOrder=dedupMarkers(dedupNextOrder(storedNK), S.freeTasks);
   } else {
     // Demo: construiește ordinea optimă — free tasks în ordinea din DEF_FREE,
     // cu task-urile de proiect intercalate în zona corectă (*2 galben, după *2a)
@@ -2009,12 +2044,10 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
   var remoteMap=buildRemoteZoneMap(remoteFT, remoteItems);
   if(!Object.keys(remoteMap).length) return localOrder;
 
-  // Identifică items care trebuie mutate — zona locală ≠ zona remote
-  var toMove=[];
-  var filteredResult=[];
+  // Dedup input primul — elimină duplicate deja existente
+  var cleanOrder=dedupNextOrder(localOrder);
 
-  // Calculează zona curentă a fiecărui item în localOrder
-  var initMarkers=findZoneMarkers(localOrder);
+  var initMarkers=findZoneMarkers(cleanOrder);
   function getZone(idx){
     if(initMarkers.mk3.a>=0&&initMarkers.mk3.b>=0&&idx>initMarkers.mk3.a&&idx<initMarkers.mk3.b) return 'green';
     if(initMarkers.mk1.a>=0&&initMarkers.mk1.b>=0&&idx>initMarkers.mk1.a&&idx<initMarkers.mk1.b) return 'red';
@@ -2022,33 +2055,39 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
     return null;
   }
 
-  localOrder.forEach(function(e,i){
+  var toMove=[];
+  var filteredResult=[];
+  var movedIds=new Set(); // previne duplicate în toMove
+
+  cleanOrder.forEach(function(e,i){
     var id=e.type==='free'?e.id:e.taskId;
     var rem=remoteMap[id];
     if(!rem){filteredResult.push(e);return;}
     var curZone=getZone(i);
     if(curZone===rem.zone){filteredResult.push(e);return;}
+    // Evită același item de două ori în toMove
+    if(movedIds.has(id)){return;}
+    movedIds.add(id);
     toMove.push({entry:e, zone:rem.zone, rank:rem.rank});
   });
 
-  if(!toMove.length) return localOrder;
+  if(!toMove.length) return cleanOrder;
 
-  traceLog('repositionByZone: '+toMove.map(function(x){
+  traceLog('repositionByZone: '+toMove.length+' items: '+toMove.slice(0,5).map(function(x){
     return (x.entry.id||x.entry.taskId||'').slice(-6)+'->'+x.zone+'#'+x.rank;
-  }).join(', '));
+  }).join(', ')+(toMove.length>5?'...':''));
 
-  // Sortăm după rank pentru inserare în ordine
   toMove.sort(function(a,b){
     if(a.zone!==b.zone) return 0;
     return a.rank-b.rank;
   });
 
-  // Inserăm unul câte unul — insertByZoneRank recalculează markerii la fiecare pas
   var result=filteredResult;
   toMove.forEach(function(x){
     result=insertByZoneRank(result, x.entry, x.zone, x.rank);
   });
-  return result;
+  // Dedup final — safety net
+  return dedupNextOrder(result);
 }
 
 // O1/Sv1: Inserează items NOI (din remote, absente din local) în poziția corectă
@@ -2071,12 +2110,12 @@ function mergeNextOrderWithZones(localOrder, remoteNew, allKnownIds, remoteFT, r
 
   traceLog('mergeNewZones: green='+greenItems.length+' red='+redItems.length+' yellow='+yellowItems.length+' rest='+restItems.length);
 
-  var result=localOrder.slice();
+  var result=dedupNextOrder(localOrder.slice());
   greenItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'green',x.rank);});
   redItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'red',x.rank);});
   yellowItems.forEach(function(x){result=insertByZoneRank(result,x.entry,'yellow',x.rank);});
   result=result.concat(restItems);
-  return result;
+  return dedupNextOrder(result);
 }
 
 function moveToWait(taskId, projectId){
