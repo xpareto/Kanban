@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V126</title>
+<title>Project Board V125</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2063,6 +2063,8 @@ function repositionByZone(localOrder, remoteOrder, remoteFT, remoteItems){
     if(!rem){filteredResult.push(e);return;}
     var curZone=getZone(i);
     if(curZone===rem.zone){filteredResult.push(e);return;}
+    // V1 fix: dacă remote nu are zonă (null/undefined) dar local are → local câștigă
+    if(!rem.zone&&curZone){traceLog('V1 reposByZone: local zone wins '+curZone+' for '+id.slice(-6));filteredResult.push(e);return;}
     // Evită același item de două ori în toMove
     if(movedIds.has(id)){return;}
     movedIds.add(id);
@@ -2368,6 +2370,18 @@ function maybeAddCalBtn(rowEl, taskName, saveFn){
         rep:mf[4]?repMap[mf[4].toLowerCase()]||null:null,
         full:mf[0]
       };
+    }
+  }
+  // D2 fix: dacă /c deja rezolvat ca ZZ.LL numeric (de resolveCalCmd), arată 📅
+  if(!parsed){
+    var _mn=taskName.match(/(^|\s)(\d{1,2})\.(\d{1,2})(?!\d)/);
+    if(_mn){
+      var _nd=parseInt(_mn[2]),_nm=parseInt(_mn[3]);
+      if(_nd>=1&&_nd<=31&&_nm>=1&&_nm<=12){
+        traceLog('D2 maybeCalBtn: numeric ZZ.LL match '+_mn[0].trim()+' in "'+taskName.slice(0,30)+'"');
+        parsed={day:_nd,month:_nm,rep:null,timeStr:'09:00',full:_mn[0].trim(),fromNumeric:true};
+        isNew=false; // nu reînlocuiește textul, doar deschide Calendar
+      }
     }
   }
   if(!parsed) return;
