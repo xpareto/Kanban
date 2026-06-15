@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V127</title>
+<title>Project Board V128</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2147,6 +2147,40 @@ function moveToWait(taskId, projectId){
     render();
   }
 }
+// W2: mută un task din WAIT la capul lui NEXT (/n command)
+function moveToNext(taskId, projectId){
+  if(projectId){
+    var proj=S.items.find(function(x){return x.id===projectId;});
+    if(!proj) return;
+    var task=proj.tasks.find(function(t){return t.id===taskId;});
+    if(!task) return;
+    // Șterge /n din nume
+    task.name=task.name.replace(/\/n(\s|$)/i,'$1').trim();
+    task.status='next';
+    task.modifiedTs=Date.now();
+    S.waitOrder=S.waitOrder.filter(function(x){return!(x.type==='proj'&&x.projectId===projectId&&x.taskId===taskId);});
+    S.nextOrder=[{type:'proj',projectId:projectId,taskId:taskId},...S.nextOrder];
+    traceLog('W2 moveToNext: proj task '+taskId.slice(-6)+' -> capul NEXT');
+    lw(NK,S.nextOrder);lw(WK,S.waitOrder);
+    save();render();
+  } else {
+    var wft=S.waitFreeTasks.find(function(x){return x.id===taskId;});
+    if(!wft) return;
+    // Șterge /n din nume
+    wft.name=wft.name.replace(/\/n(\s|$)/i,'$1').trim();
+    wft.modifiedTs=Date.now();
+    je({kind:'task-move',taskName:wft.name,fromCol:'wait',toCol:'next',ts:Date.now()});
+    S.waitFreeTasks=S.waitFreeTasks.filter(function(x){return x.id!==taskId;});
+    S.waitOrder=S.waitOrder.filter(function(x){return!(x.type==='free'&&x.id===taskId);});
+    var ft={id:wft.id,name:wft.name,ts:wft.ts,modifiedTs:Date.now()};
+    S.freeTasks=[...S.freeTasks,ft];
+    S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+    traceLog('W2 moveToNext: free task '+taskId.slice(-6)+' -> capul NEXT');
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
+    render();
+  }
+}
+
 // Detectează /w la salvarea unui task și îl mută în wait
 function checkSlashW(name, taskId, projectId){
   if(/\/w(?:\s|$)/i.test(name)){
@@ -4131,6 +4165,12 @@ function rBoard(){
       function saveWaitEdit(){
         if(_wSaveDone) return; _wSaveDone=true;
         var v=wei.value.trim();
+        // W2: /n în WAIT → mută la capul lui NEXT
+        if(/\/n(\s|$)/i.test(v)){
+          if(row.isFree) moveToNext(row.id,null);
+          else moveToNext(row.taskId,row.projectId);
+          return;
+        }
         var _wv=resolveCalCmd(v); // Dzs: /cXX → ZZ.LL
         if(_wv&&row.isFree){
           var ft=S.waitFreeTasks.find(function(x){return x.id===row.id;});
@@ -4264,6 +4304,13 @@ function rBoard(){
     smBtn.textContent='⧉ Merge → Clipboard';
     smBtn.addEventListener('click',doMerge);
     smBtn.addEventListener('touchend',function(e){e.preventDefault();doMerge();},{passive:false});
+    // Sh1: buton golire selecție
+    var smClr=mk('button');
+    smClr.textContent='✕ Golește';
+    smClr.title='Șterge toate bifările';
+    smClr.style.cssText='background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;';
+    smClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
+    smClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
     const smDl=document.createElement('button');
     smDl.className='merge-clear';
     smDl.style.cssText+='background:#6366F1;color:#fff;';
@@ -4276,7 +4323,7 @@ function rBoard(){
     smDel.textContent='🗑 Delete from Share';
     smDel.addEventListener('click',doMergeDelete);
     smDel.addEventListener('touchend',function(e){e.preventDefault();doMergeDelete();},{passive:false});
-    ap(smb,smc,smBtn,smDl,smDel);
+    ap(smb,smc,smBtn,smClr,smDl,smDel);
     root.appendChild(smb);
   }
 
@@ -4903,13 +4950,13 @@ function applyWeekdaysToAll(){
   var changed=false;
   S.freeTasks.forEach(function(f){
     if(f.id&&f.id.startsWith('cal::')) return; // cal events — skip
-    var newName=addWeekday(f.name||'');
+    var newName=addWeekday(resolveCalCmd(f.name||''));
     if(newName!==f.name){f.name=newName;f.modifiedTs=Date.now();changed=true;}
   });
   S.items.forEach(function(item){
     if(item.type!=='project') return;
     (item.tasks||[]).forEach(function(t){
-      var newName=addWeekday(t.name||'');
+      var newName=addWeekday(resolveCalCmd(t.name||''));
       if(newName!==t.name){t.name=newName;t.modifiedTs=Date.now();changed=true;}
     });
   });
@@ -5312,12 +5359,17 @@ function calcMergeGroups(){
   var markedIdx=[];
   rows.forEach(function(r,i){if(S.mergeFlags[r.rk]) markedIdx.push(i);});
   if(!markedIdx.length) return [];
+  // Sh1: sortăm markedIdx crescător (sus=index mic=cel mai nou, jos=index mare=cel mai vechi)
+  markedIdx.sort(function(a,b){return a-b;});
   var groups=[];
-  for(var g=0;g<markedIdx.length;g++){
-    var end=markedIdx[g];
-    var start=g===0?0:markedIdx[g-1]+1;
-    var groupRows=rows.slice(start,end+1);
-    // Ordinea inversă: marcat primul (cel mai recent), apoi urcăm
+  for(var g=0;g<markedIdx.length-1;g++){
+    // interval: [markedIdx[g+1] inclusiv (jos=mai vechi) .. markedIdx[g] exclusiv (sus=mai nou)]
+    // rows[0]=sus=cel mai recent; rows[N]=jos=cel mai vechi
+    // "jos inclusiv" = index mai mare, "sus exclusiv" = index mai mic (nu inclus)
+    var idxSus=markedIdx[g];    // exclusiv — nu e inclus
+    var idxJos=markedIdx[g+1];  // inclusiv — e inclus
+    var groupRows=rows.slice(idxSus+1,idxJos+1); // de la sus+1 până la jos inclusiv
+    // Ordine cronologică: jos (cel mai vechi, index mare) → sus (cel mai nou, index mic)
     var texts=groupRows.slice().reverse().map(function(r){return r.text;}).filter(Boolean);
     if(texts.length) groups.push({texts:texts, ids:groupRows.map(function(r){return r.id;})});
   }
