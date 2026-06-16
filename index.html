@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V130</title>
+<title>Project Board V131</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2397,6 +2397,9 @@ function resolveCalCmd(text){
 
 // Adaugă buton 📅 dacă taskul conține /c SAU 📅 dată — butonul rămâne activ mereu
 function maybeAddCalBtn(rowEl, taskName, saveFn){
+  // Share fix: skip complet dacă nu conține /c și nu e format 📅
+  if(!taskName) return;
+  if(taskName.indexOf('/c')<0&&taskName.indexOf('📅')<0) return;
   var parsed=parseCalCmd(taskName);
   var isNew=!!parsed;
   // Dacă nu găsim /c, încearcă formatul deja-setat 📅 2.apr 14:00
@@ -2457,6 +2460,14 @@ function maybeAddCalBtn(rowEl, taskName, saveFn){
   btn.addEventListener('click',doCalendar);
   btn.addEventListener('touchend',function(e){e.preventDefault();doCalendar(e);},{passive:false});
   rowEl.appendChild(btn);
+  // D1 fix: dacă /c neprelucrat, înlocuiește automat cu data numerică la render
+  if(isNew){
+    var _autoName=addWeekday(resolveCalCmd(taskName));
+    if(_autoName!==taskName){
+      traceLog('D1 auto-resolve: "'+taskName.slice(0,30)+'" -> "'+_autoName.slice(0,30)+'"');
+      setTimeout(function(){saveFn(_autoName);},50);
+    }
+  }
 }
 
 function navigateTo(projectId){
@@ -4263,7 +4274,16 @@ function rBoard(){
   ap(wd,wline1,wtxt,wCount,wline2);root.appendChild(wd);
   const wsec=div('');
   if(!wr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='No tasks waiting.';wsec.appendChild(e);}
-  wr.forEach((row,idx)=>{
+  // W1: sortare vizuală după vârstă — roșu(>60z) → galben(30-60z) → alb(<30z)
+  var _now=Date.now();
+  function _wAge(row){
+    if(!row.isFree) return 0;
+    var ft=S.waitFreeTasks.find(function(x){return x.id===row.id;});
+    return ft?((_now-(ft.ts||_now))/(1000*60*60*24)):0;
+  }
+  function _wPrio(row){var d=_wAge(row);return d>60?0:d>30?1:2;}
+  var wrSorted=wr.slice().sort(function(a,b){return _wPrio(a)-_wPrio(b);});
+  wrSorted.forEach((row,idx)=>{
     const r=div('nrow');
     r.dataset.widx=idx;
     if(row.isFree&&row.id) r.dataset.fwid=row.id;
