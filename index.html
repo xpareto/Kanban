@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V128</title>
+<title>Project Board V130</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2312,7 +2312,14 @@ function _ziLiteraToDate(token){
 }
 function parseCalCmd(text){
   var m=text.match(RE_CCMD);
-  if(!m){traceLog('Dzs parseCalCmd: no match in "'+(text||'').slice(0,40)+'"');return null;}
+  if(!m){
+    // D1-debug: charcode la /c dacă există
+    var _dbgIdx=text.indexOf('/c');
+    if(_dbgIdx<0){var _dbgIdx2=text.indexOf('\u002fc');} // alt slash
+    traceLog('Dzs parseCalCmd: no match in "'+(text||'').slice(0,40)+'" /c@'+_dbgIdx
+      +(_dbgIdx>=0?' cc='+text.charCodeAt(_dbgIdx)+','+text.charCodeAt(_dbgIdx+1):''));
+    return null;
+  }
   var now=new Date();
   var token=m[1];
   var day,month;
@@ -2408,7 +2415,7 @@ function maybeAddCalBtn(rowEl, taskName, saveFn){
   }
   // D2 fix: dacă /c deja rezolvat ca ZZ.LL numeric (de resolveCalCmd), arată 📅
   if(!parsed){
-    var _mn=taskName.match(/(^|\s)(\d{1,2})\.(\d{1,2})(?!\d)/);
+    var _mn=taskName.match(/(^|\s)(\d{1,2})\.(\d{1,2})(?![\dKkMm%])/);
     if(_mn){
       var _nd=parseInt(_mn[2]),_nm=parseInt(_mn[3]);
       if(_nd>=1&&_nd<=31&&_nm>=1&&_nm<=12){
@@ -2504,6 +2511,120 @@ function doCreateProject(freeId,projName,taskLabel){
     setTimeout(function(){el.style.background=orig||'';},1500);
   },80);
 }
+// P1: Adaugă task nou la proiect existent din NEXT — cu opțiune pentru task-ul curent
+function addTaskToProject(projId, existingTaskId){
+  var proj=S.items.find(function(x){return x.id===projId;});
+  if(!proj) return;
+
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px 14px 0 0;padding:16px 16px 24px;width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px;box-shadow:0 -8px 30px rgba(0,0,0,.5)';
+
+  var h=document.createElement('div');
+  h.textContent='⊞ '+proj.name+' — task nou';
+  h.style.cssText='color:#10B981;font-weight:800;font-size:15px';
+
+  // Câmp text pentru noul task
+  var lbl=document.createElement('div');
+  lbl.textContent='Nume task nou:';
+  lbl.style.cssText='color:#9CA3AF;font-size:11px';
+  var inp=document.createElement('input');
+  inp.placeholder='Task nou pentru '+proj.name+'...';
+  inp.style.cssText='width:100%;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box';
+
+  // Opțiuni pentru task-ul existent
+  var lbl2=document.createElement('div');
+  lbl2.textContent='Task-ul curent devine:';
+  lbl2.style.cssText='color:#9CA3AF;font-size:11px';
+  var opts=[{val:'next',label:'▶ Rămâne în Next',bg:'#2D3048'},{val:'wait',label:'⏳ Trece în Wait',bg:'#1E3A5F'},{val:'done',label:'✓ Terminat',bg:'#14532D'}];
+  var selOpt='next';
+  var optRow=document.createElement('div');
+  optRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  var optBtns=[];
+  opts.forEach(function(o){
+    var ob=document.createElement('button');
+    ob.textContent=o.label;
+    ob.style.cssText='flex:1;padding:8px 6px;border-radius:7px;border:2px solid '+(selOpt===o.val?'#10B981':'#374151')+';background:'+(selOpt===o.val?o.bg:'#1A1D2E')+';color:#F1F5F9;font-size:12px;cursor:pointer;touch-action:manipulation';
+    ob.addEventListener('click',function(){
+      selOpt=o.val;
+      optBtns.forEach(function(b,i){
+        b.style.borderColor=opts[i].val===selOpt?'#10B981':'#374151';
+        b.style.background=opts[i].val===selOpt?opts[i].bg:'#1A1D2E';
+      });
+    });
+    optRow.appendChild(ob);
+    optBtns.push(ob);
+  });
+
+  // Butoane confirmare
+  var btnRow=document.createElement('div');
+  btnRow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓ Adaugă';
+  bOk.style.cssText='flex:1;background:#10B981;color:#fff;border:none;border-radius:7px;padding:10px;font-weight:800;font-size:14px;cursor:pointer';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕';
+  bCancel.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:7px;padding:10px 14px;font-size:14px;cursor:pointer';
+
+  function doClose(){if(ov.parentNode)document.body.removeChild(ov);}
+
+  function doAdd(){
+    var newName=inp.value.trim();
+    if(!newName) return;
+    doClose();
+    // Găsește task-ul existent
+    var existTask=proj.tasks.find(function(t){return t.id===existingTaskId;});
+    // Tratează task-ul existent conform opțiunii
+    if(existTask){
+      if(selOpt==='wait'){
+        existTask.status='wait';existTask.modifiedTs=Date.now();
+        S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='proj'&&x.taskId===existingTaskId);});
+        S.waitOrder=[...S.waitOrder,{type:'proj',projectId:projId,taskId:existingTaskId}];
+        lw(WK,S.waitOrder);
+      } else if(selOpt==='done'){
+        existTask.status='done';existTask.doneTs=Date.now();existTask.modifiedTs=Date.now();
+        S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='proj'&&x.taskId===existingTaskId);});
+      }
+      // next: rămâne neschimbat
+    }
+    // Adaugă task nou la același proiect în NEXT, la aceeași poziție
+    var newTaskId=gid();
+    var resolvedName=addWeekday(resolveCalCmd(newName));
+    proj.tasks=[...proj.tasks,{id:newTaskId,name:resolvedName,status:'next',ts:Date.now(),modifiedTs:Date.now()}];
+    var existPos=S.nextOrder.findIndex(function(x){return x.type==='proj'&&x.taskId===existingTaskId;});
+    var newEntry={type:'proj',projectId:projId,taskId:newTaskId};
+    if(existPos>=0&&selOpt==='next'){
+      // Task-ul vechi rămâne, noul task e inserat imediat după
+      var ord=S.nextOrder.slice();
+      ord.splice(existPos+1,0,newEntry);
+      S.nextOrder=ord;
+    } else if(existPos>=0){
+      // Task-ul vechi a plecat, noul task îi ia locul
+      var ord2=S.nextOrder.slice();
+      ord2.splice(existPos,existPos>=0&&selOpt!=='next'?1:0,newEntry);
+      S.nextOrder=ord2;
+    } else {
+      S.nextOrder=[...S.nextOrder,newEntry];
+    }
+    detectAndSaveZones();
+    traceLog('P1 addTaskToProject: proj='+projId.slice(-6)+' newTask='+newTaskId.slice(-6)+' existOpt='+selOpt);
+    lw(NK,S.nextOrder);save();render();
+  }
+
+  bOk.addEventListener('click',doAdd);
+  bCancel.addEventListener('click',doClose);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doAdd();}if(e.key==='Escape')doClose();});
+  ov.addEventListener('click',function(e){if(e.target===ov)doClose();});
+
+  btnRow.appendChild(bOk);btnRow.appendChild(bCancel);
+  card.appendChild(h);card.appendChild(lbl);card.appendChild(inp);
+  card.appendChild(lbl2);card.appendChild(optRow);card.appendChild(btnRow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();},80);
+}
+
 function promoteToProject(freeId,taskName){
   var lines=taskName.split('\n');
   var taskLabel=lines.find(function(l){return !l.match(/^https?:\/\//);})||lines[0]||taskName;
@@ -4049,6 +4170,17 @@ function rBoard(){
         nb.addEventListener('touchend',function(e){e.preventDefault();doNote(e);},{passive:false});
         r.appendChild(nb);
       })(row.projectId, row.taskId, row.tname);
+      // P1: buton ⊞ pentru a adăuga task nou la același proiect
+      (function(pid,tid){
+        const p1b=document.createElement('button');
+        p1b.textContent='⊞';
+        p1b.title='Adaugă task nou la același proiect';
+        p1b.style.cssText='background:#10B981;color:#fff;border:none;border-radius:6px;padding:5px 9px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        function doP1(e){e.stopPropagation();e.preventDefault();addTaskToProject(pid,tid);}
+        p1b.addEventListener('click',doP1);
+        p1b.addEventListener('touchend',function(e){e.preventDefault();doP1(e);},{passive:false});
+        r.appendChild(p1b);
+      })(row.projectId,row.taskId);
       (function(pid){
         const gb=document.createElement('button');
         gb.textContent='▶';
@@ -4135,6 +4267,16 @@ function rBoard(){
     const r=div('nrow');
     r.dataset.widx=idx;
     if(row.isFree&&row.id) r.dataset.fwid=row.id;
+    // W1: colorare după vârstă pentru free tasks din WAIT
+    if(row.isFree){
+      var _wft=S.waitFreeTasks.find(function(x){return x.id===row.id;});
+      if(_wft){
+        var _wAge=Date.now()-(_wft.ts||Date.now());
+        var _wDays=_wAge/(1000*60*60*24);
+        if(_wDays>60) r.style.background='#FEE2E2';
+        else if(_wDays>30) r.style.background='#FEF9C3';
+      }
+    }
     // Buton Done — doar pentru task-uri cu proiect
     if(!row.isFree){
       (function(pid,tid){
@@ -4948,19 +5090,28 @@ function sortRestNext(){
 // Aplică addWeekday retroactiv pe toate taskurile care au dată dar nu au zi
 function applyWeekdaysToAll(){
   var changed=false;
+  traceLog('applyWeekdays V128: freeTasks='+S.freeTasks.length+' items='+S.items.length);
   S.freeTasks.forEach(function(f){
-    if(f.id&&f.id.startsWith('cal::')) return; // cal events — skip
-    var newName=addWeekday(resolveCalCmd(f.name||''));
-    if(newName!==f.name){f.name=newName;f.modifiedTs=Date.now();changed=true;}
+    if(f.id&&f.id.startsWith('cal::')) return;
+    var resolved=resolveCalCmd(f.name||'');
+    var newName=addWeekday(resolved);
+    if(newName!==f.name){
+      traceLog('applyWeekdays: "'+( f.name||'')+'" -> "'+newName+'"');
+      f.name=newName;f.modifiedTs=Date.now();changed=true;
+    }
   });
   S.items.forEach(function(item){
     if(item.type!=='project') return;
     (item.tasks||[]).forEach(function(t){
-      var newName=addWeekday(resolveCalCmd(t.name||''));
-      if(newName!==t.name){t.name=newName;t.modifiedTs=Date.now();changed=true;}
+      var resolved=resolveCalCmd(t.name||'');
+      var newName=addWeekday(resolved);
+      if(newName!==t.name){
+        traceLog('applyWeekdays proj: "'+( t.name||'')+'" -> "'+newName+'"');
+        t.name=newName;t.modifiedTs=Date.now();changed=true;
+      }
     });
   });
-  if(changed){lw(FK,S.freeTasks);lw(SK,S.items);traceLog('applyWeekdays: updated');}
+  if(changed){lw(FK,S.freeTasks);lw(SK,S.items);traceLog('applyWeekdays: saved');}
 }
 
 function sortBetweenMarkers(){
