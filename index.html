@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V131</title>
+<title>Project Board V132</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2490,7 +2490,11 @@ function doCreateProject(freeId,projName,taskLabel){
   var _np1Pos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===freeId;});
   var _np1FT=S.freeTasks.find(function(x){return x.id===freeId;});
   traceLog('Np1 doCreateProject: freeId='+freeId.slice(-6)+' pos='+_np1Pos+' zone='+(_np1FT?_np1FT.zone:'?')+' rank='+(_np1FT?_np1FT.zoneRank:'?')+' label="'+(taskLabel||'').slice(0,25)+'"');
-  S.items=[...S.items,{type:'project',id:newId,name:projName,tasks:[{id:newTaskId,name:taskLabel,status:'next'}]}];
+  // P1-note fix: copiază nota din free task-ul original
+  var _np1Note=_np1FT&&_np1FT.note?_np1FT.note:'';
+  var _np1Task={id:newTaskId,name:taskLabel,status:'next'};
+  if(_np1Note) _np1Task.note=_np1Note;
+  S.items=[...S.items,{type:'project',id:newId,name:projName,tasks:[_np1Task]}];
   var _np1Entry={type:'proj',projectId:newId,taskId:newTaskId};
   // Np1 fix: inserează la poziția originală a free task-ului (păstrează zona)
   if(_np1Pos>=0){
@@ -4868,7 +4872,11 @@ function moveSelectedToProject(){
       var taskLabel=row.tname||row.name||row.taskName||'';
       var newTaskId=gid();
       var newEntry={type:'proj',projectId:projId,taskId:newTaskId};
-      proj.tasks=[...proj.tasks,{id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()}];
+      // P1-note fix: copiază nota din free task-ul original
+      var _origFT=row.isFree?S.freeTasks.find(function(x){return x.id===row.id;}):null;
+      var _newTask={id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()};
+      if(_origFT&&_origFT.note) _newTask.note=_origFT.note;
+      proj.tasks=[...proj.tasks,_newTask];
       // P1 fix: inserează la aceeași poziție ca task-ul original (păstrează zona)
       if(row.isFree){
         var origPos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===row.id;});
