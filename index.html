@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V132</title>
+<title>Project Board V133</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2181,6 +2181,44 @@ function moveToNext(taskId, projectId){
   }
 }
 
+// C1: detectează interval ZZ.LL...ZZ2.LL2 și creează task FINALIZARE la data finală
+// Pattern: "6.7 până în 20.7", "6.7-20.7", "6.7 – 20.7", "din 6.7 până în 20.7"
+var RE_INTERVAL=/(?:din\s*)?(\d{1,2})\.(\d{1,2})\s*(?:până\s*(?:în|la)?|[-–])\s*(\d{1,2})\.(\d{1,2})/i;
+function checkAndCreateFinalizare(name){
+  if(!name) return;
+  var m=name.match(RE_INTERVAL);
+  if(!m) return;
+  var d1=parseInt(m[1]),mo1=parseInt(m[2]);
+  var d2=parseInt(m[3]),mo2=parseInt(m[4]);
+  var now=new Date();
+  var yr=now.getFullYear();
+  var dateStart=new Date(yr,mo1-1,d1,12,0,0);
+  var dateEnd=new Date(yr,mo2-1,d2,12,0,0);
+  // Creează FINALIZARE doar după ce trecem de data de început
+  if(now<dateStart){
+    traceLog('C1: '+d1+'.'+mo1+' nu a trecut încă — nu creez FINALIZARE');
+    return;
+  }
+  // Anti-duplicat: nu creează dacă există deja
+  var finText='FINALIZARE '+name;
+  var already=S.freeTasks.find(function(f){return(f.name||'')===(finText);});
+  if(already){
+    traceLog('C1: FINALIZARE deja există — skip');
+    return;
+  }
+  // Construiește textul cu data finală
+  var MONTHS_RO2=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'];
+  var endLabel=d2+'.'+MONTHS_RO2[mo2-1];
+  var newName='FINALIZARE '+name+' 📅 '+endLabel;
+  newName=addWeekday(newName);
+  var ft={id:gid(),name:newName,ts:dateEnd.getTime(),modifiedTs:Date.now()};
+  S.freeTasks=[...S.freeTasks,ft];
+  S.nextOrder=[...S.nextOrder,{type:'free',id:ft.id}];
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  triggerAutoSort(newName,false);
+  traceLog('C1: creat FINALIZARE "'+newName.slice(0,40)+'" data '+d2+'.'+mo2);
+}
+
 // Detectează /w la salvarea unui task și îl mută în wait
 function checkSlashW(name, taskId, projectId){
   if(/\/w(?:\s|$)/i.test(name)){
@@ -2202,6 +2240,28 @@ function confAdd(){
   const now_=Date.now();const ni=S.showAdd==='section'?{type:'section',id:gid(),name:S.addName.trim(),modifiedTs:now_}:{type:'project',id:gid(),name:S.addName.trim(),tasks:[],modifiedTs:now_};
   S.items=[...S.items,ni];S.addName='';S.showAdd=null;save();render();
 }
+// F1: căutare restrânsă doar la NEXT — folosită de butoanele rapide #a #g etc.
+function doSearchNextOnly(q){
+  q=(q||'').trim().toLowerCase();
+  if(!q){S.sr=null;render();return;}
+  var res=[];
+  S.items.forEach(function(item){
+    if(item.type!=='project') return;
+    (item.tasks||[]).forEach(function(t){
+      if(t.status!=='next') return;
+      var taskMatch=t.name.toLowerCase().indexOf(q)>=0;
+      var noteMatch=!!(t.note&&t.note.toLowerCase().indexOf(q)>=0);
+      if(taskMatch||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,hasNote:noteMatch});
+    });
+  });
+  S.freeTasks.forEach(function(f){
+    var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();
+    if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0) res.push({k:'fn',name:f.name||'',id:f.id});
+  });
+  traceLog('F1 doSearchNextOnly: q="'+q+'" results='+res.length);
+  S.sr=res;render();
+}
+
 function doSearch(){
   var q=S.sq.trim().toLowerCase();
   if(!q){S.sr=null;render();return;}
@@ -3466,7 +3526,7 @@ function rBoard(){
       e.stopPropagation();
       S.sq=lbl;
       si.value=lbl;
-      doSearch();
+      doSearchNextOnly(lbl); // F1: doar NEXT pentru butoanele rapide #a #g etc.
     }
     lb.addEventListener('click',doLbl);
     lb.addEventListener('touchend',function(e){e.preventDefault();doLbl(e);},{passive:false});
@@ -3908,6 +3968,10 @@ function rBoard(){
     var sbProj=mk('button','sel-btn proj');sbProj.textContent='⊞ Project';
     sbProj.addEventListener('click',function(){moveSelectedToProject();});
     sbProj.addEventListener('touchend',function(e){e.preventDefault();moveSelectedToProject();},{passive:false});
+    var sbAutoLink=mk('button','sel-btn proj');sbAutoLink.textContent='⊟ Auto-link';
+    sbAutoLink.title='Atașează automat la proiectul deja prezent în selecție';
+    sbAutoLink.addEventListener('click',function(){autoLinkSelectedToProject();});
+    sbAutoLink.addEventListener('touchend',function(e){e.preventDefault();autoLinkSelectedToProject();},{passive:false});
     var sbSub=mk('button','sel-btn sub');sbSub.textContent='↳ Sub primul';
     sbSub.addEventListener('click',function(){moveSelectedUnderFirst();});
     sbSub.addEventListener('touchend',function(e){e.preventDefault();moveSelectedUnderFirst();},{passive:false});
@@ -3924,9 +3988,9 @@ function rBoard(){
       sbSort.style.background='#7C3AED';
       sbSort.addEventListener('click',function(){sortSelectedByDate();});
       sbSort.addEventListener('touchend',function(e){e.preventDefault();sortSelectedByDate();},{passive:false});
-      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbSort,sbOpml,sbClear);
+      ap(sb,scc,sbTop,sbBot,sbProj,sbAutoLink,sbSub,sbSort,sbOpml,sbClear);
     } else {
-      ap(sb,scc,sbTop,sbBot,sbProj,sbSub,sbOpml,sbClear);
+      ap(sb,scc,sbTop,sbBot,sbProj,sbAutoLink,sbSub,sbOpml,sbClear);
     }
     root.appendChild(sb);
   }
@@ -4100,12 +4164,12 @@ function rBoard(){
           }
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
-            if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);}
+            if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(newName);}
           } else {
             var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
             if(proj){
               var task=proj.tasks.find(function(t){return t.id===rowSnap.taskId;});
-              if(task){task.name=newName;task.modifiedTs=Date.now();save();}
+              if(task){task.name=newName;task.modifiedTs=Date.now();checkAndCreateFinalizare(newName);save();}
             }
           }
           traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
@@ -4828,6 +4892,51 @@ function rBoard(){
 // ── Mută taskurile selectate la început sau la final în NEXT ──
 // Mută toate rândurile selectate într-un proiect (existent sau nou)
 // Folosește același overlay ca promoteToProject, dar acționează pe toate rândurile selectate
+// S1: detectează proiectul din selecție și atașează automat restul (fără overlay)
+function autoLinkSelectedToProject(){
+  var nr=getNR();
+  var selKeys=Object.keys(S.selectedNext);
+  if(selKeys.length<2) return;
+  var selRows=nr.filter(function(r){
+    var k=r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;
+    return selKeys.indexOf(k)>=0;
+  });
+  var anchorRow=selRows.find(function(r){return!r.isFree;});
+  if(!anchorRow){
+    traceLog('S1 autoLink: niciun rând selectat nu are proiect — nimic de făcut');
+    fbToast('⚠ Niciun rând selectat nu e legat de un proiect','#7C2D12','#FCA5A5',2200);
+    return;
+  }
+  var proj=S.items.find(function(x){return x.id===anchorRow.projectId;});
+  if(!proj) return;
+  var freeRows=selRows.filter(function(r){return r.isFree;});
+  traceLog('S1 autoLink: proj='+proj.name+' freeCount='+freeRows.length);
+  freeRows.forEach(function(row){
+    var origFT=S.freeTasks.find(function(x){return x.id===row.id;});
+    var taskLabel=(origFT&&origFT.name)||row.tname||'';
+    var newTaskId=gid();
+    var newTask={id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()};
+    if(origFT&&origFT.note) newTask.note=origFT.note;
+    proj.tasks=[...proj.tasks,newTask];
+    var origPos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===row.id;});
+    var newEntry={type:'proj',projectId:proj.id,taskId:newTaskId};
+    if(origPos>=0){
+      var ord=S.nextOrder.slice();
+      ord.splice(origPos,1,newEntry);
+      S.nextOrder=ord;
+    } else {
+      S.nextOrder=[...S.nextOrder,newEntry];
+    }
+    markDeleted(row.id);
+    S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
+    S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
+  });
+  detectAndSaveZones();
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SK,S.items);
+  S.selectedNext={};S.selectMode=false;_selOrder=0;
+  render();
+}
+
 function moveSelectedToProject(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
@@ -5740,6 +5849,7 @@ function addToNext(taskText){
   S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   if(extractDateFromRow({tname:_named,isFree:true,id:''})) triggerAutoSort(_named,false);
+  checkAndCreateFinalizare(_named); // C1
   render();
 }
 
