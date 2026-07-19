@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V135</title>
+<title>Project Board V136</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1475,6 +1475,22 @@ function _replaceWeekdayNearDate(text, datePattern, newZi){
 
 function addWeekday(text){
   if(!text) return text;
+  // Fix interval ZZ.LL-ZZ2.LL2: procesează ÎNAINTE de _hasWeekdayToken
+  var _ivM=text.match(/(\d{1,2})\.(\d{1,2})\s*([-\u2013])\s*(\d{1,2})\.(\d{1,2})/);
+  if(_ivM){
+    var _yr2=(new Date()).getFullYear();
+    var _dt1=new Date(_yr2,parseInt(_ivM[2])-1,parseInt(_ivM[1]),12,0,0);
+    var _dt2=new Date(_yr2,parseInt(_ivM[5])-1,parseInt(_ivM[4]),12,0,0);
+    var _zi1=_ziSapt[_dt1.getDay()],_zi2=_ziSapt[_dt2.getDay()];
+    var _d1s=_ivM[1]+'.'+_ivM[2],_d2s=_ivM[4]+'.'+_ivM[5],_sepIv=_ivM[3];
+    var _hasZ1=new RegExp('(^|[\\s(])'+_d1s.replace(/\./g,'\\.')+'\\s*\\('+_zi1+'\\)').test(text);
+    var _hasZ2=new RegExp('(^|[\\s(])'+_d2s.replace(/\./g,'\\.')+'\\s*\\('+_zi2+'\\)').test(text);
+    if(!_hasZ1||!_hasZ2){
+      var _fullNew=_d1s+' ('+_zi1+') '+_sepIv+' '+_d2s+' ('+_zi2+')';
+      var _res=text.replace(_ivM[0],_fullNew);
+      if(_res!==text){traceLog('AW interval: "'+_ivM[0]+'" -> "'+_fullNew+'"');return _res;}
+    }
+  }
   // Pattern interval N-N2.L sau N-N2.luna (ex: 3-10.5, 3-10.mai)
   var mIv=text.match(/(\d{1,2})\s*[-\u2013]\s*\d{1,2}\.([a-zA-Z]{2,}|\d{1,2})/);
   if(mIv){
@@ -1490,24 +1506,6 @@ function addWeekday(text){
       if(replaced) return replaced;
       if(!_hasWeekdayToken(text)) return text.replace(mIv[0],mIv[0]+' ('+ivZi+')');
       return text;
-    }
-  }
-  // Interval ZZ.LL-ZZ2.LL2: adaugă (zi1) după d1 și (zi2) după d2
-  var _ivFull=text.match(/(\d{1,2})\.(\d{1,2})\s*([-–])\s*(\d{1,2})\.(\d{1,2})/);
-  if(_ivFull){
-    var _yr=(new Date()).getFullYear();
-    var _dt1=new Date(_yr,parseInt(_ivFull[2])-1,parseInt(_ivFull[1]),12,0,0);
-    var _dt2=new Date(_yr,parseInt(_ivFull[5])-1,parseInt(_ivFull[4]),12,0,0);
-    var _zi1=_ziSapt[_dt1.getDay()],_zi2=_ziSapt[_dt2.getDay()];
-    var _d1str=_ivFull[1]+'.'+_ivFull[2];
-    var _d2str=_ivFull[4]+'.'+_ivFull[5];
-    var _sep=_ivFull[3];
-    // Construiește: "d1 (zi1) - d2 (zi2)"
-    var _newInterval=_d1str+' ('+_zi1+') '+_sep+' '+_d2str+' ('+_zi2+')';
-    var _newText=text.replace(_ivFull[0],_newInterval);
-    if(_newText!==text){
-      traceLog('addWeekday interval: "'+_ivFull[0]+'" -> "'+_newInterval+'"');
-      return _newText;
     }
   }
   // Pentru rânduri cu /c (numeric /cZZ.LL sau litera /cl /cma etc.)
@@ -2205,27 +2203,27 @@ var RE_INTERVAL=/(?:din\s*)?(\d{1,2})\.(\d{1,2})\s*(?:până\s*(?:în|la)?|[-–
 function checkAndCreateFinalizare(name){
   if(!name) return;
   var m=name.match(RE_INTERVAL);
-  if(!m) return;
+  if(!m){return;}
   var d1=parseInt(m[1]),mo1=parseInt(m[2]);
   var d2=parseInt(m[3]),mo2=parseInt(m[4]);
   var now=new Date();
   var yr=now.getFullYear();
   var dateStart=new Date(yr,mo1-1,d1,12,0,0);
   var dateEnd=new Date(yr,mo2-1,d2,12,0,0);
-  // C1 logică: dataApariție = d2-4 dacă durată>=4, altfel d1
   var _durata=Math.round((dateEnd-dateStart)/(1000*60*60*24));
   var _apareZile=_durata>=4?4:_durata;
   var _dataAparitie=new Date(yr,mo2-1,d2-_apareZile,12,0,0);
-  if(now<_dataAparitie){
-    traceLog('C1: '+d1+'.'+mo1+'-'+d2+'.'+mo2+' durată='+_durata+' apare la '+(d2-_apareZile)+'.'+mo2+' — prea devreme');
-    return;
-  }
-  // Anti-duplicat: caută după prefix FINALIZARE + conținut original
+  traceLog('C1 check: "'+name.slice(0,25)+'" dur='+_durata+' apariție='+(d2-_apareZile)+'.'+mo2+' now>=ap:'+( now>=_dataAparitie));
+  if(now<_dataAparitie) return;
+  // Anti-duplicat lax: caută interval d1.mo1-d2.mo2 în orice task FINALIZARE
+  var _ivKey=d1+'.'+mo1+'-'+d2+'.'+mo2;
+  var _ivKey2=d1+'.'+mo1+' - '+d2+'.'+mo2; // cu spații
   var already=S.freeTasks.find(function(f){
-    return(f.name||'').indexOf('FINALIZARE '+name)===0;
+    var fn=f.name||'';
+    return fn.indexOf('FINALIZARE')===0&&(fn.indexOf(_ivKey)>=0||fn.indexOf(_ivKey2)>=0);
   });
   if(already){
-    traceLog('C1: FINALIZARE deja există — skip');
+    traceLog('C1: FINALIZARE deja există ("'+already.name.slice(0,30)+'") — skip');
     return;
   }
   // Construiește textul cu data finală
