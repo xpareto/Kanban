@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V134</title>
+<title>Project Board V135</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1492,6 +1492,24 @@ function addWeekday(text){
       return text;
     }
   }
+  // Interval ZZ.LL-ZZ2.LL2: adaugă (zi1) după d1 și (zi2) după d2
+  var _ivFull=text.match(/(\d{1,2})\.(\d{1,2})\s*([-–])\s*(\d{1,2})\.(\d{1,2})/);
+  if(_ivFull){
+    var _yr=(new Date()).getFullYear();
+    var _dt1=new Date(_yr,parseInt(_ivFull[2])-1,parseInt(_ivFull[1]),12,0,0);
+    var _dt2=new Date(_yr,parseInt(_ivFull[5])-1,parseInt(_ivFull[4]),12,0,0);
+    var _zi1=_ziSapt[_dt1.getDay()],_zi2=_ziSapt[_dt2.getDay()];
+    var _d1str=_ivFull[1]+'.'+_ivFull[2];
+    var _d2str=_ivFull[4]+'.'+_ivFull[5];
+    var _sep=_ivFull[3];
+    // Construiește: "d1 (zi1) - d2 (zi2)"
+    var _newInterval=_d1str+' ('+_zi1+') '+_sep+' '+_d2str+' ('+_zi2+')';
+    var _newText=text.replace(_ivFull[0],_newInterval);
+    if(_newText!==text){
+      traceLog('addWeekday interval: "'+_ivFull[0]+'" -> "'+_newInterval+'"');
+      return _newText;
+    }
+  }
   // Pentru rânduri cu /c (numeric /cZZ.LL sau litera /cl /cma etc.)
   var _scParsed=parseCalCmd(text);
   if(_scParsed){
@@ -2194,14 +2212,18 @@ function checkAndCreateFinalizare(name){
   var yr=now.getFullYear();
   var dateStart=new Date(yr,mo1-1,d1,12,0,0);
   var dateEnd=new Date(yr,mo2-1,d2,12,0,0);
-  // Creează FINALIZARE doar după ce trecem de data de început
-  if(now<dateStart){
-    traceLog('C1: '+d1+'.'+mo1+' nu a trecut încă — nu creez FINALIZARE');
+  // C1 logică: dataApariție = d2-4 dacă durată>=4, altfel d1
+  var _durata=Math.round((dateEnd-dateStart)/(1000*60*60*24));
+  var _apareZile=_durata>=4?4:_durata;
+  var _dataAparitie=new Date(yr,mo2-1,d2-_apareZile,12,0,0);
+  if(now<_dataAparitie){
+    traceLog('C1: '+d1+'.'+mo1+'-'+d2+'.'+mo2+' durată='+_durata+' apare la '+(d2-_apareZile)+'.'+mo2+' — prea devreme');
     return;
   }
-  // Anti-duplicat: nu creează dacă există deja
-  var finText='FINALIZARE '+name;
-  var already=S.freeTasks.find(function(f){return(f.name||'')===(finText);});
+  // Anti-duplicat: caută după prefix FINALIZARE + conținut original
+  var already=S.freeTasks.find(function(f){
+    return(f.name||'').indexOf('FINALIZARE '+name)===0;
+  });
   if(already){
     traceLog('C1: FINALIZARE deja există — skip');
     return;
@@ -2457,9 +2479,11 @@ function resolveCalCmd(text){
 
 // Adaugă buton 📅 dacă taskul conține /c SAU 📅 dată — butonul rămâne activ mereu
 function maybeAddCalBtn(rowEl, taskName, saveFn){
-  // Share fix: skip complet dacă nu conține /c și nu e format 📅
+  // Cal1 fix: skip dacă nu conține /c, 📅, sau ZZ.LL numeric
   if(!taskName) return;
-  if(taskName.indexOf('/c')<0&&taskName.indexOf('📅')<0) return;
+  if(taskName.indexOf('/c')<0&&taskName.indexOf('📅')<0){
+    if(!/(^|\s)\d{1,2}\.\d{1,2}(?![\dKkMm%])/.test(taskName)) return;
+  }
   var parsed=parseCalCmd(taskName);
   var isNew=!!parsed;
   // Dacă nu găsim /c, încearcă formatul deja-setat 📅 2.apr 14:00
@@ -5229,6 +5253,7 @@ function applyWeekdaysToAll(){
       traceLog('applyWeekdays: "'+( f.name||'')+'" -> "'+newName+'"');
       f.name=newName;f.modifiedTs=Date.now();changed=true;
     }
+    checkAndCreateFinalizare(f.name); // C1: verifică la fiecare init
   });
   S.items.forEach(function(item){
     if(item.type!=='project') return;
@@ -5239,6 +5264,7 @@ function applyWeekdaysToAll(){
         traceLog('applyWeekdays proj: "'+( t.name||'')+'" -> "'+newName+'"');
         t.name=newName;t.modifiedTs=Date.now();changed=true;
       }
+      checkAndCreateFinalizare(t.name); // C1: proj tasks
     });
   });
   if(changed){lw(FK,S.freeTasks);lw(SK,S.items);traceLog('applyWeekdays: saved');}
