@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V136</title>
+<title>Project Board V137</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1488,6 +1488,8 @@ function addWeekday(text){
     if(!_hasZ1||!_hasZ2){
       var _fullNew=_d1s+' ('+_zi1+') '+_sepIv+' '+_d2s+' ('+_zi2+')';
       var _res=text.replace(_ivM[0],_fullNew);
+      // V1: șterge orice (zi) parazit rămas după intervalul nou
+      _res=_res.replace(new RegExp('('+_fullNew.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')+')\\s*\\((?:lun|mar|mie|joi|vin|sam|dum)\\)','i'),'$1');
       if(_res!==text){traceLog('AW interval: "'+_ivM[0]+'" -> "'+_fullNew+'"');return _res;}
     }
   }
@@ -2199,9 +2201,10 @@ function moveToNext(taskId, projectId){
 
 // C1: detectează interval ZZ.LL...ZZ2.LL2 și creează task FINALIZARE la data finală
 // Pattern: "6.7 până în 20.7", "6.7-20.7", "6.7 – 20.7", "din 6.7 până în 20.7"
-var RE_INTERVAL=/(?:din\s*)?(\d{1,2})\.(\d{1,2})\s*(?:până\s*(?:în|la)?|[-–])\s*(\d{1,2})\.(\d{1,2})/i;
+var RE_INTERVAL=/(?:din\s*)?(\d{1,2})\.(\d{1,2})(?:\s*\([^)]+\))?\s*(?:până\s*(?:în|la)?|[-–])\s*(\d{1,2})\.(\d{1,2})/i;
 function checkAndCreateFinalizare(name){
   if(!name) return;
+  if(name.indexOf('FINALIZARE')===0) return; // V3: evită cascadă
   var m=name.match(RE_INTERVAL);
   if(!m){return;}
   var d1=parseInt(m[1]),mo1=parseInt(m[2]);
