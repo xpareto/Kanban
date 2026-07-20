@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ProjectBoard — Manual Tehnic V128</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0F1117;color:#E2E8F0;line-height:1.75;padding-bottom:80px}
+.hdr{background:#1A1D2E;border-bottom:2px solid #F59E0B;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:18px;font-weight:900;color:#F59E0B}
+.hdr .ver{font-size:11px;color:#6B7280;margin-left:auto}
+.sec{padding:24px 20px 0}
+h2{font-size:17px;font-weight:900;color:#F59E0B;border-bottom:1px solid #2D3048;padding-bottom:10px;margin:28px 0 16px}
+h3{font-size:14px;font-weight:700;color:#93C5FD;margin:18px 0 8px}
+h4{font-size:12px;font-weight:700;color:#94A3B8;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.07em}
+p{font-size:13px;margin-bottom:10px;color:#CBD5E1}
+code{background:#1E2130;border:1px solid #2D3048;border-radius:4px;padding:2px 7px;font-size:12px;font-family:'Courier New',monospace;color:#60A5FA}
+pre{background:#1E2130;border:1px solid #2D3048;border-radius:8px;padding:14px 16px;font-family:'Courier New',monospace;font-size:12px;color:#93C5FD;overflow-x:auto;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0 16px}
+th{background:#1E2130;color:#F59E0B;padding:8px 10px;text-align:left;font-weight:700;border-bottom:1px solid #2D3048}
+td{padding:8px 10px;border-bottom:1px solid #1E2130;vertical-align:top;color:#CBD5E1}
+.card{background:#1E2130;border-radius:8px;padding:14px 16px;margin:10px 0;font-size:13px;border-left:3px solid #F59E0B}
+.card.blue{border-left-color:#3B82F6}
+.card.red{border-left-color:#EF4444}
+.card.green{border-left-color:#10B981}
+.card.purple{border-left-color:#8B5CF6}
+.rule{background:#1A1D2E;border:1px solid #2D3048;border-radius:6px;padding:10px 14px;margin:6px 0;font-size:12px;color:#E2E8F0}
+.rule strong{color:#F59E0B}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <span style="font-size:22px">📋</span>
+  <h1>ProjectBoard — Manual Tehnic</h1>
+  <span class="ver">V124 · Iunie 2026</span>
+</div>
+
+<div class="sec">
+<h2>1. Arhitectură generală</h2>
+<p>ProjectBoard este o aplicație single-file HTML/JS/CSS fără dependențe externe (cu excepția Firebase CDN și Google Calendar REST API). Rulează ca PWA instalată din Chrome pe Android.</p>
+<table>
+<tr><th>Componentă</th><th>Tehnologie</th><th>Detalii</th></tr>
+<tr><td>Frontend</td><td>Vanilla JS ES6+</td><td>Zero framework, zero bundler</td></tr>
+<tr><td>Persistență locală</td><td>localStorage</td><td>Toate datele serializate JSON</td></tr>
+<tr><td>Sync cloud</td><td>Firebase Firestore</td><td>Plan Spark (gratuit), merge per-item</td></tr>
+<tr><td>Analytics</td><td>Firebase Analytics</td><td>measurementId: G-2X4E1HJ581</td></tr>
+<tr><td>Calendar</td><td>Google Calendar REST v3</td><td>OAuth 2.0 implicit flow</td></tr>
+<tr><td>Hosting</td><td>GitHub Pages</td><td>https://xpareto.github.io/Kanban/ (K mare)</td></tr>
+<tr><td>PWA</td><td>sw.js + manifest.json</td><td>Share Target, offline cache</td></tr>
+</table>
+
+<h2>2. Structura datelor (State S)</h2>
+<pre>S = {
+  items: Project[],          // Proiecte cu tasks
+  freeTasks: FreeTask[],     // Tasks libere (NEXT + markeri zone)
+  nextOrder: OrderEntry[],   // Ordinea NEXT (free + proj refs)
+  waitOrder: OrderEntry[],   // Ordinea WAIT
+  waitFreeTasks: FreeTask[], // Free tasks în WAIT
+  shareTasks: FreeTask[],    // Tasks în SHARE inbox
+  journal: JournalEntry[],   // Jurnal operații
+  shareJournal: ...,
+  mergeFlags: {},            // Selecții merge SHARE
+  labels: string[],          // Etichete rapide
+  // UI state
+  view, editId, editTid, editWaitId, showAdd, ...
+}</pre>
+
+<h3>FreeTask</h3>
+<pre>{
+  id: string,           // 'id_' + random
+  name: string,         // Textul taskului (prima linie) + URL-uri (linii 2+)
+  note?: string,        // Notă privată
+  ts: number,           // Timestamp creare
+  modifiedTs: number,   // Timestamp ultima modificare conținut
+  zone: 'green'|'red'|'yellow'|null,  // Zona de culoare în NEXT
+  zoneRank: number,     // Poziția în cadrul zonei (0-based)
+  zoneMts: number,      // Timestamp ultima modificare zonă (independent de modifiedTs)
+  _deleted?: true       // Tombstone pentru sync ștergere
+}</pre>
+
+<h3>OrderEntry</h3>
+<pre>// Free task:
+{type: 'free', id: string}
+// Project task:
+{type: 'proj', projectId: string, taskId: string}</pre>
+
+<h3>Project / Task</h3>
+<pre>Project: {type:'project', id, name, tasks: Task[]}
+Task: {id, name, status:'next'|'wait'|'done', ts, modifiedTs,
+       zone?, zoneRank?, zoneMts?, note?}</pre>
+
+<h2>3. Chei localStorage</h2>
+<table>
+<tr><th>Cheie</th><th>Conținut</th></tr>
+<tr><td>pb-items</td><td>S.items (proiecte)</td></tr>
+<tr><td>pb-free</td><td>S.freeTasks</td></tr>
+<tr><td>pb-next-order</td><td>S.nextOrder</td></tr>
+<tr><td>pb-wait-order</td><td>S.waitOrder</td></tr>
+<tr><td>pb-wait-free</td><td>S.waitFreeTasks</td></tr>
+<tr><td>pb-share</td><td>S.shareTasks</td></tr>
+<tr><td>pb-journal</td><td>S.journal</td></tr>
+<tr><td>pb-labels</td><td>S.labels</td></tr>
+<tr><td>pb-cal-token</td><td>Token OAuth Google Calendar</td></tr>
+<tr><td>pb-cal-day</td><td>Ultima zi de fetch calendar</td></tr>
+<tr><td>pb-cal-cleaned</td><td>Ziua când s-au șters events vechi</td></tr>
+<tr><td>pb-morning-shown</td><td>Ziua când s-a afișat modalul de dimineață</td></tr>
+<tr><td>pb-wait-check-day</td><td>Ziua verificării termenelor din WAIT</td></tr>
+<tr><td>pb-deleted-ids</td><td>{id: timestamp} — tombstones pentru sync</td></tr>
+<tr><td>pb-trace</td><td>Log trace calendar (array JSON)</td></tr>
+</table>
+
+<h2>4. Sistemul de zone colorate</h2>
+<p>Zonele sunt delimitate de perechi de marcatori (free tasks al căror <code>name</code> începe cu <code>*1</code>, <code>*2</code>, sau <code>*3</code>).</p>
+<table>
+<tr><th>Zonă</th><th>Marcatori</th><th>Culoare</th><th>Rol</th></tr>
+<tr><td>Verde</td><td>*3…*3</td><td>#DCFCE7</td><td>Prioritate absolută aleasă manual</td></tr>
+<tr><td>Roșie</td><td>*1…*1</td><td>#FEE2E2</td><td>Tasks cu termene — sortate cronologic</td></tr>
+<tr><td>Galbenă</td><td>*2…*2</td><td>#FEF9C3</td><td>Priorități secundare</td></tr>
+</table>
+
+<h3>detectAndSaveZones()</h3>
+<p>Parcurge <code>S.nextOrder</code> direct (nu getNR). Calculează <code>zone</code> și <code>zoneRank</code> pentru fiecare item. Marcatorii *1/*2/*3 primesc întotdeauna <code>zone=null</code>. Cal:: events sunt skipped. La fiecare schimbare: <code>zoneMts=Date.now()</code>, <code>modifiedTs=max(modifiedTs+1, now)</code>. Salvează FK și SK.</p>
+
+<h3>zone+rank sync</h3>
+<p>La Push: <code>detectAndSaveZones()</code> se apelează automat. La Pull merge:</p>
+<ul style="margin:8px 0 8px 20px;font-size:13px;color:#CBD5E1">
+<li><code>buildRemoteZoneMap(remoteFT, remoteItems)</code> — construiește map <code>id→{zone,rank,zoneMts}</code> excluzând marcatorii și cal:: events</li>
+<li><code>mergeNextOrderWithZones()</code> — inserează items NOI în zona corectă după rank</li>
+<li><code>repositionByZone()</code> — mută items EXISTENTE cu zonă schimbată</li>
+<li><code>insertByZoneRank()</code> — inserare la poziția rank în zonă, recalculând markerii la fiecare apel</li>
+</ul>
+
+<h3>Conflict resolution zone (zoneMts)</h3>
+<p><code>mergeItemArray</code> și <code>mergeProjectTasks</code> folosesc <code>zoneMts</code> ca arbitru independent pentru câmpurile <code>zone</code>, <code>zoneRank</code>, <code>zoneMts</code> — separat de <code>modifiedTs</code> care arbitrează conținutul taskului. Câștigă dispozitivul cu <code>zoneMts</code> mai mare.</p>
+
+<h2>5. Reguli fixe de cod</h2>
+<div class="rule"><strong>R1.</strong> Nu folosi <code>elementFromPoint()</code> pentru drag hit-testing — folosește <code>getBoundingClientRect()</code></div>
+<div class="rule"><strong>R2.</strong> Touch listeners cu <code>{passive:false}</code> oriunde se apelează <code>e.preventDefault()</code></div>
+<div class="rule"><strong>R3.</strong> <code>todayStr</code> folosește întotdeauna metode locale (<code>getFullYear</code>, <code>getMonth</code>, <code>getDate</code>) — niciodată <code>toISOString()</code></div>
+<div class="rule"><strong>R4.</strong> Nu declara funcții în interiorul blocurilor sub <code>'use strict'</code></div>
+<div class="rule"><strong>R5.</strong> Regex fără <code>\b</code> lângă caractere non-ASCII (diacritice românești)</div>
+<div class="rule"><strong>R6.</strong> <code>traceLog</code> folosește ora locală via <code>getHours/getMinutes/getSeconds</code></div>
+<div class="rule"><strong>R7.</strong> Blur handlers cu <code>setTimeout 200ms</code></div>
+<div class="rule"><strong>R8.</strong> <code>setSelectionRange</code> în loc de <code>select()</code> pentru input-uri Android</div>
+<div class="rule"><strong>R9.</strong> sw.js actualizat manual de Dan — Claude nu generează sw.js</div>
+<div class="rule"><strong>R10.</strong> Filtru calendar all-day: <code>evEnd &lt;= todayF</code> (end.date exclusivă); timed events: <code>evEnd &lt; todayF</code></div>
+<div class="rule"><strong>R11.</strong> <code>_hasWeekdayToken(text)</code> pentru bail-out în addWeekday — nu regex simplu (previne false match pe "vine"→"vin")</div>
+<div class="rule"><strong>R12.</strong> <code>detectAndSaveZones()</code> se apelează după orice operație care modifică ordinea în NEXT (drag, selecție, atașare proiect, Wt1)</div>
+<div class="rule"><strong>R13.</strong> <code>dedupNextOrder()</code> și <code>dedupMarkers()</code> se aplică la init() și după fiecare fbPull merge</div>
+
+<h2>6. Sincronizare Firebase</h2>
+<h3>Push (fbPush)</h3>
+<p>Apelează <code>detectAndSaveZones()</code> înainte de payload. Trimite tombstones din <code>pb-deleted-ids</code> ca FreeTask-uri cu <code>_deleted:true</code>. Refuză push cu date demo.</p>
+
+<h3>Pull (fbPull) — flux merge</h3>
+<pre>1. mergeProjects(local, remote)
+2. mergeItemArray(freeTasks) — cu zoneMts arbitru pentru zone
+3. Construiește knownIds din freeTasks + tasks
+4. Filtrează remoteNew (absent din localOrdSet)
+5. mergeNextOrderWithZones(localOrder, remoteNew, ...) — items noi
+6. repositionByZone(order, ...) — items existente cu zonă schimbată
+7. Elimină tombstone-uri din nextOrder
+8. dedupNextOrder + dedupMarkers — safety net
+9. traceLog('fbPull merge done')</pre>
+
+<h3>Conflict resolution</h3>
+<table>
+<tr><th>Câmp</th><th>Arbitru</th></tr>
+<tr><td>name, note, status</td><td>modifiedTs (mai mare câștigă)</td></tr>
+<tr><td>zone, zoneRank, zoneMts</td><td>zoneMts (mai mare câștigă)</td></tr>
+<tr><td>Ștergere item</td><td>Tombstone _deleted:true cu modifiedTs</td></tr>
+</table>
+
+<h2>7. Google Calendar</h2>
+<h3>Flux autentificare</h3>
+<pre>La prima lansare din zi:
+1. Silent re-auth (prompt:none) → dacă eșuează (interaction_required)
+2. Login explicit (prompt:select_account)
+3. OAuth OK → fetch calendarList → fetchCal pentru fiecare calendar
+4. Filtrare events → calInjectEvents → showMorningModal</pre>
+
+<h3>Filtrare events</h3>
+<table>
+<tr><th>Tip event</th><th>Condiție includere</th></tr>
+<tr><td>All-day (start.date)</td><td>evStart ≤ tomorrowF AND evEnd &gt; todayF (end exclusivă: evEnd &lt;= todayF = exclude)</td></tr>
+<tr><td>Timed (start.dateTime)</td><td>evStart ≤ tomorrowF AND evEnd &lt; todayF = exclude (strict)</td></tr>
+</table>
+
+<h2>8. Funcții cheie</h2>
+<table>
+<tr><th>Funcție</th><th>Rol</th></tr>
+<tr><td>getNR()</td><td>Construiește lista NEXT din nextOrder + freeTasks + items</td></tr>
+<tr><td>extractDateFromRow(row)</td><td>Detectează data din textul unui task (N.luna, N.LL, /cN.M, [YYYY-MM-DD])</td></tr>
+<tr><td>addWeekday(text)</td><td>Inserează ziua săptămânii după dată; folosește _hasWeekdayToken() pentru bail-out</td></tr>
+<tr><td>_replaceWeekdayNearDate()</td><td>Înlocuiește ziua existentă cu cea corectă la editare dată</td></tr>
+<tr><td>sortBetweenMarkers()</td><td>Sortare globală ⧸✱ — cal events + tasks cu dată între *1…*1</td></tr>
+<tr><td>sortRestNext()</td><td>Sortare ⋯⧸ — proiecte înaintea free tasks după ultima zonă marcată</td></tr>
+<tr><td>sortByTime(order)</td><td>▼T/▲T — sortare cronologică, protejează zonele *2 și *3</td></tr>
+<tr><td>checkWaitingDeadlines()</td><td>Wt1 — mută din WAIT în zona roșie dacă termen ≤ azi+7 zile</td></tr>
+<tr><td>showMorningModal(waitMoved)</td><td>Modal dimineață cu events azi/mâine + items aduse din WAIT</td></tr>
+<tr><td>dedupNextOrder(order)</td><td>Elimină duplicate din nextOrder (same id)</td></tr>
+<tr><td>dedupMarkers(order, fts)</td><td>Limitează la max 2 exemplare din fiecare marcator *1/*2/*3</td></tr>
+<tr><td>detectAndSaveZones()</td><td>Calculează zone+zoneRank+zoneMts pentru fiecare item din nextOrder</td></tr>
+<tr><td>buildRemoteZoneMap()</td><td>Map id→{zone,rank,zoneMts} din remote, exclusiv marcatori și cal::</td></tr>
+<tr><td>insertByZoneRank()</td><td>Inserare la poziția rank în zonă, recalculând markerii pe array-ul curent</td></tr>
+<tr><td>repositionByZone()</td><td>Mută items existente cu zonă greșită în zona corectă din remote</td></tr>
+<tr><td>mergeNextOrderWithZones()</td><td>Inserează items noi (remoteNew) în zona+rank corectă</td></tr>
+<tr><td>exportSelectedOPML()</td><td>Export selecție în format OPML pentru WorkFlowy</td></tr>
+</table>
+
+<h2>9. Header UI — 3 rânduri</h2>
+<table>
+<tr><th>Rând</th><th>Conținut</th></tr>
+<tr><td>1 (întunecat)</td><td>📅 Cal · ☁ Sync · ⧸✱ Sort global · ⋯⧸ Sort rest · ▼T · ▲T · ? Help</td></tr>
+<tr><td>2 (verde)</td><td>🔍 Search · ⚙ Settings · Etichete rapide (#a #u #c...)</td></tr>
+<tr><td>3 (gri)</td><td>Data · Journal · Share · +Sec · +Proj · [spațiu] · 🔄 Reset · 📋 Trace</td></tr>
+</table>
+
+<h2>10. Versioning</h2>
+<p>Versiunea curentă: <strong>V128</strong>. Se incrementează la fiecare livrare — <strong>atât de Claude cât și de Dan</strong>. Vizibilă în UI (header stânga). sw.js actualizat manual de Dan — nu se generează automat.</p>
+<p><strong>Regulă:</strong> Claude incrementează versiunea la fiecare fișier livrat, nu doar la sesiuni noi. La începutul fiecărei sesiuni, Dan confirmă versiunea curentă și Claude pornește de la N+1. Dan poate livra versiuni proprii între sesiuni.</p>
+
+<h2>11. Changelog V106→V128 (rezumat)</h2>
+<table>
+<tr><th>Versiune</th><th>Schimbări principale</th></tr>
+<tr><td>V107</td><td>Fix calendar all-day filter (end.date exclusivă), skip rânduri goale render, Settings pe searchRow, *3 protejat în sortări</td></tr>
+<tr><td>V108</td><td>Meniu 3 rânduri, fix merge Share (text complet), detectAndSaveZones, mergeNextOrderWithZones, C1 attach proiect păstrează zona</td></tr>
+<tr><td>V109-V110</td><td>_hasWeekdayToken (fix "vine"→"vin"), detectAndSaveZones pe S.nextOrder direct, mergeNextOrderWithZones fix fallback</td></tr>
+<tr><td>V111</td><td>repositionByZone cu remoteItems, Sv1a tombstones, Wup1 editare WAIT, Wt1 structură, help maghiar</td></tr>
+<tr><td>V112</td><td>detectAndSaveZones salvează SK, _replaceWeekdayNearDate (Ed1)</td></tr>
+<tr><td>V113</td><td>repositionByZone project tasks, exportSelectedOPML (Sel1), fix nota OPML din ft.note</td></tr>
+<tr><td>V114</td><td>Fix nota OPML (ft.note nu name lines)</td></tr>
+<tr><td>V115</td><td>Firebase Analytics G-2X4E1HJ581</td></tr>
+<tr><td>V116</td><td>Wt1 complet, modal dimineață A1, fix fallback insertAfter pos=0</td></tr>
+<tr><td>V117-V118</td><td>detectAndSaveZones după drag-drop, modifiedTs bump, fix Ejvs1 toLowerCase</td></tr>
+<tr><td>V119</td><td>modifiedTs bump în detectAndSaveZones, detectAndSaveZones după moveSelectedNext, trace-uri extinse, P1 doAddToProj păstrează zona, Wt1 integrat modal</td></tr>
+<tr><td>V120</td><td>modifiedTs = Math.max(+1,now), detectAndSaveZones după moveSelectedUnderFirst, Wup1 editare WAIT inline</td></tr>
+<tr><td>V121</td><td>zone+rank sistem complet: buildRemoteZoneMap, findZoneMarkers, insertByZoneRank, repositionByZone, mergeNextOrderWithZones rescrise</td></tr>
+<tr><td>V122</td><td>zoneMts arbitru independent, mergeItemArray/mergeProjectTasks cu zoneMts, skip marcatori în detectAndSaveZones, buton Modal scos</td></tr>
+<tr><td>V123</td><td>insertByZoneRank recalculează markerii la fiecare pas, marcatori forțat zone=null, buildRemoteZoneMap exclude marcatori+cal, dedup duplicate mergeNextOrderWithZones</td></tr>
+<tr><td>V124</td><td>dedupNextOrder, dedupMarkers, dedupFreeTasks în init() și fbPull, repositionByZone cu movedIds set anti-duplicate, dedup output în toate funcțiile zone</td></tr>
+<tr><td>V125</td><td>Np1: doCreateProject splice la poziția originală (păstrează zona verde). Dzs: /c extins cu litere zi (l ma mi j v s d) + prefix n = săptămâna viitoare. _ziLiteraToDate() calculează ziua din săptămâna calendaristică curentă. resolveCalCmd(): înlocuiește /cXX cu ZZ.LL numeric la toate punctele de salvare. triggerAutoSort automat după salvare cu dată. maybeAddCalBtn recunoaște ZZ.LL numeric fără /c (D2 fix). V1: repositionByZone nu mișcă item dacă remote zone=null și local are zonă.</td></tr>
+<tr><td>V126–V127</td><td>Versiuni livrate de Dan (detalii neînregistrate în această sesiune).</td></tr>
+<tr><td>V128</td><td>Manual Tehnic actualizat: regula de versionare (Claude incrementează la fiecare livrare, întreabă versiunea curentă la începutul sesiunii).</td></tr>
+</table>
+</div>
+
+<div style="padding:20px;text-align:center;color:#6B7280;font-size:11px;margin-top:30px">
+  ProjectBoard Manual Tehnic V128 · xpareto.github.io/Kanban
+</div>
+</body>
+</html>
