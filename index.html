@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V137</title>
+<title>Project Board V138</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2218,12 +2218,11 @@ function checkAndCreateFinalizare(name){
   var _dataAparitie=new Date(yr,mo2-1,d2-_apareZile,12,0,0);
   traceLog('C1 check: "'+name.slice(0,25)+'" dur='+_durata+' apariție='+(d2-_apareZile)+'.'+mo2+' now>=ap:'+( now>=_dataAparitie));
   if(now<_dataAparitie) return;
-  // Anti-duplicat lax: caută interval d1.mo1-d2.mo2 în orice task FINALIZARE
-  var _ivKey=d1+'.'+mo1+'-'+d2+'.'+mo2;
-  var _ivKey2=d1+'.'+mo1+' - '+d2+'.'+mo2; // cu spații
+  // F1 fix: anti-duplicat robust — caută d1.mo1 și d2.mo2 ca subșiruri în FINALIZARE
+  var _k1=d1+'.'+mo1, _k2=d2+'.'+mo2;
   var already=S.freeTasks.find(function(f){
     var fn=f.name||'';
-    return fn.indexOf('FINALIZARE')===0&&(fn.indexOf(_ivKey)>=0||fn.indexOf(_ivKey2)>=0);
+    return fn.indexOf('FINALIZARE')===0&&fn.indexOf(_k1)>=0&&fn.indexOf(_k2)>=0;
   });
   if(already){
     traceLog('C1: FINALIZARE deja există ("'+already.name.slice(0,30)+'") — skip');
@@ -2232,7 +2231,9 @@ function checkAndCreateFinalizare(name){
   // Construiește textul cu data finală
   var MONTHS_RO2=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'];
   var endLabel=d2+'.'+MONTHS_RO2[mo2-1];
-  var newName='FINALIZARE '+name+' 📅 '+endLabel;
+  // F2 fix: strip (zi) din name înainte de addWeekday — recalculăm fresh
+  var _cleanName=name.replace(/\s*\((lun|mar|mie|joi|vin|sam|dum)\)/gi,'').replace(/\s{2,}/g,' ').trim();
+  var newName='FINALIZARE '+_cleanName+' 📅 '+endLabel;
   newName=addWeekday(newName);
   var ft={id:gid(),name:newName,ts:dateEnd.getTime(),modifiedTs:Date.now()};
   S.freeTasks=[...S.freeTasks,ft];

@@ -1,5 +1,5 @@
-//v137
-var CACHE = 'projectboard-v137';
+//v138
+var CACHE = 'projectboard-v138';
 var FILES = [
   '/index.html',
   '/manifest.json',
