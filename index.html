@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V139</title>
+<title>Project Board V140</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1091,10 +1091,16 @@ function calFmtRange(ev){
   return s.getDate()+'-'+e.getDate()+' '+months[e.getMonth()];
 }
 
-// Injectează evenimentele în NEXT (la început, fond albastru)
-// Șterge evenimentele de calendar din ziua precedentă înainte
+// K1/K2: Injectează evenimentele în NEXT (la început, fond albastru)
+// K1: evenimentele NEBIFATE care nu mai apar în fereastra de fetch (ex: eveniment de o zi,
+//     ziua următoare Google Calendar nu-l mai întoarce) rămân vizibile până sunt bifate (✕/✓) manual.
+// K2: evenimentele deja BIFATE (id în pb-deleted-ids) NU sunt re-adăugate, chiar dacă
+//     Google Calendar le mai întoarce ca active (ex: eveniment pending pe mai multe zile).
 function calInjectEvents(events){
-  // Construiește free tasks din evenimente — cu prefixul special 'cal::'
+  var deletedIds={};
+  try{deletedIds=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');}catch(_){}
+
+  // Construiește free tasks din evenimentele curente — cu prefixul special 'cal::'
   var newFree=events.map(function(ev){
     var time=calFmtTime(ev);
     var day=calEvDay(ev);
@@ -1108,25 +1114,35 @@ function calInjectEvents(events){
     var calStartVal=ev.start&&(ev.start.dateTime||ev.start.date)||null;
     if(calStartVal){var csD=new Date(calStartVal);if(!isNaN(csD.getTime()))label=addWeekdayFromDate(label,csD);}
     return {id:'cal::'+ev.id,name:label,ts:Date.now(),isCalEv:true,calStart:calStartVal};
-  });
-
-  // Șterge evenimentele de calendar vechi din freeTasks și nextOrder
-  S.freeTasks=S.freeTasks.filter(function(f){return !f.id.startsWith('cal::');});
-  S.nextOrder=S.nextOrder.filter(function(x){
-    if(x.type==='free'){
-      var f=S.freeTasks.find(function(ft){return ft.id===x.id;});
-      return !!f; // dacă nu mai există în freeTasks, scoate din ordine
-    }
+  }).filter(function(f){
+    // K2: nu re-adăuga evenimente deja bifate (dismise) de utilizator
+    if(deletedIds[f.id]){traceLog('K2: skip re-adaugare bifat: '+f.name.slice(0,30));return false;}
     return true;
   });
-  // Elimină și ordinile vechi cu id cal::
+
+  var fetchedIds={};
+  newFree.forEach(function(f){fetchedIds[f.id]=true;});
+
+  // K1: păstrează evenimentele cal:: vechi care NU mai apar în fetch-ul curent,
+  // dar NU au fost bifate — rămân vizibile până utilizatorul le bifează manual
+  var oldKept=S.freeTasks.filter(function(f){
+    return (f.id||'').startsWith('cal::') && !fetchedIds[f.id] && !deletedIds[f.id];
+  }).map(function(f){
+    if(f.name && f.name.indexOf('↺ ')!==0) f.name='↺ '+f.name;
+    return f;
+  });
+  if(oldKept.length) traceLog('K1: pastrez '+oldKept.length+' cal:: vechi nebifate');
+
+  // Elimină toate cal:: din freeTasks/nextOrder — le reconstruim (fresh + kept)
+  S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
   S.nextOrder=S.nextOrder.filter(function(x){
     return !(x.type==='free'&&(x.id||'').startsWith('cal::'));
   });
 
-  // Adaugă noile evenimente la începutul listei
-  var newOrders=newFree.map(function(f){return {type:'free',id:f.id};});
-  S.freeTasks=newFree.concat(S.freeTasks);
+  // Adaugă evenimentele (noi + cele păstrate) la începutul listei
+  var finalCal=newFree.concat(oldKept);
+  var newOrders=finalCal.map(function(f){return {type:'free',id:f.id};});
+  S.freeTasks=finalCal.concat(S.freeTasks);
   S.nextOrder=newOrders.concat(S.nextOrder);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   // CAL_DK este setat de calCheckAndFetch după inject reușit
@@ -1346,18 +1362,11 @@ async function calCheckAndFetch(){
   traceLog('calCheck: last='+lastDay+' today='+today);
   var hasCalEvs=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
   if(lastDay===today && hasCalEvs){traceLog('skip: deja OK azi');return;}
-  // Zi nouă: șterge events vechi O SINGURĂ DATĂ (marcat cu CAL_DK setat pe today)
-  // Zi nouă sau lastDay gol: șterge events vechi O SINGURĂ DATĂ
+  // K1 fix: NU mai ștergem necondiționat toate cal:: la prima rulare din zi.
+  // calInjectEvents (apelat mai jos, după fetch reușit) face merge inteligent:
+  // păstrează cele nebifate, elimină doar cele deja bifate sau reconfirmate de fetch.
   var calCleaned=localStorage.getItem('pb-cal-cleaned')||'';
   if(calCleaned!==today){
-    // Șterge events vechi dacă există — indiferent dacă lastDay e gol sau diferit
-    var hasOldCal=S.freeTasks.some(function(f){return (f.id||'').startsWith('cal::');});
-    if(hasOldCal){
-      traceLog('sterg events vechi (lastDay='+lastDay+')');
-      S.freeTasks=S.freeTasks.filter(function(f){return !(f.id||'').startsWith('cal::');});
-      S.nextOrder=S.nextOrder.filter(function(x){return !(x.type==='free'&&(x.id||'').startsWith('cal::'));});
-      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
-    }
     localStorage.setItem('pb-cal-cleaned',today);
     // Resetează silent doar dacă nu e blocat din interaction_required
     var silentBlocked=localStorage.getItem('pb-cal-silent-tried')||'';
@@ -4335,10 +4344,20 @@ function rBoard(){
           r.appendChild(pb);
         })(row.id,row.tname);
       }
-      const xb=mk('button','ndel');xb.textContent='✕';
-      xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delFree(row.id);},{passive:false});
-      xb.addEventListener('click',()=>delFree(row.id));
-      r.appendChild(xb);
+      if(isCalEv){
+        const cxb=document.createElement('button');
+        cxb.textContent='✓';
+        cxb.title='Bifează — nu mai reapare (chiar dacă e încă activ în Google Calendar)';
+        cxb.style.cssText='background:#DCFCE7;color:#166534;border:1px solid #BBF7D0;border-radius:6px;padding:5px 9px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:34px;min-height:34px';
+        cxb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delFree(row.id);},{passive:false});
+        cxb.addEventListener('click',e=>{e.stopPropagation();delFree(row.id);});
+        r.appendChild(cxb);
+      } else {
+        const xb=mk('button','ndel');xb.textContent='✕';
+        xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delFree(row.id);},{passive:false});
+        xb.addEventListener('click',()=>delFree(row.id));
+        r.appendChild(xb);
+      }
     }
     nsec.appendChild(r);
   });
