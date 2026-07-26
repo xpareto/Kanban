@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V141</title>
+<title>Project Board V142</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -772,7 +772,7 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'all'};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
@@ -1655,6 +1655,27 @@ function getNR(){
     const warn = warnMap.get(x.projectId + '::' + x.taskId) || false;
     return { isFree: false, projectId: x.projectId, taskId: x.taskId, pname: p.name, tname: displayName, warn };
   }).filter(Boolean);
+}
+
+// T1 (V141, experimental): categorisește un rând NEXT pentru banda de taburi.
+// 'marker'=*1/*2/*3 (ascuns în view filtrat), 'calendar'=cal:: events,
+// 'prioritare'=zonă verde, 'termene'=zonă roșie, 'restul'=zonă galbenă + fără zonă
+function getNextRowCategory(row){
+  if(row.isFree && row.id && row.id.startsWith('cal::')) return 'calendar';
+  var name=row.tname||'';
+  if(/^\*[123]/.test(name)) return 'marker';
+  var zone=null;
+  if(row.isFree){
+    var f=S.freeTasks.find(function(x){return x.id===row.id;});
+    zone=f?f.zone:null;
+  } else {
+    var p=S.items.find(function(x){return x.id===row.projectId;});
+    var t=p&&p.tasks&&p.tasks.find(function(x){return x.id===row.taskId;});
+    zone=t?t.zone:null;
+  }
+  if(zone==='green') return 'prioritare';
+  if(zone==='red') return 'termene';
+  return 'restul'; // galben + fără zonă
 }
 
 // ── WAITING rows — toate task-urile cu status 'wait' ──────────
@@ -4054,6 +4075,48 @@ function rBoard(){
   ap(nd,div('sline'),sp('stxt','NEXT'),nCount,nJumpProj,nJumpWait,nJumpShare,div('sline'));
   root.appendChild(nd);
 
+  // T1 (V141, experimental): contoare pe categorii — folosite atât de banda de taburi, cât și de mesajul „gol"
+  var _catCounts={all:0,prioritare:0,termene:0,calendar:0,restul:0};
+  nr.forEach(function(row){
+    if(!row.tname||!row.tname.trim()) return;
+    var cat=getNextRowCategory(row);
+    if(cat==='marker') return;
+    _catCounts.all++; _catCounts[cat]=(_catCounts[cat]||0)+1;
+  });
+
+  // ── T1 (V141, experimental): bandă de taburi filtrate sub NEXT — nu afectează view-ul „Toate" ──
+  (function(){
+    var tabDefs=[
+      {id:'all',lbl:'Toate',color:'#9CA3AF'},
+      {id:'prioritare',lbl:'🟢 Prioritare',color:'#10B981'},
+      {id:'termene',lbl:'🔴 Termene',color:'#EF4444'},
+      {id:'calendar',lbl:'📅 Calendar',color:'#3B82F6'},
+      {id:'restul',lbl:'⚪ Restul',color:'#9CA3AF'}
+    ];
+    var tb=div('');
+    tb.style.cssText='display:flex;gap:5px;align-items:center;padding:6px 10px;background:#111827;border-bottom:1px solid #1F2937;overflow-x:auto;flex-wrap:wrap';
+    var hintSp=sp('','⚗ test taburi:');
+    hintSp.style.cssText='font-size:9px;color:#6B7280;font-weight:700;flex-shrink:0;margin-right:2px';
+    tb.appendChild(hintSp);
+    tabDefs.forEach(function(td){
+      var active=S.nextTab===td.id;
+      var btn=mk('button','');
+      btn.textContent=td.lbl+' ('+(_catCounts[td.id]||0)+')';
+      btn.style.cssText='flex-shrink:0;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;border:1px solid '+td.color+';background:'+(active?td.color:'transparent')+';color:'+(active?'#0F1117':td.color);
+      function doTab(){S.nextTab=td.id;render();}
+      btn.addEventListener('click',doTab);
+      btn.addEventListener('touchend',function(e){e.preventDefault();doTab();},{passive:false});
+      tb.appendChild(btn);
+    });
+    root.appendChild(tb);
+    if(S.nextTab!=='all'){
+      var hint2=div('');
+      hint2.style.cssText='padding:4px 10px;font-size:10px;color:#F59E0B;background:#1E2130;border-bottom:1px solid #374151';
+      hint2.textContent='Filtru activ — drag-ul mută rândul în ordinea globală NEXT (poate afecta poziția rândurilor ascunse). Comută pe „Toate" pentru reordonare completă.';
+      root.appendChild(hint2);
+    }
+  })();
+
   // ── Bara selecție multiplă (apare când selectMode=true) ──
   if(S.selectMode){
     var selCount=Object.keys(S.selectedNext).length;
@@ -4097,18 +4160,31 @@ function rBoard(){
 
   // NEXT rows
   const nsec=div('');
-  if(!nr.length){const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';e.textContent='No tasks in Next.';nsec.appendChild(e);}
+  var _filteredCount=S.nextTab==='all'?_catCounts.all:(_catCounts[S.nextTab]||0);
+  if(!_filteredCount){
+    const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';
+    e.textContent=S.nextTab==='all'?'No tasks in Next.':'Niciun task în această categorie.';
+    nsec.appendChild(e);
+  }
   // Benzi de culoare *1/*2/*3
   var _bandColor=null;
   var _firstFutureFound=false;
   nr.forEach((row,idx)=>{
     // S1 fix: skip rânduri cu tname gol — previn rânduri fantomă și benzi de culoare spurioase
     if(!row.tname||!row.tname.trim()) return;
-    // Detectează marcator *1/*2/*3
-    var _rawName=row.isFree?(S.freeTasks.find(function(f){return f.id===row.id;})||{}).name||'':(function(){var p=S.items.find(function(x){return x.id===row.projectId;});var t=p&&p.tasks&&p.tasks.find(function(tt){return tt.id===row.taskId;});return t?t.name:'';}());
-    var _bm=_rawName.match(/^[*]([123])/);
-    if(_bm){var _bl=_bm[1];var _colors={'1':'rgba(255,80,80,.15)','2':'rgba(255,210,50,.15)','3':'rgba(60,200,100,.15)'};
-      if(_bandColor&&_bandColor===_colors[_bl]){_bandColor=null;_firstFutureFound=false;}else{_bandColor=_colors[_bl];_firstFutureFound=false;}}
+    // T1: filtrare pe tab-ul activ (idx rămâne cel din lista completă — esențial pentru drag)
+    var _rowCat=getNextRowCategory(row);
+    if(S.nextTab!=='all'){
+      if(_rowCat==='marker') return;
+      if(_rowCat!==S.nextTab) return;
+    }
+    // Detectează marcator *1/*2/*3 — bandă de culoare doar în view-ul „Toate"
+    if(S.nextTab==='all'){
+      var _rawName=row.isFree?(S.freeTasks.find(function(f){return f.id===row.id;})||{}).name||'':(function(){var p=S.items.find(function(x){return x.id===row.projectId;});var t=p&&p.tasks&&p.tasks.find(function(tt){return tt.id===row.taskId;});return t?t.name:'';}());
+      var _bm=_rawName.match(/^[*]([123])/);
+      if(_bm){var _bl=_bm[1];var _colors={'1':'rgba(255,80,80,.15)','2':'rgba(255,210,50,.15)','3':'rgba(60,200,100,.15)'};
+        if(_bandColor&&_bandColor===_colors[_bl]){_bandColor=null;_firstFutureFound=false;}else{_bandColor=_colors[_bl];_firstFutureFound=false;}}
+    }
 
     // Cheie unică pentru selecție
     var selKey=row.isFree?'f::'+row.id:'p::'+row.projectId+'::'+row.taskId;
