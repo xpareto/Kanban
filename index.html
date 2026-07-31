@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V143</title>
+<title>Project Board V144</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1937,13 +1937,13 @@ function addWaitFree(){
   S.waitFreeTasks=[...S.waitFreeTasks,ft];
   S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
   lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
-  S.wfree='';S.showWFree=false;render();
+  S.wfree='';S.showWFree=false;save();render();
 }
 function delWaitFree(id){
   const f=S.waitFreeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,section:'wait',ts:Date.now()});
   S.waitFreeTasks=S.waitFreeTasks.filter(x=>x.id!==id);
   S.waitOrder=S.waitOrder.filter(x=>!(x.type==='free'&&x.id===id));
-  lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);render();
+  lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);save();render();
 }
 function addTask(pid,status){
   const key=pid+'_'+status,name=(S.nt[key]||'').trim();if(!name)return;
@@ -2210,7 +2210,7 @@ function moveToWait(taskId, projectId){
     S.waitFreeTasks=[...S.waitFreeTasks,wft];
     S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
-    render();
+    save();render();
   }
 }
 // W2: mută un task din WAIT la capul lui NEXT (/n command)
@@ -2243,7 +2243,7 @@ function moveToNext(taskId, projectId){
     S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
     traceLog('W2 moveToNext: free task '+taskId.slice(-6)+' -> capul NEXT');
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
-    render();
+    save();render();
   }
 }
 
@@ -2357,7 +2357,9 @@ function delFree(id){
   markDeleted(id);
   S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
   S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
-  lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  lw('pb-local-dirty-ts',Date.now()); // C1: marchează dirty — sync automat propagă bifarea pe celelalte dispozitive
+  render();
 }
 function confAdd(){
   if(!S.addName.trim()||!S.showAdd)return;
@@ -3644,7 +3646,7 @@ function rBoard(){
   const htitleWrap=div('');htitleWrap.appendChild(htitle);htitleWrap.appendChild(hsub);
   htxt.appendChild(htitleWrap);htxt.appendChild(hdateEl);
   hl.appendChild(sp('logo','◈'));hl.appendChild(htxt);
-  const hr=div('hdr-r');
+  // A1: hr eliminat — butoanele au fost mutate (Sync→rândul 2, restul→Settings)
   // Search mutat pe linia etichetelor (mai jos)
 
   const sdot=sp('sdot','');sdot.id='sdot';
@@ -3768,12 +3770,13 @@ function rBoard(){
   sortOldBtn.style.cssText='background:#B45309;color:#FEF3C7;border:none;border-radius:7px;padding:6px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
   sortOldBtn.addEventListener('click',function(){sortByTime('old');});
   sortOldBtn.addEventListener('touchend',function(e){e.preventDefault();sortByTime('old');},{passive:false});
-  ap(hr, sdot,
-    calBtn, fbBtn, sortGlobalBtn, sortRestBtn, sortNewBtn, sortOldBtn, helpBtn);
-  ap(h,hl,hr);root.appendChild(h);
-  // Linia 2: search + settings + etichete (fond verde deschis)
+  ap(h,hl);root.appendChild(h);
+  // A1: hr (rândul 1 de butoane) golit — Cal/Sort/Help mutate în Settings (⚙), Sync mutat pe rândul 2
+  // Linia 2: sync + search + settings + etichete (fond verde deschis)
   var searchRow=div('');
   searchRow.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 10px;background:#052e16;border-bottom:1px solid #166534;flex-wrap:wrap';
+  searchRow.appendChild(sdot);
+  searchRow.appendChild(fbBtn);
   var sw=div('sw');sw.style.cssText='display:flex;align-items:center;gap:4px;flex-shrink:0';
   var si=mk('input','si');si.placeholder='Search...';si.value=S.sq;
   si.style.cssText='background:#0F1117;color:#E2E8F0;border:1px solid #166534;border-radius:7px;padding:5px 9px;font-size:12px;outline:none;width:130px';
@@ -3790,18 +3793,12 @@ function rBoard(){
   searchRow.appendChild(settBtn);
   searchRow.appendChild(lblBtns);
   root.appendChild(searchRow);
-  // Linia 3: date/jurnal/share/sec/proj + reset/trace (utilitar)
-  var toolRow=div('');
-  toolRow.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 10px;background:#0F1117;border-bottom:1px solid #1F2937;flex-wrap:wrap';
+  // A1: rândul 3 (Data/Journal/Share/+Sec/+Proj/Reset/Trace) mutat integral în Settings — nu mai e randat direct
   var trData=hbtn('bg','Data','Vizualizare / export date',function(){S.view='data';render();});
   var trJournal=hbtn('bp','Journal','Vizualizare / export jurnal',function(){S.view='journal';render();});
   var trShare=hbtn('bi','Share','Vizualizare / export Share journal',function(){S.view='clipjournal';render();});
   var trSec=(function(){var b=bt('bi','+ Sec',()=>{S.showAdd='section';S.addName='';render();});b.classList.add('btn-file');return b;})();
   var trProj=(function(){var b=bt('ba','+ Proj',()=>{S.showAdd='project';S.addName='';render();});b.classList.add('btn-file');return b;})();
-  // Separator vizual
-  var trSep=sp('','');trSep.style.cssText='flex:1';
-  ap(toolRow,trData,trJournal,trShare,trSec,trProj,trSep,resetBtn,traceBtn);
-  root.appendChild(toolRow);
 
   // ── Panou Settings ──
   if(S.showSettings){
@@ -3838,7 +3835,27 @@ function rBoard(){
     sp2close.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;margin-left:auto';
     sp2close.addEventListener('click',function(){S.showSettings=false;render();});
     sp2row.appendChild(sp2inp);sp2row.appendChild(sp2add);
-    sp2.appendChild(sp2h);sp2.appendChild(sp2row);sp2.appendChild(sp2close);
+    sp2.appendChild(sp2h);sp2.appendChild(sp2row);
+
+    // A1: rând „Acțiuni" — mutat din fostul rând 1 al header-ului
+    var sp2divA=div('');sp2divA.style.cssText='border-top:1px solid #374151;margin-top:4px;padding-top:8px';
+    var sp2hA=sp('','⚡ Acțiuni (fost rând 1)');
+    sp2hA.style.cssText='color:#F59E0B;font-weight:700;font-size:12px;display:block;margin-bottom:6px';
+    var sp2rowA=div('');sp2rowA.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center';
+    ap(sp2rowA,calBtn,sortGlobalBtn,sortRestBtn,sortNewBtn,sortOldBtn,helpBtn);
+    sp2divA.appendChild(sp2hA);sp2divA.appendChild(sp2rowA);
+    sp2.appendChild(sp2divA);
+
+    // A1: rând „Fișiere" — mutat din fostul rând 3 al header-ului
+    var sp2divF=div('');sp2divF.style.cssText='border-top:1px solid #374151;margin-top:4px;padding-top:8px';
+    var sp2hF=sp('','📁 Fișiere (fost rând 3)');
+    sp2hF.style.cssText='color:#F59E0B;font-weight:700;font-size:12px;display:block;margin-bottom:6px';
+    var sp2rowF=div('');sp2rowF.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center';
+    ap(sp2rowF,trData,trJournal,trShare,trSec,trProj,resetBtn,traceBtn);
+    sp2divF.appendChild(sp2hF);sp2divF.appendChild(sp2rowF);
+    sp2.appendChild(sp2divF);
+
+    sp2.appendChild(sp2close);
     root.appendChild(sp2);
   }
 
