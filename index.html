@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V145</title>
+<title>Project Board V147</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -388,10 +388,24 @@ async function fbPush(){
   var _lastGood=ls(LAST_GOOD_SIZE_KEY)||0;
   if(_lastGood>0 && _newSize<_lastGood*(1-SIZE_GUARD_PCT)){
     traceLog('G1: guard push declanșat — lastGood='+_lastGood+' new='+_newSize);
-    var _proceed=await confirmSizeGuard(_lastGood,_newSize,'Push (trimite local → cloud, suprascrie ce e în Firebase)','Local');
+    // G2: aduce datele din cloud DOAR acum (guard declanșat) ca să calculeze diferența reală
+    var _pushDiff=null;
+    try{
+      var _remSnap=await fbDb.collection('users').doc(fbUser.uid+'-data').get();
+      if(_remSnap.exists){
+        var _remData=_remSnap.data();
+        _pushDiff=diffTaskSets(S.items,S.freeTasks,_remData.items||[],_remData.freeTasks||[]);
+      }
+    }catch(_e){traceLog('G2: fetch remote pt diff eșuat: '+(_e.message||_e));}
+    var _proceed=await confirmSizeGuard(_lastGood,_newSize,'Push (trimite local → cloud, suprascrie ce e în Firebase)','Local',true,_pushDiff);
+    if(_proceed==='pull'){
+      traceLog('G1: utilizator a ales Pull în loc de Push');
+      var _pullOk=await fbPull('overwrite');
+      return {ok:false,err:'S-a făcut Pull din cloud în loc de Push.',switchedToPull:true,pullOk:_pullOk};
+    }
     if(!_proceed){
       traceLog('G1: push anulat de utilizator');
-      return {ok:false,err:'Push anulat — scădere semnificativă de date detectată local'};
+      return {ok:false,err:'Push anulat — scădere semnificativă de date detectată local',guardCancelled:true};
     }
   }
   // S1: salvează zona fiecărui item înainte de push (green/red/yellow/null)
@@ -437,36 +451,113 @@ function dataSize(items,freeTasks){
 var SIZE_GUARD_PCT=0.10; // G1: prag de alertă — scădere ≥10%
 var LAST_GOOD_SIZE_KEY='pb-last-good-size';
 
+// ── G2: construiește harta de intrări (proiect::task / free task) pentru comparare seturi ──
+function buildTaskEntryMap(items,freeTasks){
+  var map={};
+  (items||[]).forEach(function(p){
+    if(p.type!=='project') return;
+    (p.tasks||[]).forEach(function(t){
+      map['p::'+p.id+'::'+t.id]={name:t.name,proj:p.name,type:'proj'};
+    });
+  });
+  (freeTasks||[]).forEach(function(f){
+    if((f.id||'').startsWith('cal::')) return; // evenimente calendar — nu sunt conținut propriu
+    if(/^\*[123]/.test(f.name||'')) return; // marcatori de zonă — nu sunt taskuri reale
+    map['f::'+f.id]={name:f.name,proj:null,type:'free'};
+  });
+  return map;
+}
+// G2: diferența dintre două seturi (local vs remote) — ce există doar într-o parte
+function diffTaskSets(localItems,localFree,remoteItems,remoteFree){
+  var lm=buildTaskEntryMap(localItems,localFree);
+  var rm=buildTaskEntryMap(remoteItems,remoteFree);
+  var onlyLocal=[],onlyRemote=[];
+  Object.keys(lm).forEach(function(k){if(!rm[k]) onlyLocal.push(lm[k]);});
+  Object.keys(rm).forEach(function(k){if(!lm[k]) onlyRemote.push(rm[k]);});
+  return {onlyLocal:onlyLocal,onlyRemote:onlyRemote};
+}
+
 // ── G1: modal de confirmare când se detectează o scădere semnificativă de date ──
-// Returnează o Promisiune<boolean> — true = continuă acțiunea, false = anulează
-function confirmSizeGuard(oldSize,newSize,actionLabel,direction){
+// Returnează o Promisiune<true|false|'pull'> — true=continuă acțiunea, false=anulează,
+// 'pull'=(doar când offerPullSwitch) utilizatorul preferă să facă Pull în loc de Push
+function confirmSizeGuard(oldSize,newSize,actionLabel,direction,offerPullSwitch,diff){
   return new Promise(function(resolve){
     var pct=oldSize>0?Math.round((1-newSize/oldSize)*100):0;
     var ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
     var card=document.createElement('div');
-    card.style.cssText='background:#1A1D2E;border:2px solid #EF4444;border-radius:14px;padding:20px;max-width:400px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+    card.style.cssText='background:#1A1D2E;border:2px solid #EF4444;border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.6)';
     var h=document.createElement('div');
     h.textContent='⚠ Scădere semnificativă de date detectată';
     h.style.cssText='color:#F87171;font-weight:800;font-size:15px;margin-bottom:10px';
     var msg=document.createElement('div');
-    msg.style.cssText='color:#E2E8F0;font-size:13px;line-height:1.7;margin-bottom:16px';
-    msg.innerHTML='<strong>'+direction+'</strong> ar avea <strong>'+newSize+'</strong> proiecte+taskuri, față de <strong>'+oldSize+'</strong> cunoscute anterior — o scădere de <strong style="color:#F87171">'+pct+'%</strong>.<br><br>Acțiune propusă: '+actionLabel+'<br><br>Poate fi o pierdere reală de date (device resetat, cache golit) — verifică înainte să continui, dacă nu ești sigur.';
+    msg.style.cssText='color:#E2E8F0;font-size:13px;line-height:1.7;margin-bottom:14px';
+    msg.innerHTML='<strong>'+direction+'</strong> ar avea <strong>'+newSize+'</strong> proiecte+taskuri, față de <strong>'+oldSize+'</strong> cunoscute anterior — o scădere de <strong style="color:#F87171">'+pct+'%</strong>.'+(offerPullSwitch?'<br><br>Cel mai probabil vrei să faci <strong style="color:#34D399">Pull</strong> (aduci varianta din cloud), nu Push.':'');
+    card.appendChild(h);card.appendChild(msg);
+
+    // G2: lista efectivă a diferenței dintre local și cloud
+    if(diff&&(diff.onlyLocal.length||diff.onlyRemote.length)){
+      var diffWrap=document.createElement('div');
+      diffWrap.style.cssText='max-height:240px;overflow-y:auto;background:#0F1117;border:1px solid #374151;border-radius:8px;padding:10px;margin-bottom:14px;font-size:11px';
+      function renderDiffList(title,color,arr){
+        var t=document.createElement('div');
+        t.textContent=title+' ('+arr.length+')';
+        t.style.cssText='color:'+color+';font-weight:700;margin:6px 0 4px';
+        diffWrap.appendChild(t);
+        if(!arr.length){
+          var none=document.createElement('div');none.textContent='— niciunul —';
+          none.style.cssText='color:#4B5563;font-style:italic;margin-bottom:6px';
+          diffWrap.appendChild(none);return;
+        }
+        var shown=arr.slice(0,15);
+        shown.forEach(function(it){
+          var row=document.createElement('div');
+          row.style.cssText='color:#CBD5E1;padding:2px 0;border-bottom:1px solid #1E2130;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+          row.textContent=(it.proj?'['+it.proj+'] ':'')+(it.name||'').split('\n')[0].slice(0,60);
+          diffWrap.appendChild(row);
+        });
+        if(arr.length>shown.length){
+          var more=document.createElement('div');
+          more.textContent='… +'+(arr.length-shown.length)+' altele';
+          more.style.cssText='color:#6B7280;font-style:italic;padding:3px 0';
+          diffWrap.appendChild(more);
+        }
+      }
+      renderDiffList('📍 Doar LOCAL (lipsesc din cloud)','#60A5FA',diff.onlyLocal);
+      renderDiffList('☁ Doar în CLOUD (lipsesc local)','#34D399',diff.onlyRemote);
+      card.appendChild(diffWrap);
+    } else if(diff){
+      var noDiffMsg=document.createElement('div');
+      noDiffMsg.textContent='(Nu s-a putut calcula diferența exactă — comparație doar pe baza numărului total.)';
+      noDiffMsg.style.cssText='color:#6B7280;font-size:11px;font-style:italic;margin-bottom:14px';
+      card.appendChild(noDiffMsg);
+    }
+
     var brow=document.createElement('div');
-    brow.style.cssText='display:flex;gap:8px';
-    var bCancel=document.createElement('button');
-    bCancel.textContent='✕ Anulează (recomandat)';
-    bCancel.style.cssText='flex:1;background:#10B981;color:#04120A;border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
-    var bOk=document.createElement('button');
-    bOk.textContent='Continuă oricum';
-    bOk.style.cssText='background:#374151;color:#FCA5A5;border:1px solid #EF4444;border-radius:8px;padding:11px 14px;font-weight:700;font-size:12px;cursor:pointer;touch-action:manipulation';
+    brow.style.cssText='display:flex;flex-direction:column;gap:8px';
     function fin(v){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);resolve(v);}
+    if(offerPullSwitch){
+      var bPullSw=document.createElement('button');
+      bPullSw.textContent='🔽 Fă Pull în loc (recomandat)';
+      bPullSw.style.cssText='background:#10B981;color:#04120A;border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+      bPullSw.addEventListener('click',function(){fin('pull');});
+      bPullSw.addEventListener('touchend',function(e){e.preventDefault();fin('pull');},{passive:false});
+      brow.appendChild(bPullSw);
+    }
+    var bCancel=document.createElement('button');
+    bCancel.textContent=offerPullSwitch?'✕ Nu face nimic acum':'✕ Anulează (recomandat)';
+    bCancel.style.cssText=offerPullSwitch
+      ?'background:#374151;color:#E2E8F0;border:1px solid #4B5563;border-radius:8px;padding:11px;font-weight:700;font-size:13px;cursor:pointer;touch-action:manipulation'
+      :'background:#10B981;color:#04120A;border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+    var bOk=document.createElement('button');
+    bOk.textContent='Continuă oricum ('+actionLabel.split(' ')[0]+')';
+    bOk.style.cssText='background:#374151;color:#FCA5A5;border:1px solid #EF4444;border-radius:8px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;touch-action:manipulation';
     bOk.addEventListener('click',function(){fin(true);});
     bOk.addEventListener('touchend',function(e){e.preventDefault();fin(true);},{passive:false});
     bCancel.addEventListener('click',function(){fin(false);});
     bCancel.addEventListener('touchend',function(e){e.preventDefault();fin(false);},{passive:false});
     brow.appendChild(bCancel);brow.appendChild(bOk);
-    card.appendChild(h);card.appendChild(msg);card.appendChild(brow);
+    card.appendChild(brow);
     ov.appendChild(card);
     document.body.appendChild(ov);
   });
@@ -573,7 +664,8 @@ async function fbPull(mode){
           var _remoteSize=dataSize(remoteItems,rData.freeTasks);
           if(_localSize>0 && _remoteSize<_localSize*(1-SIZE_GUARD_PCT)){
             traceLog('G1: guard pull declanșat — local='+_localSize+' remote='+_remoteSize);
-            var _proceedPull=await confirmSizeGuard(_localSize,_remoteSize,'Pull (suprascrie local cu varianta din cloud)','Cloud (remote)');
+            var _pullDiff=diffTaskSets(S.items,S.freeTasks,remoteItems,rData.freeTasks||[]);
+            var _proceedPull=await confirmSizeGuard(_localSize,_remoteSize,'Pull (suprascrie local cu varianta din cloud)','Cloud (remote)',false,_pullDiff);
             if(!_proceedPull){
               traceLog('G1: pull anulat de utilizator');
               shouldOverwrite=false;
@@ -683,6 +775,11 @@ async function fbPullIfNewer(){
       if(res.ok){
         lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);
         fbToast('☁↑ Push automat la lansare','#0F2A1A','#10B981',3000);
+      } else if(res.switchedToPull){
+        fbToast(res.pullOk?'☁↓ Pull automat (protecție date) — verifică':'❌ Push blocat, Pull automat eșuat și el','#0F2A1A',res.pullOk?'#10B981':'#EF4444',5000);
+        render();
+      } else if(res.guardCancelled){
+        fbToast('⏸ Push automat blocat (protecție date) — verifică din Data → Firebase Sync','#1A1A0A','#F59E0B',6000);
       }
     } else if(hasRemoteNew){
       // Doar remote mai nou → pull
@@ -744,6 +841,13 @@ async function fbSync(){
         var tc=S.items.reduce(function(a,x){return a+(x.tasks?x.tasks.length:0);},0);
         if(dot){dot.textContent='☁↑';dot.style.color='#10B981';setTimeout(function(){dot.textContent='';},2500);}
         fbToast('☁↑ Push: '+pc+' proj, '+tc+' tasks','#0F2A1A','#10B981',3000);
+      } else if(res.switchedToPull){
+        if(dot){dot.textContent=res.pullOk?'☁↓':'☁✗';dot.style.color=res.pullOk?'#10B981':'#EF4444';setTimeout(function(){dot.textContent='';},3000);}
+        fbToast(res.pullOk?'☁↓ Pull făcut cu succes — verifică datele':'❌ Pull eșuat și el — verifică conexiunea','#0F2A1A',res.pullOk?'#10B981':'#EF4444',5000);
+        render();
+      } else if(res.guardCancelled){
+        if(dot){dot.textContent='☁⏸';dot.style.color='#F59E0B';setTimeout(function(){dot.textContent='';},3000);}
+        fbToast('⏸ Push anulat (protecție date) — folosește Data → Pull dacă vrei varianta din cloud','#1A1A0A','#F59E0B',6000);
       } else {
         if(dot){dot.textContent='☁✗';dot.style.color='#EF4444';setTimeout(function(){dot.textContent='';},3000);}
         fbToast('Firebase error: '+(res.err||'unknown'),'#1A0A0A','#EF4444',6000);
