@@ -1,4 +1,4 @@
-var CACHE = 'trident-cache-v54';
+var CACHE = 'projectboard-v148';
 var FILES = [
   '/index.html',
   '/manifest.json',
