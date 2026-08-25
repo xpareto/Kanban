@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V148</title>
+<title>Project Board V149</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2620,10 +2620,64 @@ function delFree(id){
   lw('pb-local-dirty-ts',Date.now()); // C1: marchează dirty — sync automat propagă bifarea pe celelalte dispozitive
   render();
 }
+// PND1: verifică dacă un nume nou de proiect e posibilă dublură — identic (case-insensitive),
+// sau inclus/incluzând un nume de proiect existent
+function findSimilarProjectName(newName){
+  var nn=(newName||'').trim().toLowerCase();
+  if(!nn) return null;
+  var projects=S.items.filter(function(x){return x.type==='project';});
+  for(var i=0;i<projects.length;i++){
+    var pn=(projects[i].name||'').trim().toLowerCase();
+    if(!pn) continue;
+    if(pn===nn) return {proj:projects[i],reason:'nume identic'};
+    if(pn.indexOf(nn)>=0) return {proj:projects[i],reason:'numele nou e conținut în „'+projects[i].name+'"'};
+    if(nn.indexOf(pn)>=0) return {proj:projects[i],reason:'„'+projects[i].name+'" e conținut în numele nou'};
+  }
+  return null;
+}
+// PND1: modal de confirmare — apelează cb(true) dacă utilizatorul vrea să continue oricum
+function confirmProjectNameGuard(newName,similar,cb){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border:2px solid #F59E0B;border-radius:14px;padding:18px;max-width:390px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='⚠ Posibilă dublură de proiect';
+  h.style.cssText='color:#F59E0B;font-weight:800;font-size:14px;margin-bottom:8px';
+  var msg=document.createElement('div');
+  msg.style.cssText='color:#E2E8F0;font-size:13px;line-height:1.6;margin-bottom:14px';
+  msg.innerHTML='Ai scris <strong>„'+newName+'"</strong>.<br>Există deja proiectul <strong>„'+similar.proj.name+'"</strong> — '+similar.reason+'.';
+  var brow=document.createElement('div');
+  brow.style.cssText='display:flex;flex-direction:column;gap:8px';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕ Renunț (mă răzgândesc)';
+  bCancel.style.cssText='background:#10B981;color:#04120A;border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bOk=document.createElement('button');
+  bOk.textContent='Creează oricum, proiect nou';
+  bOk.style.cssText='background:#374151;color:#E2E8F0;border:1px solid #4B5563;border-radius:8px;padding:9px 14px;font-weight:700;font-size:12px;cursor:pointer;touch-action:manipulation';
+  function doClose(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  bOk.addEventListener('click',function(){doClose();cb(true);});
+  bOk.addEventListener('touchend',function(e){e.preventDefault();doClose();cb(true);},{passive:false});
+  bCancel.addEventListener('click',function(){doClose();cb(false);});
+  bCancel.addEventListener('touchend',function(e){e.preventDefault();doClose();cb(false);},{passive:false});
+  brow.appendChild(bCancel);brow.appendChild(bOk);
+  card.appendChild(h);card.appendChild(msg);card.appendChild(brow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+}
+
 function confAdd(){
   if(!S.addName.trim()||!S.showAdd)return;
-  const now_=Date.now();const ni=S.showAdd==='section'?{type:'section',id:gid(),name:S.addName.trim(),modifiedTs:now_}:{type:'project',id:gid(),name:S.addName.trim(),tasks:[],modifiedTs:now_};
-  S.items=[...S.items,ni];S.addName='';S.showAdd=null;save();render();
+  var _name=S.addName.trim();
+  function _doAdd(){
+    const now_=Date.now();const ni=S.showAdd==='section'?{type:'section',id:gid(),name:_name,modifiedTs:now_}:{type:'project',id:gid(),name:_name,tasks:[],modifiedTs:now_};
+    S.items=[...S.items,ni];S.addName='';S.showAdd=null;save();render();
+  }
+  if(S.showAdd==='project'){
+    var _sim=findSimilarProjectName(_name);
+    if(_sim){confirmProjectNameGuard(_name,_sim,function(ok){if(ok)_doAdd();});return;}
+  }
+  _doAdd();
 }
 // F1: căutare restrânsă doar la NEXT — folosită de butoanele rapide #a #g etc.
 function doSearchNextOnly(q){
@@ -2961,6 +3015,14 @@ function navigateTo(projectId){
   },80);
 }
 function doCreateProject(freeId,projName,taskLabel){
+  var _simDCP=findSimilarProjectName(projName);
+  if(_simDCP){
+    confirmProjectNameGuard(projName,_simDCP,function(ok){if(ok)_doCreateProjectImpl(freeId,projName,taskLabel);});
+    return;
+  }
+  _doCreateProjectImpl(freeId,projName,taskLabel);
+}
+function _doCreateProjectImpl(freeId,projName,taskLabel){
   var newId=gid();
   var newTaskId=gid();
   // Np1-trace: poziția free task-ului înainte de creare proiect
@@ -3590,6 +3652,45 @@ function doClrShareJournal(){
 
 // ── Note overlay — editare notă atașată unui task ──
 // saveFn(newNote) — callback care salvează nota în obiectul corect
+// T1: dialog suplimentar — cerut când textul taskului e mutat integral în notă (opțiunea b),
+// ca task-ul să NU rămână niciodată cu nume gol (greu de găsit în listă)
+function promptRenameTask(oldName,cb){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border:2px solid #F59E0B;border-radius:14px;padding:18px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='✎ Nume nou pentru task';
+  h.style.cssText='color:#F59E0B;font-weight:800;font-size:14px;margin-bottom:6px';
+  var sub=document.createElement('div');
+  sub.textContent='Textul vechi a fost mutat în notă. Ce vrei să scrii acum pe rândul taskului?';
+  sub.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:10px;line-height:1.5';
+  var inp=document.createElement('input');
+  inp.placeholder='Nume task nou...';
+  inp.style.cssText='width:100%;border:1px solid #F59E0B;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box;margin-bottom:12px';
+  var brow=document.createElement('div');
+  brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓ Salvează';
+  bOk.style.cssText='flex:1;background:#F59E0B;color:#1A1D2E;border:none;border-radius:8px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕ Renunță (păstrează vechiul)';
+  bCancel.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 12px;font-size:11px;cursor:pointer;touch-action:manipulation';
+  function doClose(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  function doOk(){var v=inp.value.trim();doClose();cb(v||null);}
+  function doCancel(){doClose();cb(null);}
+  bOk.addEventListener('click',doOk);
+  bOk.addEventListener('touchend',function(e){e.preventDefault();doOk();},{passive:false});
+  bCancel.addEventListener('click',doCancel);
+  bCancel.addEventListener('touchend',function(e){e.preventDefault();doCancel();},{passive:false});
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doOk();}if(e.key==='Escape'){doCancel();}});
+  brow.appendChild(bCancel);brow.appendChild(bOk);
+  card.appendChild(h);card.appendChild(sub);card.appendChild(inp);card.appendChild(brow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();},80);
+}
+
 function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   var ov=document.createElement('div');
   ov.className='note-ov';
@@ -4758,7 +4859,22 @@ function rBoard(){
           var tk=pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});
           showNoteOverlay(tname, tk?tk.note||'':'', tname, function(newNote,clearTask){
             var pr2=S.items.find(function(x){return x.id===pid;});
-            if(pr2){var tk2=pr2.tasks.find(function(t){return t.id===tid;});if(tk2){tk2.note=newNote;if(clearTask)tk2.name='';tk2.modifiedTs=Date.now();save();}}
+            var tk2=pr2&&pr2.tasks.find(function(t){return t.id===tid;});
+            if(tk2){
+              tk2.note=newNote;tk2.modifiedTs=Date.now();
+              if(clearTask){
+                var _oldN=tk2.name;
+                save();render();
+                promptRenameTask(_oldN,function(newName){
+                  var pr3=S.items.find(function(x){return x.id===pid;});
+                  var tk3=pr3&&pr3.tasks.find(function(t){return t.id===tid;});
+                  if(tk3){tk3.name=newName||_oldN;tk3.modifiedTs=Date.now();save();}
+                  render();
+                });
+                return;
+              }
+              save();
+            }
             render();
           });
         }
@@ -4807,7 +4923,20 @@ function rBoard(){
             var ft=S.freeTasks.find(function(x){return x.id===fid;});
             showNoteOverlay(fname, ft?ft.note||'':'', fname, function(newNote,clearTask){
               var ft2=S.freeTasks.find(function(x){return x.id===fid;});
-              if(ft2){ft2.note=newNote;if(clearTask)ft2.name='';ft2.modifiedTs=Date.now();lw(FK,S.freeTasks);}
+              if(ft2){
+                ft2.note=newNote;ft2.modifiedTs=Date.now();
+                if(clearTask){
+                  var _oldN2=ft2.name;
+                  lw(FK,S.freeTasks);render();
+                  promptRenameTask(_oldN2,function(newName){
+                    var ft3=S.freeTasks.find(function(x){return x.id===fid;});
+                    if(ft3){ft3.name=newName||_oldN2;ft3.modifiedTs=Date.now();lw(FK,S.freeTasks);}
+                    render();
+                  });
+                  return;
+                }
+                lw(FK,S.freeTasks);
+              }
               render();
             });
           }
@@ -4974,7 +5103,22 @@ function rBoard(){
           var tk=pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});
           showNoteOverlay(tname, tk?tk.note||'':'', tname, function(newNote,clearTask){
             var pr2=S.items.find(function(x){return x.id===pid;});
-            if(pr2){var tk2=pr2.tasks.find(function(t){return t.id===tid;});if(tk2){tk2.note=newNote;if(clearTask)tk2.name='';tk2.modifiedTs=Date.now();save();}}
+            var tk2=pr2&&pr2.tasks.find(function(t){return t.id===tid;});
+            if(tk2){
+              tk2.note=newNote;tk2.modifiedTs=Date.now();
+              if(clearTask){
+                var _oldN3=tk2.name;
+                save();render();
+                promptRenameTask(_oldN3,function(newName){
+                  var pr3=S.items.find(function(x){return x.id===pid;});
+                  var tk3=pr3&&pr3.tasks.find(function(t){return t.id===tid;});
+                  if(tk3){tk3.name=newName||_oldN3;tk3.modifiedTs=Date.now();save();}
+                  render();
+                });
+                return;
+              }
+              save();
+            }
             render();
           });
         }
@@ -5011,7 +5155,20 @@ function rBoard(){
           var ft=S.waitFreeTasks.find(function(x){return x.id===fid;});
           showNoteOverlay(fname, ft?ft.note||'':'', fname, function(newNote,clearTask){
             var ft2=S.waitFreeTasks.find(function(x){return x.id===fid;});
-            if(ft2){ft2.note=newNote;if(clearTask)ft2.name='';ft2.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+            if(ft2){
+              ft2.note=newNote;ft2.modifiedTs=Date.now();
+              if(clearTask){
+                var _oldN4=ft2.name;
+                lw(WFK,S.waitFreeTasks);render();
+                promptRenameTask(_oldN4,function(newName){
+                  var ft3=S.waitFreeTasks.find(function(x){return x.id===fid;});
+                  if(ft3){ft3.name=newName||_oldN4;ft3.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}
+                  render();
+                });
+                return;
+              }
+              lw(WFK,S.waitFreeTasks);
+            }
             render();
           });
         }
@@ -5565,11 +5722,16 @@ function moveSelectedToProject(){
   function doNew(){
     var projName=inp.value.trim();
     if(!projName) return;
-    doClose();
-    var newProjId=gid();
-    var newProj={type:'project',id:newProjId,name:projName,tasks:[]};
-    S.items=[...S.items,newProj];
-    doAddToProj(newProj,newProjId,true);
+    function _create(){
+      doClose();
+      var newProjId=gid();
+      var newProj={type:'project',id:newProjId,name:projName,tasks:[]};
+      S.items=[...S.items,newProj];
+      doAddToProj(newProj,newProjId,true);
+    }
+    var _simMS=findSimilarProjectName(projName);
+    if(_simMS){confirmProjectNameGuard(projName,_simMS,function(ok){if(ok)_create();});return;}
+    _create();
   }
   bOk.addEventListener('click',doNew);
   bCancel.addEventListener('click',doClose);
