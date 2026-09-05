@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V150</title>
+<title>Project Board V151</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -4636,33 +4636,49 @@ function rBoard(){
         if(!b.d) return -1;
         return a.d-b.d;
       }).map(function(x){return x.row;});
-    function svBuildCol(title,titleColor,items,emptyMsg,colorFn){
+    function svBuildCol(title,titleColor,items,emptyMsg,colorFn,side){
+      var isLeft=side==='left';
       var col=div('');
-      col.style.cssText='flex:0 0 88vw;max-width:88vw;scroll-snap-align:start;padding:10px 14px 20px;box-sizing:border-box;border-right:1px solid #E5E7EB';
+      col.style.cssText='flex:0 0 88vw;max-width:88vw;scroll-snap-align:start;padding:10px 14px 20px;box-sizing:border-box;'+(isLeft?'border-right:1px solid #E5E7EB;':'');
       var h=document.createElement('div');
       h.textContent=title;
-      h.style.cssText='font-size:11px;font-weight:800;letter-spacing:.06em;margin-bottom:8px;color:'+titleColor+';position:sticky;top:0;background:#fff;padding-bottom:4px';
+      h.style.cssText='font-size:11px;font-weight:800;letter-spacing:.06em;margin-bottom:8px;color:'+titleColor+';position:sticky;top:0;background:#fff;padding-bottom:4px;text-align:'+(isLeft?'right':'left');
       col.appendChild(h);
       if(!items.length){
-        var e=document.createElement('div');e.textContent=emptyMsg;e.style.cssText='font-size:12px;color:#9CA3AF;font-style:italic';
+        var e=document.createElement('div');e.textContent=emptyMsg;
+        e.style.cssText='font-size:12px;color:#9CA3AF;font-style:italic;text-align:'+(isLeft?'right':'left');
         col.appendChild(e);
         return col;
       }
       items.forEach(function(row){
-        var line=document.createElement('div');
+        var line=div('');
+        line.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #F3F4F6';
         var c=colorFn?colorFn(row):titleColor;
-        line.style.cssText='font-size:13px;color:'+c+';padding:7px 0;border-bottom:1px solid #F3F4F6;line-height:1.45';
-        var txt=(row.isFree?'':row.pname+' › ')+row.tname;
-        line.textContent=txt;
+        var txt=document.createElement('div');
+        txt.style.cssText='flex:1;min-width:0;font-size:13px;color:'+c+';line-height:1.45;text-align:'+(isLeft?'right':'left');
+        txt.textContent=(row.isFree?'':row.pname+' › ')+row.tname;
+        // SV2: checkbox real — bifează efectiv task-ul (aceeași acțiune ca ✓/✕ din view-ul normal)
+        var cb=document.createElement('div');
+        cb.style.cssText='width:21px;height:21px;border:2px solid '+c+';border-radius:5px;flex-shrink:0;cursor:pointer;touch-action:manipulation;margin-top:1px';
+        function doCheck(e){
+          e.stopPropagation();e.preventDefault();
+          if(row.isFree) delFree(row.id);
+          else markDone(row.projectId,row.taskId,'next');
+        }
+        cb.addEventListener('click',doCheck);
+        cb.addEventListener('touchend',function(e){e.preventDefault();doCheck(e);},{passive:false});
+        // SV2: checkbox lipit de linia de separație — dreapta coloanei stângi, stânga coloanei drepte
+        if(isLeft){line.appendChild(txt);line.appendChild(cb);}
+        else{line.appendChild(cb);line.appendChild(txt);}
         col.appendChild(line);
       });
       return col;
     }
-    var svColGreen=svBuildCol('🟢 PRIORITARE','#166534',svGreenItems,'(nimic în zona verde)');
+    var svColGreen=svBuildCol('🟢 PRIORITARE','#166534',svGreenItems,'(nimic în zona verde)',null,'left');
     var svColRed=svBuildCol('🔴 TERMENE + 📅 CALENDAR','#991B1B',svRedCalItems,'(nimic în zona roșie / calendar)',function(row){
       var isCal=row.isFree&&row.id&&row.id.startsWith('cal::');
       return isCal?'#1D4ED8':'#991B1B';
-    });
+    },'right');
     svWrap.appendChild(svColGreen);svWrap.appendChild(svColRed);
     nsec.appendChild(svWrap);
     root.appendChild(nsec);
