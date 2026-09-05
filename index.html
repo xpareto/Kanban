@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V151</title>
+<title>Project Board V152</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -4620,7 +4620,7 @@ function rBoard(){
   if(S.nextSplitView){
     // ── SV1: split-view — doar vizualizare, două coloane paralele, defilare orizontală ──
     var svWrap=div('');
-    svWrap.style.cssText='display:flex;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;border-bottom:1px solid #E5E7EB;background:#fff';
+    svWrap.style.cssText='display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:1px solid #E5E7EB;background:#fff';
     var svGreenItems=[],svRedCalItems=[];
     nr.forEach(function(row){
       if(!row.tname||!row.tname.trim()) return;
@@ -4639,7 +4639,7 @@ function rBoard(){
     function svBuildCol(title,titleColor,items,emptyMsg,colorFn,side){
       var isLeft=side==='left';
       var col=div('');
-      col.style.cssText='flex:0 0 88vw;max-width:88vw;scroll-snap-align:start;padding:10px 14px 20px;box-sizing:border-box;'+(isLeft?'border-right:1px solid #E5E7EB;':'');
+      col.style.cssText='flex:0 0 88vw;max-width:88vw;padding:10px 14px 20px;box-sizing:border-box;'+(isLeft?'border-right:1px solid #E5E7EB;':'');
       var h=document.createElement('div');
       h.textContent=title;
       h.style.cssText='font-size:11px;font-weight:800;letter-spacing:.06em;margin-bottom:8px;color:'+titleColor+';position:sticky;top:0;background:#fff;padding-bottom:4px;text-align:'+(isLeft?'right':'left');
@@ -4682,6 +4682,33 @@ function rBoard(){
     svWrap.appendChild(svColGreen);svWrap.appendChild(svColRed);
     nsec.appendChild(svWrap);
     root.appendChild(nsec);
+    // SV3: separatorul (linia dintre cele două coloane egale) rămâne fix pe centrul ecranului.
+    // Cât timp utilizatorul trage cu degetul, scroll-ul nativ e liber (vede capătul stânga/dreapta).
+    // După ce ridică degetul (scroll-ul se oprește) SAU la orice re-render (ex: după bifare),
+    // revine automat la poziția centrată — nu mai „sare" aleatoriu.
+    (function(){
+      var _svCentering=false,_svCenterClearTimer=null;
+      function svCenterScroll(instant){
+        var cx=(svWrap.scrollWidth-svWrap.clientWidth)/2;
+        if(instant){
+          svWrap.scrollLeft=cx;
+        } else {
+          _svCentering=true;
+          clearTimeout(_svCenterClearTimer);
+          _svCenterClearTimer=setTimeout(function(){_svCentering=false;},600);
+          if(svWrap.scrollTo) svWrap.scrollTo({left:cx,behavior:'smooth'});
+          else svWrap.scrollLeft=cx;
+        }
+      }
+      var _svScrollTimer=null;
+      svWrap.addEventListener('scroll',function(){
+        if(_svCentering) return; // ignoră scroll-ul declanșat chiar de animația de recentrare
+        clearTimeout(_svScrollTimer);
+        _svScrollTimer=setTimeout(function(){svCenterScroll(false);},400);
+      },{passive:true});
+      // Poziționare inițială (instant, fără animație) — și după fiecare re-render (bifare etc.)
+      setTimeout(function(){svCenterScroll(true);},0);
+    })();
   } else {
   var _filteredCount=S.nextTab==='all'?_catCounts.all:(_catCounts[S.nextTab]||0);
   if(!_filteredCount){
