@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V152</title>
+<title>Project Board V154</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -1023,7 +1023,7 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'all',nextSplitView:false};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'all',nextSplitView:true};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
@@ -4578,7 +4578,18 @@ function rBoard(){
   if(S.selectMode&&!S.nextSplitView){
     var selCount=Object.keys(S.selectedNext).length;
     var sb=div('sel-bar');
+    sb.style.cssText='display:flex;flex-direction:column;gap:7px;padding:9px 12px;background:#1E40AF;border:2px solid #3B82F6;border-radius:12px;position:fixed;bottom:76px;left:10px;right:10px;z-index:600;box-shadow:0 4px 20px rgba(0,0,0,.45);';
+    var selRow1=div('');selRow1.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';
+    var selRow2=div('');selRow2.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';
     var scc=sp('sel-count','☑ '+selCount+' selected');
+    // SB1: buton Editează — vizibil doar la exact 1 rând selectat, ca să nu se confunde cu acțiuni de mutare în masă
+    var sbEdit=null;
+    if(selCount===1){
+      sbEdit=mk('button','sel-btn');sbEdit.textContent='✎ Editează';
+      sbEdit.style.background='#F59E0B';sbEdit.style.color='#1A1D2E';
+      sbEdit.addEventListener('click',function(){editSelectedSingleTask();});
+      sbEdit.addEventListener('touchend',function(e){e.preventDefault();editSelectedSingleTask();},{passive:false});
+    }
     var sbTop=mk('button','sel-btn');sbTop.textContent='↑ Top';
     sbTop.addEventListener('click',function(){moveSelectedNext('top');});
     sbTop.addEventListener('touchend',function(e){e.preventDefault();moveSelectedNext('top');},{passive:false});
@@ -4603,15 +4614,21 @@ function rBoard(){
     sbOpml.title='Export selecție în OPML (WorkFlowy)';
     sbOpml.addEventListener('click',function(){exportSelectedOPML();});
     sbOpml.addEventListener('touchend',function(e){e.preventDefault();exportSelectedOPML();},{passive:false});
+    // SB1: rândul 1 — count + Editează (dacă e cazul) + Top/Bottom
+    ap(selRow1,scc);
+    if(sbEdit) selRow1.appendChild(sbEdit);
+    ap(selRow1,sbTop,sbBot);
+    // SB1: rândul 2 — restul acțiunilor + Cancel mereu vizibil la final
+    ap(selRow2,sbProj,sbAutoLink,sbSub);
     if(selCount===2){
       var sbSort=mk('button','sel-btn');sbSort.textContent='⇅ Sortare dată';
       sbSort.style.background='#7C3AED';
       sbSort.addEventListener('click',function(){sortSelectedByDate();});
       sbSort.addEventListener('touchend',function(e){e.preventDefault();sortSelectedByDate();},{passive:false});
-      ap(sb,scc,sbTop,sbBot,sbProj,sbAutoLink,sbSub,sbSort,sbOpml,sbClear);
-    } else {
-      ap(sb,scc,sbTop,sbBot,sbProj,sbAutoLink,sbSub,sbOpml,sbClear);
+      selRow2.appendChild(sbSort);
     }
+    ap(selRow2,sbOpml,sbClear);
+    sb.appendChild(selRow1);sb.appendChild(selRow2);
     root.appendChild(sb);
   }
 
@@ -5958,6 +5975,7 @@ function sortByTime(order){
   }
   S.nextOrder=finalOrder.filter(Boolean);
   lw(NK,S.nextOrder);
+  detectAndSaveZones(); // fix: actualizează zone-ul stocat, altfel Split-View/taburile T1 rămân cu zona veche
   save();
   fbToast((order==='new'?'▼ Nou→Vechi':'▲ Vechi→Nou')+' aplicat','#1E2130','#A78BFA',2500);
   render();
@@ -6010,6 +6028,7 @@ function sortRestNext(){
   var newOrder=protected2.concat(projRest).concat(freeRest).concat(calRest).map(toOrd);
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
+  detectAndSaveZones(); // fix: actualizează zone-ul stocat, altfel Split-View/taburile T1 rămân cu zona veche
   save();
   fbToast('⊞ Sortat: '+projRest.length+' proj + '+freeRest.length+' free','#1E2130','#A78BFA',3000);
   render();
@@ -6139,6 +6158,7 @@ function sortBetweenMarkers(){
   rest.forEach(function(r){newOrder.push(toOrd(r));});
   S.nextOrder=newOrder;
   lw(NK,S.nextOrder);
+  detectAndSaveZones(); // fix: actualizează zone-ul stocat, altfel Split-View/taburile T1 rămân cu zona veche
   save();
   fbToast('⧸✱ Sortat: '+calRows.length+' cal + '+withDate.length+' termene','#1E2130','#A78BFA',3000);
   render();
@@ -6308,6 +6328,73 @@ function _opmlFallback(text,count){
   try{document.execCommand('copy');fbToast('📋 OPML copiat ('+count+' items)','#1E2130','#34D399',3000);}
   catch(_){fbToast('Copierea a eșuat — deschide consola','#1E2130','#EF4444',3000);}
   document.body.removeChild(ta);
+}
+
+// SB1: editare directă a rândului unic selectat din bara de selecție (fără dublu-tap, fără confuzie cu mutări)
+function editSelectedSingleTask(){
+  var keys=Object.keys(S.selectedNext);
+  if(keys.length!==1) return;
+  var key=keys[0];
+  var isFree=key.indexOf('f::')===0;
+  var fid=null,pid=null,tid=null,currentName='';
+  if(isFree){
+    fid=key.slice(3);
+    var ft=S.freeTasks.find(function(x){return x.id===fid;});
+    if(!ft) return;
+    currentName=ft.name||'';
+  } else {
+    var parts=key.split('::'); // p::pid::tid
+    pid=parts[1];tid=parts[2];
+    var proj=S.items.find(function(x){return x.id===pid;});
+    var task=proj&&proj.tasks&&proj.tasks.find(function(t){return t.id===tid;});
+    if(!task) return;
+    currentName=task.name||'';
+  }
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px 14px 0 0;padding:16px 16px 24px;width:100%;max-width:520px;box-shadow:0 -8px 30px rgba(0,0,0,.5)';
+  var h=document.createElement('div');
+  h.textContent='✎ Editează task';
+  h.style.cssText='color:#F59E0B;font-weight:800;font-size:14px;margin-bottom:10px';
+  var ta=document.createElement('textarea');
+  ta.value=currentName;
+  ta.rows=4;
+  ta.style.cssText='width:100%;background:#0F1117;color:#E2E8F0;border:1px solid #F59E0B;border-radius:8px;padding:10px;font-size:13px;line-height:1.5;resize:none;outline:none;box-sizing:border-box;margin-bottom:12px;font-family:inherit';
+  var brow=document.createElement('div');
+  brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');
+  bOk.textContent='✓ Salvează';
+  bOk.style.cssText='flex:1;background:#F59E0B;color:#1A1D2E;border:none;border-radius:8px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bCancel=document.createElement('button');
+  bCancel.textContent='✕ Renunță';
+  bCancel.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 16px;font-size:12px;cursor:pointer;touch-action:manipulation';
+  function doClose(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  function doSave(){
+    var v=ta.value.trim();
+    doClose();
+    if(!v) return;
+    var vw=addWeekday(resolveCalCmd(v));
+    if(isFree){
+      var ft2=S.freeTasks.find(function(x){return x.id===fid;});
+      if(ft2){ft2.name=vw;ft2.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(vw);}
+    } else {
+      var proj2=S.items.find(function(x){return x.id===pid;});
+      var task2=proj2&&proj2.tasks.find(function(t){return t.id===tid;});
+      if(task2){task2.name=vw;task2.modifiedTs=Date.now();checkAndCreateFinalizare(vw);save();}
+    }
+    S.selectedNext={};S.selectMode=false;_selOrder=0;
+    render();
+  }
+  bOk.addEventListener('click',doSave);
+  bOk.addEventListener('touchend',function(e){e.preventDefault();doSave();},{passive:false});
+  bCancel.addEventListener('click',doClose);
+  bCancel.addEventListener('touchend',function(e){e.preventDefault();doClose();},{passive:false});
+  brow.appendChild(bCancel);brow.appendChild(bOk);
+  card.appendChild(h);card.appendChild(ta);card.appendChild(brow);
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+  setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
 }
 
 function moveSelectedNext(where){
