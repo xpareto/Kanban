@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V154</title>
+<title>Project Board V155</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -406,11 +406,28 @@ async function fbPush(){
       var _pullOk=await fbPull('overwrite');
       return {ok:false,err:'S-a făcut Pull din cloud în loc de Push.',switchedToPull:true,pullOk:_pullOk};
     }
+    if(_proceed==='merge'){
+      // G4 (V155): uniune completă local+cloud (fbPull('merge') nu are guard propriu),
+      // apoi scrie rezultatul unit înapoi în cloud — nimic nu se pierde.
+      traceLog('G1: utilizator a ales Merge (uniune) în loc de Push');
+      var _mergeOk=await fbPull('merge');
+      if(!_mergeOk){
+        return {ok:false,err:'Merge eșuat — verifică conexiunea',mergedThenPush:true};
+      }
+      var _mergeRes=await _doActualPush();
+      return Object.assign({},_mergeRes,{mergedThenPush:true});
+    }
     if(!_proceed){
       traceLog('G1: push anulat de utilizator');
       return {ok:false,err:'Push anulat — scădere semnificativă de date detectată local',guardCancelled:true};
     }
   }
+  return await _doActualPush();
+}
+
+// G4 (V155): scrierea efectivă în Firestore, extrasă din fbPush ca să poată fi
+// apelată direct și după un Merge (fără să re-declanșeze guard-ul de mărime)
+async function _doActualPush(){
   // S1: salvează zona fiecărui item înainte de push (green/red/yellow/null)
   detectAndSaveZones();
   try{
@@ -422,7 +439,7 @@ async function fbPush(){
       col.doc(uid+'-journal').set(Object.assign({uid:uid},fbPayloadJournal())),
       col.doc(uid+'-sj').set(Object.assign({uid:uid},fbPayloadShareJournal()))
     ]);
-    lw(LAST_GOOD_SIZE_KEY,_newSize); // G1: starea acceptată acum devine noul reper „ultima stare bună"
+    lw(LAST_GOOD_SIZE_KEY,dataSize(S.items,S.freeTasks)); // G1: starea acceptată acum devine noul reper „ultima stare bună"
     return {ok:true};
   }catch(e){console.warn('fbPush error:',e);return {ok:false,err:e.message||String(e)};}
 }
@@ -603,6 +620,15 @@ function confirmSizeGuard(oldSize,newSize,actionLabel,direction,offerPullSwitch,
       bPullSw.addEventListener('touchend',function(e){e.preventDefault();fin('pull');},{passive:false});
       brow.appendChild(bPullSw);
     }
+    // G4 (V155): Merge — uniune completă local+cloud, nimic nu se pierde; duplicatele
+    // eventuale se șterg manual ulterior. Disponibil atât la Push cât și la Pull.
+    var bMerge=document.createElement('button');
+    bMerge.textContent='⧉ Merge — păstrează tot (uniune local+cloud)';
+    bMerge.title='Combină toate elementele din local și cloud, fără suprascriere — ștergi manual duplicatele ulterior, dacă apar';
+    bMerge.style.cssText='background:#7C3AED;color:#fff;border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+    bMerge.addEventListener('click',function(){fin('merge');});
+    bMerge.addEventListener('touchend',function(e){e.preventDefault();fin('merge');},{passive:false});
+    brow.appendChild(bMerge);
     var bCancel=document.createElement('button');
     bCancel.textContent=offerPullSwitch?'✕ Nu face nimic acum':'✕ Anulează (recomandat)';
     bCancel.style.cssText=offerPullSwitch
@@ -726,6 +752,11 @@ async function fbPull(mode){
             var _pullDiff=diffTaskSets(S.items,S.freeTasks,remoteItems,rData.freeTasks||[],
               S.waitFreeTasks,rData.waitFreeTasks||[],S.shareTasks,(rShare&&rShare.shareTasks)||[]);
             var _proceedPull=await confirmSizeGuard(_localSize,_remoteSize,'Pull (suprascrie local cu varianta din cloud)','Cloud (remote)',false,_pullDiff);
+            if(_proceedPull==='merge'){
+              // G4 (V155): uniune completă, fără overwrite — reintră direct pe calea de merge
+              traceLog('G1: utilizator a ales Merge (uniune) în loc de Pull overwrite');
+              return await fbPull('merge');
+            }
             if(!_proceedPull){
               traceLog('G1: pull anulat de utilizator');
               shouldOverwrite=false;
@@ -2211,13 +2242,48 @@ function addTask(pid,status){
   if(status==='next'){S.nextOrder=[...S.nextOrder,{type:'proj',projectId:pid,taskId:nt.id}];lw(NK,S.nextOrder);}
   S.items=S.items.map(x=>x.id===pid?{...x,tasks:[...x.tasks,nt]}:x);S.nt[key]='';save();render();
 }
+// Z1 (V155): găsește (sau creează) marcatorii *3...*3 într-un array de nextOrder și
+// inserează entries imediat DUPĂ primul marcator (adică ÎN zona verde, nu deasupra ei).
+// Orice task nou (FAB, +Next, Share→Next) sau mutare „Top" trebuie să intre aici — poziția 0
+// absolută e ÎNAINTEA lui *3, deci ieșea din zonă și pica în „Restul" (bug raportat).
+// order: array de OrderEntry pe care lucrăm (de regulă S.nextOrder). entries: array de
+// OrderEntry noi de inserat, în ordinea dată. Mută eventual markerii creați în S.freeTasks
+// (side-effect necesar), dar NU scrie în localStorage — caller-ul face lw(...) după.
+function insertInGreenZone(order, entries){
+  function findMk3(ord){
+    var a=-1,b=-1;
+    for(var i=0;i<ord.length;i++){
+      var e=ord[i];
+      if(e.type==='free'){
+        var f=S.freeTasks.find(function(x){return x.id===e.id;});
+        if(f&&(f.name||'').match(/^\*3/)){if(a<0)a=i;else if(b<0){b=i;break;}}
+      }
+    }
+    return {a:a,b:b};
+  }
+  var result=order.slice();
+  var mk3=findMk3(result);
+  if(mk3.a<0||mk3.b<0){
+    var m3id1=gid(),m3id2=gid();
+    var now3=Date.now();
+    S.freeTasks.push({id:m3id1,name:'*3------------------------',ts:now3,modifiedTs:now3});
+    S.freeTasks.push({id:m3id2,name:'*3------------------------',ts:now3+1,modifiedTs:now3+1});
+    result=[{type:'free',id:m3id1},{type:'free',id:m3id2}].concat(result);
+    mk3={a:0,b:1};
+    traceLog('Z1 insertInGreenZone: marcatori *3 lipseau — creați');
+  }
+  var insertPos=mk3.a+1;
+  return result.slice(0,insertPos).concat(entries).concat(result.slice(insertPos));
+}
+
 function addFree(){
   const name=S.nfree.trim();if(!name)return;
   const ft={id:gid(),name,ts:Date.now()};
   je({kind:'free-task-create',taskName:name,ts:ft.ts});
   S.freeTasks=[...S.freeTasks,ft];
-  S.nextOrder=[...S.nextOrder,{type:'free',id:ft.id}];
+  S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  detectAndSaveZones();
   S.nfree='';S.showFree=false;
   triggerAutoSort(name);
   render();
@@ -4283,8 +4349,9 @@ function rBoard(){
       var ft={id:gid(),name:text,ts:Date.now()};
       je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
       S.freeTasks=[...S.freeTasks,ft];
-      S.nextOrder=[...S.nextOrder,{type:'free',id:ft.id}];
+      S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]); // Z1 (V155)
       lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+      detectAndSaveZones();
       S.showClip=false;render();
       setTimeout(function(){
         var nd=document.querySelector('.sdiv');
@@ -5445,10 +5512,11 @@ function rBoard(){
         var ft={id:gid(),name:sname,ts:Date.now()};
         je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
         S.freeTasks=[...S.freeTasks,ft];
-        S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+        S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]); // Z1 (V155)
         S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
         delete S.mergeFlags['s:'+sid];
         lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+        detectAndSaveZones();
         render();
       }
       nb.addEventListener('click',doToNext);
@@ -6411,10 +6479,11 @@ function moveSelectedNext(where){
   var rest=unified.filter(function(r){return !selSet.has(rowKey(r));});
   var newOrder;
   if(where==='top'){
-    // Selectate la început, în ordinea în care erau; restul după
-    newOrder=selected.concat(rest);
+    // Z1 (V155): „Top" înseamnă zona verde *3, nu poziția absolută 0 (care era ÎNAINTEA lui *3
+    // și deci ieșea din zonă — bug raportat). Inserează selecția imediat după primul marcator *3.
+    newOrder=insertInGreenZone(rest, selected);
   } else {
-    // Selectate la final, în ordinea în care erau; restul înaintea lor
+    // Bottom = poziția absolută de final = în afara oricărei zone = „Restul" (confirmat)
     newOrder=rest.concat(selected);
   }
   S.nextOrder=newOrder;
@@ -6469,9 +6538,10 @@ init();
     var ft={id:gid(),name:name,ts:Date.now(),modifiedTs:Date.now()};
     je({kind:'free-task-create',taskName:name,ts:ft.ts});
     S.freeTasks=[...S.freeTasks,ft];
-    // unshift — adaugă la ÎNCEPUTUL next
-    S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+    // Z1 (V155): inserează ÎN zona verde *3 (nu deasupra ei la poziția 0)
+    S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]);
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    detectAndSaveZones();
     lw('pb-local-dirty-ts',Date.now());
     closeFab();
     traceLog('commitFab: "'+name.slice(0,20)+'"');
@@ -6538,6 +6608,14 @@ function calcMergeGroups(){
   if(!markedIdx.length) return [];
   // Sh1: sortăm markedIdx crescător (sus=index mic=cel mai nou, jos=index mare=cel mai vechi)
   markedIdx.sort(function(a,b){return a-b;});
+  // Sh2 (V155): un singur rând bifat — merge de la vârf (index 0, cel mai recent adăugat,
+  // inclusiv) până la rândul bifat (inclusiv), nu doar un interval gol
+  if(markedIdx.length===1){
+    var _only=markedIdx[0];
+    var _groupRows=rows.slice(0,_only+1);
+    var _texts=_groupRows.slice().reverse().map(function(r){return r.text;}).filter(Boolean);
+    return _texts.length?[{texts:_texts, ids:_groupRows.map(function(r){return r.id;})}]:[];
+  }
   var groups=[];
   for(var g=0;g<markedIdx.length-1;g++){
     // interval: [markedIdx[g+1] inclusiv (jos=mai vechi) .. markedIdx[g] exclusiv (sus=mai nou)]
@@ -6735,8 +6813,9 @@ function addToNext(taskText){
   var ft={id:gid(),name:_named,ts:Date.now(),modifiedTs:Date.now()};
   je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
   S.freeTasks=[...S.freeTasks,ft];
-  S.nextOrder=[{type:'free',id:ft.id},...S.nextOrder];
+  S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]); // Z1 (V155)
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  detectAndSaveZones();
   if(extractDateFromRow({tname:_named,isFree:true,id:''})) triggerAutoSort(_named,false);
   checkAndCreateFinalizare(_named); // C1
   render();

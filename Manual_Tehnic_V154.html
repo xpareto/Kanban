@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ProjectBoard — Manual Tehnic V154</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0F1117;color:#E2E8F0;line-height:1.75;padding-bottom:80px}
+.hdr{background:#1A1D2E;border-bottom:2px solid #F59E0B;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.hdr h1{font-size:18px;font-weight:900;color:#F59E0B}
+.hdr .ver{font-size:11px;color:#6B7280;margin-left:auto}
+.sec{padding:24px 20px 0}
+h2{font-size:17px;font-weight:900;color:#F59E0B;border-bottom:1px solid #2D3048;padding-bottom:10px;margin:28px 0 16px}
+h3{font-size:14px;font-weight:700;color:#93C5FD;margin:18px 0 8px}
+h4{font-size:12px;font-weight:700;color:#94A3B8;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.07em}
+p{font-size:13px;margin-bottom:10px;color:#CBD5E1}
+code{background:#1E2130;border:1px solid #2D3048;border-radius:4px;padding:2px 7px;font-size:12px;font-family:'Courier New',monospace;color:#60A5FA}
+pre{background:#1E2130;border:1px solid #2D3048;border-radius:8px;padding:14px 16px;font-family:'Courier New',monospace;font-size:12px;color:#93C5FD;overflow-x:auto;margin:10px 0}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0 16px}
+th{background:#1E2130;color:#F59E0B;padding:8px 10px;text-align:left;font-weight:700;border-bottom:1px solid #2D3048}
+td{padding:8px 10px;border-bottom:1px solid #1E2130;vertical-align:top;color:#CBD5E1}
+.card{background:#1E2130;border-radius:8px;padding:14px 16px;margin:10px 0;font-size:13px;border-left:3px solid #F59E0B}
+.card.blue{border-left-color:#3B82F6}
+.card.red{border-left-color:#EF4444}
+.card.green{border-left-color:#10B981}
+.card.purple{border-left-color:#8B5CF6}
+.rule{background:#1A1D2E;border:1px solid #2D3048;border-radius:6px;padding:10px 14px;margin:6px 0;font-size:12px;color:#E2E8F0}
+.rule strong{color:#F59E0B}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <span style="font-size:22px">📋</span>
+  <h1>ProjectBoard — Manual Tehnic</h1>
+  <span class="ver">V154 · Septembrie 2026</span>
+</div>
+
+<div class="sec">
+<h2>1. Arhitectură generală</h2>
+<p>ProjectBoard este o aplicație single-file HTML/JS/CSS fără dependențe externe (cu excepția Firebase CDN și Google Calendar REST API). Rulează ca PWA instalată din Chrome pe Android. Iconița de pe ecranul de start și tab-ul de Chrome partajează același localStorage (același origin) — nu sunt stocări separate.</p>
+<table>
+<tr><th>Componentă</th><th>Tehnologie</th><th>Detalii</th></tr>
+<tr><td>Frontend</td><td>Vanilla JS ES6+</td><td>Zero framework, zero bundler</td></tr>
+<tr><td>Persistență locală</td><td>localStorage</td><td>Toate datele serializate JSON</td></tr>
+<tr><td>Sync cloud</td><td>Firebase Firestore</td><td>Plan Spark (gratuit), merge per-item, cu guard-uri de mărime (G1)</td></tr>
+<tr><td>Analytics</td><td>Firebase Analytics</td><td>measurementId: G-2X4E1HJ581</td></tr>
+<tr><td>Calendar</td><td>Google Calendar REST v3</td><td>OAuth 2.0 implicit flow, scope readonly</td></tr>
+<tr><td>Hosting</td><td>GitHub Pages</td><td>https://xpareto.github.io/Kanban/ (K mare)</td></tr>
+<tr><td>PWA</td><td>sw.js + manifest.json</td><td>Share Target, offline cache — sw.js actualizat manual de Dan</td></tr>
+</table>
+
+<h2>2. Structura datelor (State S)</h2>
+<pre>S = {
+  items: Project[],          // Proiecte cu tasks
+  freeTasks: FreeTask[],     // Tasks libere (NEXT + markeri zone + cal::)
+  nextOrder: OrderEntry[],   // Ordinea NEXT (free + proj refs)
+  waitOrder: OrderEntry[],   // Ordinea WAIT
+  waitFreeTasks: FreeTask[], // Free tasks în WAIT
+  shareTasks: FreeTask[],    // Tasks în SHARE inbox
+  journal: JournalEntry[],   // Jurnal operații
+  shareJournal: ...,
+  mergeFlags: {},            // Selecții merge SHARE
+  labels: string[],          // Etichete rapide
+  // UI state (V140+)
+  nextTab: 'all'|'prioritare'|'termene'|'calendar'|'restul',  // T1: tab activ
+  nextSplitView: boolean,    // SV1: split-view activ (implicit true din V153)
+  view, editId, editTid, editWaitId, showAdd, ...
+}</pre>
+
+<h3>FreeTask</h3>
+<pre>{
+  id: string,           // 'id_' + random, sau 'cal::'+googleEventId
+  name: string,         // Textul taskului (prima linie) + URL-uri (linii 2+)
+  note?: string,        // Notă privată
+  ts: number,           // Timestamp creare
+  modifiedTs: number,   // Timestamp ultima modificare conținut
+  zone: 'green'|'red'|'yellow'|null,  // Zona de culoare în NEXT — sursa pentru T1/Split-View
+  zoneRank: number,     // Poziția în cadrul zonei (0-based)
+  zoneMts: number,      // Timestamp ultima modificare zonă (independent de modifiedTs)
+  isCalEv?: true,       // marchează un rând adus din Google Calendar
+  calStart?: string,    // ISO — start-ul evenimentului (pentru extractDateFromRow)
+  _deleted?: true       // Tombstone pentru sync ștergere
+}</pre>
+
+<h3>OrderEntry</h3>
+<pre>// Free task:
+{type: 'free', id: string}
+// Project task:
+{type: 'proj', projectId: string, taskId: string}</pre>
+
+<h3>Project / Task</h3>
+<pre>Project: {type:'project', id, name, tasks: Task[]}
+Task: {id, name, status:'next'|'wait'|'done', ts, modifiedTs,
+       zone?, zoneRank?, zoneMts?, note?}</pre>
+
+<h2>3. Chei localStorage</h2>
+<table>
+<tr><th>Cheie</th><th>Conținut</th></tr>
+<tr><td>pb-items</td><td>S.items (proiecte)</td></tr>
+<tr><td>pb-free</td><td>S.freeTasks</td></tr>
+<tr><td>pb-next-order</td><td>S.nextOrder</td></tr>
+<tr><td>pb-wait-order</td><td>S.waitOrder</td></tr>
+<tr><td>pb-wait-free</td><td>S.waitFreeTasks</td></tr>
+<tr><td>pb-share</td><td>S.shareTasks</td></tr>
+<tr><td>pb-journal</td><td>S.journal</td></tr>
+<tr><td>pb-labels</td><td>S.labels</td></tr>
+<tr><td>pb-cal-token</td><td>Token OAuth Google Calendar</td></tr>
+<tr><td>pb-cal-day</td><td>Ultima zi de fetch calendar</td></tr>
+<tr><td>pb-cal-cleaned</td><td>Ziua când s-au resetat flag-urile silent-auth (nu mai șterge cal:: necondiționat din V140)</td></tr>
+<tr><td>pb-morning-shown</td><td>Ziua când s-a afișat modalul de dimineață</td></tr>
+<tr><td>pb-wait-check-day</td><td>Ziua verificării termenelor din WAIT</td></tr>
+<tr><td>pb-deleted-ids</td><td>{id: timestamp} — tombstones pentru sync; și pentru K2 (evenimente calendar bifate, nu se re-adaugă)</td></tr>
+<tr><td>pb-trace</td><td>Log trace calendar (array JSON, ultimele 100 linii)</td></tr>
+<tr><td>pb-local-dirty-ts</td><td>Timestamp ultima modificare locală nesincronizată — TREBUIE setat de orice funcție care schimbă date, altfel sync automat nu detectează schimbarea (vezi §6)</td></tr>
+<tr><td>pb-last-push-ts</td><td>Timestamp ultimul push/pull reușit</td></tr>
+<tr><td>pb-fb-backups</td><td>(V145) Array cu ultimele 5 backup-uri locale, salvate automat înainte de fiecare Pull — înlocuiește vechiul <code>pb-fb-backup</code> (singular)</td></tr>
+<tr><td>pb-last-good-size</td><td>(V145) Numărul de proiecte+taskuri de la ultimul push/pull reușit — reperul folosit de guard-ul G1</td></tr>
+<tr><td>pb-pending-final</td><td>(V148, C2) Reminder-e FINALIZARE pendinte, independente de rândul sursă d1-d2 — vezi §7</td></tr>
+</table>
+
+<h2>4. Sistemul de zone colorate</h2>
+<p>Zonele sunt delimitate de perechi de marcatori (free tasks al căror <code>name</code> începe cu <code>*1</code>, <code>*2</code>, sau <code>*3</code>).</p>
+<table>
+<tr><th>Zonă</th><th>Marcatori</th><th>Culoare</th><th>Rol</th></tr>
+<tr><td>Verde</td><td>*3…*3</td><td>#DCFCE7</td><td>Prioritate absolută aleasă manual — coloana stângă din Split-View</td></tr>
+<tr><td>Roșie</td><td>*1…*1</td><td>#FEE2E2</td><td>Tasks cu termene — sortate cronologic — parte din coloana dreaptă din Split-View</td></tr>
+<tr><td>Galbenă</td><td>*2…*2</td><td>#FEF9C3</td><td>Priorități secundare — parte din categoria „Restul" (T1)</td></tr>
+</table>
+
+<h3>detectAndSaveZones()</h3>
+<p>Parcurge <code>S.nextOrder</code> direct (nu getNR). Calculează <code>zone</code> și <code>zoneRank</code> pentru fiecare item. Marcatorii *1/*2/*3 primesc întotdeauna <code>zone=null</code>. Cal:: events sunt skipped. La fiecare schimbare: <code>zoneMts=Date.now()</code>, <code>modifiedTs=max(modifiedTs+1, now)</code>. Salvează FK și SK.</p>
+
+<div class="card red">
+<strong>Regulă critică (R12, întărită în V154):</strong> <code>detectAndSaveZones()</code> trebuie apelată după <strong>orice</strong> operație care schimbă <code>nextOrder</code> — inclusiv cele trei funcții de sortare globală (<code>sortBetweenMarkers</code>, <code>sortRestNext</code>, <code>sortByTime</code>), care în V139–V153 <strong>nu</strong> o apelau. Bug găsit: view-ul clasic colorează benzile pe bază de <strong>poziție</strong> la render, deci bug-ul era invizibil acolo — dar T1 (taburi) și Split-View citesc câmpul <code>zone</code> <strong>stocat</strong> pe obiect, nu poziția. Un task nou, sortat corect în <code>nextOrder</code> dar cu <code>zone=null</code> nestocat, apărea corect ca roșu în view-ul clasic dar în „Restul" în Split-View. Fixat V154 — toate cele trei funcții de sortare apelează acum <code>detectAndSaveZones()</code> înainte de <code>save()</code>.
+</div>
+
+<h2>5. Reguli fixe de cod</h2>
+<div class="rule"><strong>R1.</strong> Nu folosi <code>elementFromPoint()</code> pentru drag hit-testing — folosește <code>getBoundingClientRect()</code></div>
+<div class="rule"><strong>R2.</strong> Touch listeners cu <code>{passive:false}</code> oriunde se apelează <code>e.preventDefault()</code></div>
+<div class="rule"><strong>R3.</strong> <code>todayStr</code> folosește întotdeauna metode locale (<code>getFullYear</code>, <code>getMonth</code>, <code>getDate</code>) — niciodată <code>toISOString()</code></div>
+<div class="rule"><strong>R4.</strong> Nu declara funcții în interiorul blocurilor sub <code>'use strict'</code></div>
+<div class="rule"><strong>R5.</strong> Regex fără <code>\b</code> lângă caractere non-ASCII (diacritice românești)</div>
+<div class="rule"><strong>R6.</strong> <code>traceLog</code> folosește ora locală via <code>getHours/getMinutes/getSeconds</code></div>
+<div class="rule"><strong>R7.</strong> Blur handlers cu <code>setTimeout 200ms</code></div>
+<div class="rule"><strong>R8.</strong> <code>setSelectionRange</code> în loc de <code>select()</code> pentru input-uri Android</div>
+<div class="rule"><strong>R9.</strong> sw.js actualizat manual de Dan — Claude nu generează sw.js</div>
+<div class="rule"><strong>R10.</strong> Filtru calendar all-day: <code>evEnd &lt;= todayF</code> (end.date exclusivă); timed events: <code>evEnd &lt; todayF</code></div>
+<div class="rule"><strong>R11.</strong> <code>_hasWeekdayToken(text)</code> pentru bail-out în addWeekday — nu regex simplu (previne false match pe "vine"→"vin")</div>
+<div class="rule"><strong>R12.</strong> <code>detectAndSaveZones()</code> se apelează după <strong>orice</strong> operație care modifică ordinea în NEXT (drag, selecție, atașare proiect, Wt1, și — din V154 — toate cele 3 funcții de sortare globală)</div>
+<div class="rule"><strong>R13.</strong> <code>dedupNextOrder()</code> și <code>dedupMarkers()</code> se aplică la init() și după fiecare fbPull merge</div>
+<div class="rule"><strong>R14 (V148).</strong> <code>parseCalCmd(text)</code> iese instant (fără regex, fără traceLog) dacă <code>text.indexOf('/c')&lt;0</code> — evită noise masiv în trace generat de <code>applyWeekdaysToAll</code> pe marcatori și rânduri fără <code>/c</code></div>
+<div class="rule"><strong>R15 (V149).</strong> Orice <code>document.body.removeChild(ov)</code> pe un overlay se scrie <code>if(ov&amp;&amp;ov.parentNode)ov.parentNode.removeChild(ov)</code> — previne <code>NotFoundError</code> la dublu-tap accidental pe butonul de închidere (E1)</div>
+<div class="rule"><strong>R16 (V149).</strong> Niciun task nu se golește direct (<code>name=''</code>) — orice acțiune care ar goli numele (ex: „mută textul în notă") deschide un prompt suplimentar pentru numele nou; dacă utilizatorul renunță, numele vechi rămâne neschimbat (T1)</div>
+<div class="rule"><strong>R17 (V145).</strong> Orice funcție care scrie date locale (<code>lw(...)</code>) direct, fără să treacă prin <code>save()</code>, trebuie să seteze explicit <code>lw('pb-local-dirty-ts',Date.now())</code> — altfel sync-ul automat la lansare (<code>fbPullIfNewer</code>) nu detectează modificarea și nu o trimite (bug găsit la <code>delFree</code>/bifare calendar, <code>delWaitFree</code>, <code>addWaitFree</code>, <code>moveToWait</code>/<code>moveToNext</code> ramurile free-task)</div>
+
+<h2>6. Sincronizare Firebase</h2>
+<h3>Push (fbPush)</h3>
+<p>Apelează <code>detectAndSaveZones()</code> înainte de payload. Trimite tombstones din <code>pb-deleted-ids</code> ca FreeTask-uri cu <code>_deleted:true</code>. Refuză push cu date demo.</p>
+
+<div class="card red">
+<strong>G1 — Guard scădere semnificativă (V145, incident real de pierdere date pe tabletă):</strong> înainte de push, compară <code>dataSize(S.items,S.freeTasks)</code> (proiecte+taskuri+free tasks reale, exclus marcatori/cal::) cu <code>pb-last-good-size</code>. Dacă scăderea e ≥10% (<code>SIZE_GUARD_PCT</code>), afișează un modal de confirmare (<code>confirmSizeGuard</code>) <strong>înainte</strong> de a scrie în Firestore — utilizatorul poate <strong>anula</strong>, <strong>continua oricum</strong>, sau (doar la Push) <strong>comuta direct pe Pull</strong> (recomandat, buton verde). Funcționează identic la push manual, automat (la lansare) și din <code>fbSync()</code>.
+</div>
+<div class="card blue">
+<strong>G3 — Diferență pe categorii (V148):</strong> quando guard-ul se declanșează, <code>diffTaskSets()</code> compară local vs remote <strong>pe categorii</strong> — NEXT (🟢 Prioritare / 🔴 Termene / 📅 Calendar / ⚪ Restul), ⏳ WAIT, 📥 SHARE — nu doar un total brut. Modalul arată sumar compact „local +X / cloud +Y" per categorie, plus lista de nume (max 10/categorie) doar acolo unde există diferență reală. La Push, fetch-ul de date remote (pentru diff) se face <strong>doar</strong> dacă guard-ul chiar se declanșează — push-ul normal rămâne rapid, fără citire suplimentară.
+</div>
+
+<h3>Pull (fbPull) — flux merge</h3>
+<pre>1. fbBackupLocal() — salvează backup ROTATIV (ultimele 5, pb-fb-backups)
+2. G1: guard scădere — dacă remote e ≥10% mai mic decât local, cere confirmare
+3. mergeProjects(local, remote)
+4. mergeItemArray(freeTasks) — cu zoneMts arbitru pentru zone
+5. Construiește knownIds din freeTasks + tasks
+6. Filtrează remoteNew (absent din localOrdSet)
+7. mergeNextOrderWithZones(localOrder, remoteNew, ...) — items noi
+8. repositionByZone(order, ...) — items existente cu zonă schimbată
+9. Elimină tombstone-uri din nextOrder
+10. dedupNextOrder + dedupMarkers — safety net
+11. traceLog('fbPull merge done')</pre>
+
+<h3>Conflict resolution</h3>
+<table>
+<tr><th>Câmp</th><th>Arbitru</th></tr>
+<tr><td>name, note, status</td><td>modifiedTs (mai mare câștigă)</td></tr>
+<tr><td>zone, zoneRank, zoneMts</td><td>zoneMts (mai mare câștigă)</td></tr>
+<tr><td>Ștergere item</td><td>Tombstone _deleted:true cu modifiedTs</td></tr>
+</table>
+
+<h3>Backup-uri rotative (V145)</h3>
+<p><code>fbBackupLocal()</code> salvează, înainte de fiecare Pull, o intrare în <code>pb-fb-backups</code> (array, max 5, cele mai vechi se elimină). Fiecare intrare: <code>{items,nextOrder,freeTasks,waitOrder,waitFreeTasks,shareTasks,labels,ts,size}</code>. Panoul Data → Firebase Sync listează toate cele 5, cu dată/oră și număr de proiecte+taskuri, fiecare cu propriul buton Restore (confirmare obligatorie înainte de suprascriere).</p>
+
+<h2>7. Google Calendar</h2>
+<h3>Flux autentificare</h3>
+<pre>La prima lansare din zi:
+1. Silent re-auth (prompt:none) → dacă eșuează (interaction_required)
+2. Login explicit (prompt:select_account)
+3. OAuth OK → fetch calendarList → fetchCal pentru fiecare calendar
+4. Filtrare events → calInjectEvents → showMorningModal</pre>
+
+<h3>Filtrare events</h3>
+<table>
+<tr><th>Tip event</th><th>Condiție includere</th></tr>
+<tr><td>All-day (start.date)</td><td>evStart ≤ tomorrowF AND evEnd &gt; todayF (end exclusivă: evEnd &lt;= todayF = exclude)</td></tr>
+<tr><td>Timed (start.dateTime)</td><td>evStart ≤ tomorrowF AND evEnd &lt; todayF = exclude (strict)</td></tr>
+</table>
+
+<h3>K1/K2 — Persistență evenimente calendar până la bifare (V140, extins V148)</h3>
+<div class="card blue">
+<strong>K1.</strong> La fiecare <code>calInjectEvents(events)</code>, rândurile <code>cal::</code> vechi care NU mai apar în fetch-ul curent ȘI NU sunt în <code>pb-deleted-ids</code> (nebifate) sunt păstrate, cu label prefixat <code>↺ </code> (o singură dată) — rămân vizibile în NEXT până sunt bifate manual. <strong>V148 fix:</strong> rândurile <code>cal::</code> cu nume gol/corupt (rămase din bug-uri vechi) NU mai sunt păstrate — plus curățenie silențioasă la <code>init()</code> pentru cele deja acumulate.
+</div>
+<div class="card blue">
+<strong>K2.</strong> Evenimentele al căror id (<code>cal::&lt;eventId&gt;</code>) e deja în <code>pb-deleted-ids</code> (bifate via butonul ✓ verde din NEXT, care apelează <code>delFree</code>) sunt excluse din fetch-ul reconstruit — nu revin, chiar dacă Google Calendar le mai întoarce ca active (ex: eveniment pending pe mai multe zile, bifat înainte de final).
+</div>
+<p>Wipe-ul necondiționat zilnic din <code>calCheckAndFetch</code> (care ștergea toate <code>cal::</code> o dată pe zi) a fost <strong>eliminat</strong> — merge-ul inteligent din <code>calInjectEvents</code> preia acest rol. <code>pb-cal-cleaned</code> rămâne doar pentru resetarea zilnică a flag-urilor de silent-auth.</p>
+
+<h3>„Ziua X din N" — evenimente ongoing (V141, C1)</h3>
+<p><code>calDayOfN(ev)</code> calculează, pentru un eveniment all-day multi-zi aflat în desfășurare, eticheta <code>(ziua X din N)</code> — ex: <code>[ongoing 20-30 iul] Concediu (ziua 6 din 11)</code>. Returnează string gol pentru evenimente de o singură zi.</p>
+
+<h3>FINALIZARE persistent — pending intervals (V148, C2)</h3>
+<p>Problemă rezolvată: dacă utilizatorul șterge rândul sursă cu intervalul (ex: <code>26.7-26.8</code>) imediat după creare (ca să nu aglomereze NEXT), reminder-ul FINALIZARE (cu 4 zile înainte de d2) nu se mai crea, fiindcă depindea de re-scanarea rândului sursă.</p>
+<p><code>checkAndCreateFinalizare(name)</code> acum salvează/actualizează un reminder persistent în <code>pb-pending-final</code> (via <code>savePendingFinalizare</code>) <strong>indiferent</strong> dacă a ajuns data de apariție — decuplat de existența rândului sursă. <code>checkPendingFinalizari()</code>, apelată la fiecare lansare (lângă <code>applyWeekdaysToAll</code>), reverifică toate intervalele pendinte și creează FINALIZARE la momentul potrivit, chiar dacă rândul original a fost șters între timp. Expirare hard: 30 zile după d2 (safety, evită acumulare infinită).</p>
+
+<h3>Sintaxă interval scurtat — <code>zi.lună+N</code> (V148, Î1)</h3>
+<p><code>resolvePlusInterval(text)</code>, integrată în <code>resolveCalCmd</code> (singurul punct de intrare, apelat la toate cele 9 puncte de salvare) — transformă <code>26.7+31</code> în formatul canonic <code>26.7-26.8</code> (N = zile adăugate la data inițială, capete inclusive). Validare: ziua ≤31, luna ≤12, altfel textul rămâne neschimbat (evită interpretarea greșită a altor „+" din text — telefoane, procente). Tolerant la spații: <code>26.7+31</code>, <code>26.7 +31</code>, <code>26.7 + 31</code>.</p>
+
+<h2>8. Funcții cheie</h2>
+<table>
+<tr><th>Funcție</th><th>Rol</th></tr>
+<tr><td>getNR()</td><td>Construiește lista NEXT din nextOrder + freeTasks + items</td></tr>
+<tr><td>getNextRowCategory(row)</td><td>(T1) Categorisește un rând NEXT: marker/calendar/prioritare/termene/restul, pe bază de zone stocat</td></tr>
+<tr><td>extractDateFromRow(row)</td><td>Detectează data din textul unui task (N.luna, N.LL, /cN.M, interval, +N)</td></tr>
+<tr><td>addWeekday(text)</td><td>Inserează ziua săptămânii după dată; folosește _hasWeekdayToken() pentru bail-out</td></tr>
+<tr><td>_replaceWeekdayNearDate()</td><td>Înlocuiește ziua existentă cu cea corectă la editare dată</td></tr>
+<tr><td>resolveCalCmd(text)</td><td>Punct unic de rezolvare: resolvePlusInterval() apoi /c → ZZ.LL</td></tr>
+<tr><td>resolvePlusInterval(text)</td><td>(Î1) ZZ.LL+N → ZZ.LL-ZZ2.LL2, cu validare zi/lună</td></tr>
+<tr><td>sortBetweenMarkers()</td><td>Sortare globală ⧸✱ — cal events + tasks cu dată între *1…*1. Apelează detectAndSaveZones() (fix V154)</td></tr>
+<tr><td>sortRestNext()</td><td>Sortare ⋯⧸ — proiecte înaintea free tasks. Apelează detectAndSaveZones() (fix V154)</td></tr>
+<tr><td>sortByTime(order)</td><td>▼T/▲T — sortare cronologică, protejează zonele *2 și *3. Apelează detectAndSaveZones() (fix V154)</td></tr>
+<tr><td>checkWaitingDeadlines()</td><td>Wt1 — mută din WAIT în zona roșie dacă termen ≤ azi+7 zile</td></tr>
+<tr><td>showMorningModal(waitMoved)</td><td>Modal dimineață cu events azi/mâine + items din WAIT. Filtrează rânduri goale și exclude evenimentele ↺ persistate (K1) — nu sunt „azi" (fix V148)</td></tr>
+<tr><td>dedupNextOrder(order)</td><td>Elimină duplicate din nextOrder (same id)</td></tr>
+<tr><td>dedupMarkers(order, fts)</td><td>Limitează la max 2 exemplare din fiecare marcator *1/*2/*3</td></tr>
+<tr><td>detectAndSaveZones()</td><td>Calculează zone+zoneRank+zoneMts pentru fiecare item din nextOrder</td></tr>
+<tr><td>buildRemoteZoneMap()</td><td>Map id→{zone,rank,zoneMts} din remote, exclusiv marcatori și cal::</td></tr>
+<tr><td>insertByZoneRank()</td><td>Inserare la poziția rank în zonă, recalculând markerii pe array-ul curent</td></tr>
+<tr><td>repositionByZone()</td><td>Mută items existente cu zonă greșită în zona corectă din remote</td></tr>
+<tr><td>mergeNextOrderWithZones()</td><td>Inserează items noi (remoteNew) în zona+rank corectă</td></tr>
+<tr><td>exportSelectedOPML()</td><td>Export selecție în format OPML pentru WorkFlowy</td></tr>
+<tr><td>calDayOfN(ev)</td><td>(V141) „ziua X din N" pentru evenimente ongoing multi-zi</td></tr>
+<tr><td>getPendingFinalizari() / savePendingFinalizare() / checkPendingFinalizari()</td><td>(V148) Reminder FINALIZARE persistent, independent de rândul sursă</td></tr>
+<tr><td>dataSize(items,freeTasks)</td><td>(V145) Numără proiecte+taskuri+free tasks reale (exclus marcatori/cal::) — metrica pentru guard G1</td></tr>
+<tr><td>categorizeTaskSet() / diffTaskSets()</td><td>(V148, G3) Categorisește și compară două seturi de date (local/remote) pe NEXT-subcategorii + Wait + Share</td></tr>
+<tr><td>confirmSizeGuard()</td><td>(V145–146) Modal Promise-based — Anulează / Continuă oricum / (la Push) Fă Pull în loc</td></tr>
+<tr><td>fbBackupLocal() / getFbBackups()</td><td>(V145) Backup rotativ (ultimele 5) înainte de fiecare Pull</td></tr>
+<tr><td>findSimilarProjectName() / confirmProjectNameGuard()</td><td>(V149, P1) Detectează nume de proiect identic/inclus/incluzând un proiect existent, cere confirmare</td></tr>
+<tr><td>promptRenameTask()</td><td>(V149, T1) Dialog pentru nume nou de task, când textul e mutat integral în notă (nu mai golește direct)</td></tr>
+<tr><td>editSelectedSingleTask()</td><td>(V153, SB1) Editare directă din bara de selecție, activă doar la exact 1 rând selectat</td></tr>
+</table>
+
+<h2>9. Header UI (restructurat A1, V144)</h2>
+<p>Header-ul avea inițial 3 rânduri de butoane; din V144, doar rândul cu Search rămâne vizibil implicit — restul s-au mutat în Settings (⚙), ca funcții folosite mai rar.</p>
+<table>
+<tr><th>Element</th><th>Conținut</th></tr>
+<tr><td>Antet (titlu)</td><td>Doar logo + titlu + dată — fără butoane</td></tr>
+<tr><td>Rând Search (verde)</td><td>☁ Sync (mutat aici din fostul rând 1) · 🔍 Search · ⚙ Settings · Etichete rapide (#a #u #c...)</td></tr>
+<tr><td>Settings → rând „⚡ Acțiuni" (fost rând 1)</td><td>📅 Cal · ⧸✱ Sort global · ⋯⧸ Sort rest · ▼T · ▲T · ? Help</td></tr>
+<tr><td>Settings → rând „📁 Fișiere" (fost rând 3)</td><td>Data · Journal · Share · +Sec · +Proj · 🔄 Reset · 📋 Trace</td></tr>
+</table>
+
+<h3>Banda de taburi NEXT — T1 (V141) + Split-View — SV1-SV3 (V150-153)</h3>
+<p>Sub divizorul NEXT, o bandă suplimentară cu: buton <strong>▣ Split</strong> (comută modul de afișare) + taburi <strong>Toate / 🟢 Prioritare / 🔴 Termene / 📅 Calendar / ⚪ Restul</strong>, fiecare cu contor. Categorisarea (<code>getNextRowCategory</code>) se face pe <code>zone</code> stocat, nu pe poziție — vezi regula R12 din §4.</p>
+<div class="card purple">
+<strong>Split-View</strong> este modul implicit de pornire din V153 (<code>S.nextSplitView=true</code>). Două coloane egale (88vw fiecare), doar text, fără butoane de acțiune în afară de un checkbox pe fiecare rând:
+<ul style="margin:8px 0 8px 20px;font-size:13px;color:#CBD5E1">
+<li>Stânga: zona verde (Prioritare), text aliniat la dreapta (spre linia de separație)</li>
+<li>Dreapta: zona roșie (Termene) + evenimente calendar, amestecate și sortate cronologic prin <code>extractDateFromRow</code>, text aliniat la stânga; culoare distinge sursa (roșu=termen propriu, albastru=calendar)</li>
+<li>Checkbox-ul bifează efectiv: task de proiect → <code>markDone(pid,tid,'next')</code>; task liber/eveniment calendar → <code>delFree(id)</code> (K2 pentru calendar)</li>
+<li>Separatorul central e ținut fix pe mijlocul ecranului: <code>scrollLeft=(scrollWidth-clientWidth)/2</code>, calculat la fiecare render și reaplicat (animat) după ce scroll-ul se oprește (debounce 400ms) — cu guard anti-buclă (<code>_svCentering</code>) ca animația proprie să nu se re-declanșeze singură</li>
+</ul>
+</div>
+
+<h2>10. Bara de selecție multiplă (V153)</h2>
+<p>Long-press pe un rând din NEXT (view clasic „Toate") → mod selecție. Bara are acum <strong>două rânduri</strong> (SB1, fix lizibilitate telefon):</p>
+<table>
+<tr><th>Rând</th><th>Butoane</th></tr>
+<tr><td>1</td><td>Contor selecție · ✎ Editează (doar la exact 1 rând selectat) · ↑ Top · ↓ Bottom</td></tr>
+<tr><td>2</td><td>⊞ Project · ⊟ Auto-link · ↳ Sub primul · (⇅ Sortare dată, doar la 2 selectate) · 📋 OPML · ✕ Cancel</td></tr>
+</table>
+
+<h2>11. Versioning</h2>
+<p>Versiunea curentă: <strong>V154</strong>. Regulă: Claude incrementează versiunea la <strong>fiecare livrare</strong>, nu doar la sesiuni noi. La începutul fiecărei sesiuni, Dan confirmă versiunea curentă și Claude pornește de la N+1. Dan poate livra versiuni proprii între sesiuni. sw.js actualizat manual de Dan.</p>
+<p><strong>Regulă de flux (adăugată V143+):</strong> Claude nu generează <code>kanban_VN.html</code> până Dan nu confirmă explicit că a terminat de dat idei pentru pasul curent — Dan dă mai multe cerințe pe rând înainte de a cere generarea.</p>
+<p><strong>Help și Manual Tehnic</strong> NU se actualizează la fiecare versiune — doar <code>kanban_VN.html</code> se livrează și incrementează la fiecare pas. Cele două documente se actualizează doar când Dan cere explicit, de regulă la finalul unei sesiuni întinse pe mai multe zile (ca acum, V139→V154).</p>
+
+<h2>12. Changelog V106→V154 (rezumat)</h2>
+<table>
+<tr><th>Versiune</th><th>Schimbări principale</th></tr>
+<tr><td>V107</td><td>Fix calendar all-day filter (end.date exclusivă), skip rânduri goale render, Settings pe searchRow, *3 protejat în sortări</td></tr>
+<tr><td>V108</td><td>Meniu 3 rânduri, fix merge Share (text complet), detectAndSaveZones, mergeNextOrderWithZones, C1 attach proiect păstrează zona</td></tr>
+<tr><td>V109-V110</td><td>_hasWeekdayToken (fix "vine"→"vin"), detectAndSaveZones pe S.nextOrder direct, mergeNextOrderWithZones fix fallback</td></tr>
+<tr><td>V111</td><td>repositionByZone cu remoteItems, Sv1a tombstones, Wup1 editare WAIT, Wt1 structură, help maghiar</td></tr>
+<tr><td>V112</td><td>detectAndSaveZones salvează SK, _replaceWeekdayNearDate (Ed1)</td></tr>
+<tr><td>V113</td><td>repositionByZone project tasks, exportSelectedOPML (Sel1), fix nota OPML din ft.note</td></tr>
+<tr><td>V114</td><td>Fix nota OPML (ft.note nu name lines)</td></tr>
+<tr><td>V115</td><td>Firebase Analytics G-2X4E1HJ581</td></tr>
+<tr><td>V116</td><td>Wt1 complet, modal dimineață A1, fix fallback insertAfter pos=0</td></tr>
+<tr><td>V117-V118</td><td>detectAndSaveZones după drag-drop, modifiedTs bump, fix Ejvs1 toLowerCase</td></tr>
+<tr><td>V119</td><td>modifiedTs bump în detectAndSaveZones, detectAndSaveZones după moveSelectedNext, trace-uri extinse, P1 doAddToProj păstrează zona, Wt1 integrat modal</td></tr>
+<tr><td>V120</td><td>modifiedTs = Math.max(+1,now), detectAndSaveZones după moveSelectedUnderFirst, Wup1 editare WAIT inline</td></tr>
+<tr><td>V121</td><td>zone+rank sistem complet: buildRemoteZoneMap, findZoneMarkers, insertByZoneRank, repositionByZone, mergeNextOrderWithZones rescrise</td></tr>
+<tr><td>V122</td><td>zoneMts arbitru independent, mergeItemArray/mergeProjectTasks cu zoneMts, skip marcatori în detectAndSaveZones, buton Modal scos</td></tr>
+<tr><td>V123</td><td>insertByZoneRank recalculează markerii la fiecare pas, marcatori forțat zone=null, buildRemoteZoneMap exclude marcatori+cal, dedup duplicate mergeNextOrderWithZones</td></tr>
+<tr><td>V125</td><td>Np1: doCreateProject splice la poziția originală. Dzs: /c cu litere zi (l ma mi j v s d) + prefix n. resolveCalCmd(). triggerAutoSort automat. maybeAddCalBtn recunoaște ZZ.LL numeric. V1: repositionByZone păstrează zona locală când remote zone=null.</td></tr>
+<tr><td>V126–V127</td><td>Versiuni Dan.</td></tr>
+<tr><td>V128</td><td>Manual Tehnic actualizat regula versionare. D2: smClr buton golire selecție Share. W1: colorare WAIT după vârstă (galben>30z, roșu>60z). P1: funcție addTaskToProject + buton ⊞ pe task-uri proiect în NEXT.</td></tr>
+<tr><td>V129</td><td>Debug charcode parseCalCmd. Guard maybeAddCalBtn extins pentru ZZ.LL numeric.</td></tr>
+<tr><td>V130</td><td>W1 sortare vizuală WAIT: roșu→galben→alb. P1 complet cu overlay 3 opțiuni.</td></tr>
+<tr><td>V131</td><td>D1 auto-resolve /cXX la render (maybeAddCalBtn). Share: fără maybeAddCalBtn. P1-note: copiază nota la legare proiect (doCreateProject + doAddToProj). W2: /n în WAIT → capul NEXT. Sh1: merge interval [jos incl, sus excl] + buton ✕ Golește.</td></tr>
+<tr><td>V132</td><td>Versiune Dan.</td></tr>
+<tr><td>V133</td><td>F1: doSearchNextOnly pentru butoane #etichete (doar NEXT). S1: autoLinkSelectedToProject + buton ⊟ Auto-link. C1: checkAndCreateFinalizare + RE_INTERVAL. apel în addToNext + saveEditTask.</td></tr>
+<tr><td>V134</td><td>Share: elimină maybeAddCalBtn complet. extractDateFromRow: pattern 2aa interval complet ZZ.LL-ZZ2.LL2 prioritar.</td></tr>
+<tr><td>V135</td><td>Cal1: guard maybeAddCalBtn include ZZ.LL numeric. Interval zi: addWeekday adaugă (zi1) și (zi2) la ambele date. C1 logică: dataApariție=d2-4 dacă dur≥4, altfel d1. applyWeekdaysToAll apelează checkAndCreateFinalizare.</td></tr>
+<tr><td>V136</td><td>RE_INTERVAL extins: permite (zi) opțional între date și separator. AW interval mutat înainte de _hasWeekdayToken. Anti-duplicat lax cu _k1/_k2. V3: skip FINALIZARE în cascadă.</td></tr>
+<tr><td>V137</td><td>RE_INTERVAL extins: permite (zi) opțional cu (?:\s*\([^)]+\))?. F3: strip (zi) din name în checkAndCreateFinalizare. F1 anti-duplicat robust cu _k1+_k2 subșiruri independente.</td></tr>
+<tr><td>V138</td><td>F1: anti-duplicat caută d1.mo1 și d2.mo2 independent. F2: strip (zi) din _cleanName în checkAndCreateFinalizare.</td></tr>
+<tr><td>V139</td><td>F3: applyWeekdaysToAll strip (zi) greșite din FINALIZARE înainte de addWeekday — corectează zile moștenite greșit din Firebase.</td></tr>
+<tr><td>V140</td><td>K1: evenimente calendar nebifate persistă în NEXT (prefix ↺) chiar dacă Google Calendar nu le mai întoarce. K2: evenimente bifate nu se re-adaugă (pb-deleted-ids), chiar dacă rămân active în Google. Eliminat wipe necondiționat zilnic. Buton dedicat ✓ „Bifează" pentru rânduri calendar.</td></tr>
+<tr><td>V141</td><td>C1: calDayOfN — „(ziua X din N)" pentru evenimente ongoing. C2: reminder FINALIZARE persistent (pb-pending-final), decuplat de rândul sursă d1-d2, checkPendingFinalizari la lansare.</td></tr>
+<tr><td>V142</td><td>T1 (experimental): bandă de taburi filtrate sub NEXT — Toate/Prioritare/Termene/Calendar/Restul, cu contoare, fără a afecta view-ul „Toate" complet (idx real păstrat, drag funcțional).</td></tr>
+<tr><td>V143</td><td>E1: guard if(ov&amp;&amp;ov.parentNode) la toate overlay-urile (17 locuri) — fix crash NotFoundError la dublu-tap. R14: parseCalCmd iese instant fără '/c' — elimină noise trace. J1: jurnalizare distinctă „cal-event-check" pentru bifare calendar.</td></tr>
+<tr><td>V144</td><td>A1: header restructurat — rândul 1 și 3 mutate în Settings (rânduri „Acțiuni"/„Fișiere"), doar Sync rămâne pe rândul cu Search. Reparații dirty-flag (C1 calendar, delWaitFree, addWaitFree, moveToWait/moveToNext free-task).</td></tr>
+<tr><td>V145</td><td>G1: backup-uri rotative (5, pb-fb-backups). Guard scădere ≥10% la Push și Pull, cu modal de confirmare (confirmSizeGuard). Restore extins la lista completă de backup-uri.</td></tr>
+<tr><td>V146</td><td>Guard Push cu 3 opțiuni: Fă Pull în loc (recomandat) / Nu face nimic / Continuă oricum. Mesaje clare (nu „Firebase error" generic) și pentru push-ul automat de la lansare.</td></tr>
+<tr><td>V147</td><td>G2/G3: modalul de guard arată diferența reală (nu doar numărul) — liste „Doar local" / „Doar cloud", cu fetch remote suplimentar doar când guard-ul se declanșează.</td></tr>
+<tr><td>V148</td><td>C1: calInjectEvents nu mai păstrează rânduri cal:: goale; curățenie silențioasă la init; contor NEXT real (fără marcatori/fantome); modal dimineață exclude ↺ și rânduri goale. Dif1.C: diff pe categorii (NEXT subcategorii + Wait + Share). Î1: sintaxă zi.lună+N.</td></tr>
+<tr><td>V149</td><td>P1: verificare dublură nume proiect (identic/inclus) la toate cele 3 puncte de creare. T1: promptRenameTask — niciun task nu mai rămâne cu numele golit.</td></tr>
+<tr><td>V150</td><td>SV1: buton ▣ Split — două coloane paralele (Prioritare | Termene+Calendar), doar text, read-only, defilare orizontală.</td></tr>
+<tr><td>V151</td><td>SV2: checkbox real pe fiecare rând din Split-View (bifează efectiv — markDone/delFree). Aliniere text spre linia de separație (dreapta/stânga).</td></tr>
+<tr><td>V152</td><td>SV3: separator central fix pe mijlocul ecranului, revine automat (animat) după drag sau după re-render, cu guard anti-buclă.</td></tr>
+<tr><td>V153</td><td>Split-View devine modul implicit la pornire. SB1: bară de selecție pe 2 rânduri + buton ✎ Editează (doar la 1 rând selectat).</td></tr>
+<tr><td>V154</td><td>Fix critic: sortBetweenMarkers, sortRestNext, sortByTime apelează acum detectAndSaveZones() — corectează zona greșit rămasă „Restul" în Split-View pentru taskuri proaspăt sortate cronologic.</td></tr>
+</table>
+</div>
+
+<div style="padding:20px;text-align:center;color:#6B7280;font-size:11px;margin-top:30px">
+  ProjectBoard Manual Tehnic V154 · xpareto.github.io/Kanban
+</div>
+</body>
+</html>
