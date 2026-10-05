@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V156</title>
+<title>Project Board V157</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2693,7 +2693,9 @@ function findSimilarProjectName(newName){
   if(!nn) return null;
   var projects=S.items.filter(function(x){return x.type==='project';});
   for(var i=0;i<projects.length;i++){
-    var pn=(projects[i].name||'').trim().toLowerCase();
+    var rawName=(projects[i].name||'').trim();
+    if(rawName.indexOf('->')>=0) continue; // Sw1 (V156): proiect deja arhivat/redenumit — nu e un duplicat relevant
+    var pn=rawName.toLowerCase();
     if(!pn) continue;
     if(pn===nn) return {proj:projects[i],reason:'nume identic'};
     if(pn.indexOf(nn)>=0) return {proj:projects[i],reason:'numele nou e conținut în „'+projects[i].name+'"'};
@@ -3796,6 +3798,29 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
       btn.addEventListener('touchend',function(e){e.preventDefault();btn.click();},{passive:false});
       card.appendChild(btn);
     });
+    // Cl1 (V156): d) Din clipboard — citește clipboard-ul live (gest direct al userului,
+    // cerut de API) și pornește editorul de notă cu textul respectiv, editabil înainte de Save
+    var bClip=document.createElement('button');
+    bClip.textContent='d) Din clipboard';
+    bClip.style.cssText='display:block;width:100%;text-align:left;background:#2D3048;color:#F1F5F9;border:2px solid #8B5CF6;border-radius:8px;padding:11px 13px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:7px;touch-action:manipulation';
+    function doFromClipboard(){
+      if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);
+      function openWithText(txt){
+        showNoteOverlay(taskTitle, txt||'', '', function(newNote){saveFn(newNote, false);});
+      }
+      if(navigator.clipboard&&navigator.clipboard.readText){
+        navigator.clipboard.readText().then(function(txt){openWithText(txt);}).catch(function(){
+          fbToast('⚠ Nu am putut citi clipboard-ul (permisiune refuzată sau conținut nedisponibil)','#1E2130','#F87171',4000);
+          openWithText('');
+        });
+      } else {
+        fbToast('⚠ Citirea clipboard-ului nu e suportată în acest context','#1E2130','#F87171',4000);
+        openWithText('');
+      }
+    }
+    bClip.addEventListener('click',doFromClipboard);
+    bClip.addEventListener('touchend',function(e){e.preventDefault();doFromClipboard();},{passive:false});
+    card.appendChild(bClip);
     var bCancel2=document.createElement('button');
     bCancel2.textContent='✕ Anulează';
     bCancel2.style.cssText='width:100%;background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:9px;font-size:12px;cursor:pointer;touch-action:manipulation';
@@ -4514,7 +4539,7 @@ function rBoard(){
               else if(res.k==='task'){var pr=S.items.find(function(x){return x.id===res.projectId;});if(pr){var tk=pr.tasks.find(function(t){return t.id===res.taskId;});if(tk){tk.name=v;tk.modifiedTs=Date.now();save();traceLog('commitEdit task: "'+v.slice(0,20)+'"');triggerAutoSort(v);}}res.tn=v;}
               else if(res.k==='fn'){var ft=S.freeTasks.find(function(x){return x.id===res.id;});if(ft){ft.name=v;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);traceLog('commitEdit fn: "'+v.slice(0,20)+'"');triggerAutoSort(v);}res.name=v;}
               else if(res.k==='fw'){var wft=S.waitFreeTasks.find(function(x){return x.id===res.id;});if(wft){wft.name=v;wft.modifiedTs=Date.now();lw(WFK,S.waitFreeTasks);}res.name=v;}
-              else if(res.k==='sh'){var st=S.shareTasks.find(function(x){return x.id===res.id;});if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}res.name=v;}
+              else if(res.k==='sh'){var st=S.shareTasks.find(function(x){return x.id===res.id;});if(st){st.name=v;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);lw('pb-local-dirty-ts',Date.now());}res.name=v;} // Sy1 (V155)
               render();setTimeout(function(){doNav();},80);
             }
             function finishEdit(doCommit){if(editDone)return;editDone=true;clearTimeout(blurTimer);if(doCommit)commitEdit();else render();}
@@ -5416,8 +5441,8 @@ function rBoard(){
     smClr.textContent='✕ Golește';
     smClr.title='Șterge toate bifările';
     smClr.style.cssText='background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;';
-    smClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);render();});
-    smClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);render();},{passive:false});
+    smClr.addEventListener('click',function(){S.mergeFlags={};lw(MK,S.mergeFlags);lw('pb-local-dirty-ts',Date.now());render();});
+    smClr.addEventListener('touchend',function(e){e.preventDefault();S.mergeFlags={};lw(MK,S.mergeFlags);lw('pb-local-dirty-ts',Date.now());render();},{passive:false});
     const smDl=document.createElement('button');
     smDl.className='merge-clear';
     smDl.style.cssText+='background:#6366F1;color:#fff;';
@@ -5456,7 +5481,7 @@ function rBoard(){
         e.stopPropagation();e.preventDefault();
         if(S.mergeFlags[rk]) delete S.mergeFlags[rk];
         else S.mergeFlags[rk]=true;
-        lw(MK,S.mergeFlags);render();
+        lw(MK,S.mergeFlags);lw('pb-local-dirty-ts',Date.now());render();
       }
       tog.addEventListener('click',doToggle);
       tog.addEventListener('touchend',doToggle,{passive:false});
@@ -5486,7 +5511,7 @@ function rBoard(){
           var newTitle=inp.value.trim()||titleLine;
           var newName=urlLines.length?newTitle+'\n'+urlLines.join('\n'):newTitle;
           var st=S.shareTasks.find(function(x){return x.id===sid;});
-          if(st){st.name=newName;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);}
+          if(st){st.name=newName;st.modifiedTs=Date.now();lw(SHK,S.shareTasks);lw('pb-local-dirty-ts',Date.now());} // Sy1 (V155)
           render();
         }
         inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();saveEdit();}if(e.key==='Escape'){render();}});
@@ -5517,6 +5542,7 @@ function rBoard(){
         delete S.mergeFlags['s:'+sid];
         lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
         detectAndSaveZones();
+        lw('pb-local-dirty-ts',Date.now()); // Sy1 (V155)
         render();
       }
       nb.addEventListener('click',doToNext);
@@ -5533,7 +5559,9 @@ function rBoard(){
         lw(SHJK,S.shareJournal);
         S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
         delete S.mergeFlags['s:'+sid];
-        lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);render();
+        lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+        lw('pb-local-dirty-ts',Date.now()); // Sy1 (V155)
+        render();
       }
       xb.addEventListener('click',doDel);
       xb.addEventListener('touchend',function(e){e.preventDefault();doDel(e);},{passive:false});
@@ -5808,6 +5836,45 @@ function autoLinkSelectedToProject(){
   render();
 }
 
+// Sw1 (V156): după ce taskurile selectate explicit au fost mutate la un proiect NOU (PN),
+// „soarbe" automat tot ce a mai rămas în fiecare proiect-sursă (P1/P2/P3...) — next, wait și
+// done deopotrivă — ca PN să devină singurul loc de lucru util, iar sursele să rămână doar o
+// arhivă a stadiului inițial (goale, cu numele marcat " ->PN"). Taskurile mutate primesc ID
+// nou; cele care aveau o poziție în NEXT/WAIT păstrează acea poziție (doar referința proiect+id
+// se înlocuiește în nextOrder/waitOrder), ca să nu li se strice zona/ordinea fără motiv.
+function sweepRemainingTasksToProject(sourceProjectIds, destProj){
+  (sourceProjectIds||[]).forEach(function(srcId){
+    if(!srcId||srcId===destProj.id) return;
+    var src=S.items.find(function(x){return x.id===srcId;});
+    if(!src||src.type!=='project') return;
+    var remaining=(src.tasks||[]).slice();
+    remaining.forEach(function(t){
+      var newId=gid();
+      var newTask=Object.assign({},t,{id:newId,modifiedTs:Date.now()});
+      destProj.tasks=[...destProj.tasks,newTask];
+      if(t.status==='next'){
+        var idx=S.nextOrder.findIndex(function(e){return e.type==='proj'&&e.projectId===srcId&&e.taskId===t.id;});
+        var entry={type:'proj',projectId:destProj.id,taskId:newId};
+        if(idx>=0){var ord=S.nextOrder.slice();ord.splice(idx,1,entry);S.nextOrder=ord;}
+        else S.nextOrder=[...S.nextOrder,entry];
+      } else if(t.status==='wait'){
+        var widx=S.waitOrder.findIndex(function(e){return e.type==='proj'&&e.projectId===srcId&&e.taskId===t.id;});
+        var wentry={type:'proj',projectId:destProj.id,taskId:newId};
+        if(widx>=0){var word=S.waitOrder.slice();word.splice(widx,1,wentry);S.waitOrder=word;}
+        else S.waitOrder=[...S.waitOrder,wentry];
+      }
+      // status 'done': nimic de atins în array-urile de ordine — nu sunt urmărite acolo
+    });
+    if(remaining.length) src.tasks=[];
+    // Sufix „->NumeNou" — o singură dată, chiar dacă n-au mai rămas taskuri de soarbe
+    var suffix=' ->'+destProj.name;
+    if((src.name||'').indexOf(suffix)<0) src.name=(src.name||'')+suffix;
+    src.modifiedTs=Date.now();
+    traceLog('Sw1 sweep: '+remaining.length+' taskuri din „'+src.name+'" -> „'+destProj.name+'"');
+  });
+  lw(SK,S.items);lw(NK,S.nextOrder);lw(WK,S.waitOrder);
+}
+
 function moveSelectedToProject(){
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext);
@@ -5846,6 +5913,12 @@ function moveSelectedToProject(){
   var listWrap=document.createElement('div');
   listWrap.style.cssText='overflow-y:auto;max-height:35vh;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;flex-shrink:1';
   function doClose(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  // Sw1 (V156): proiectele-sursă distincte din selecție — folosite doar când se creează un
+  // proiect NOU, ca să le putem „soarbe" complet în el după mutarea taskurilor selectate
+  var _srcProjectIds=[];
+  selRows.forEach(function(row){
+    if(!row.isFree && _srcProjectIds.indexOf(row.projectId)<0) _srcProjectIds.push(row.projectId);
+  });
   function doAddToProj(proj,projId,isNew){
     doClose();
     selRows.forEach(function(row){
@@ -5880,6 +5953,10 @@ function moveSelectedToProject(){
         }
       }
     });
+    // Sw1 (V156): proiect NOU → soarbe restul taskurilor rămase în proiectele-sursă (next/wait/done,
+    // tot ce a mai rămas), nu doar cele selectate explicit. Proiectele vechi rămân goale — o arhivă —
+    // și primesc sufixul " ->NumeProiectNou" ca urmă a transferului (o singură dată per destinație).
+    if(isNew && _srcProjectIds.length) sweepRemainingTasksToProject(_srcProjectIds, proj);
     // P1: salvează zona după atașare (task-ul nou moștenește zona celui vechi)
     detectAndSaveZones();
     lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SK,S.items);
@@ -6659,6 +6736,7 @@ function doMerge(){
   // Jurnal Share — kind:'share-merge'
   S.shareJournal.push({ts:Date.now(),kind:'share-merge',text:result});
   lw(SHJK,S.shareJournal);
+  lw('pb-local-dirty-ts',Date.now()); // Sy1 (V155)
 
   var total=allLines.length;
   var toast=document.createElement('div');
@@ -6699,6 +6777,7 @@ function doMergeDelete(){
   var newItem={id:gid(),name:mergedText,ts:Date.now()};
   S.shareTasks=[newItem,...S.shareTasks];
   lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
+  lw('pb-local-dirty-ts',Date.now()); // Sy1 (V155)
   render();
 }
 
@@ -6830,6 +6909,11 @@ function addToShare(taskText){
   lw(SHJK,S.shareJournal);
   S.shareTasks=[st,...S.shareTasks];
   lw(SHK,S.shareTasks);
+  // R17/Sy1 (V155): FĂRĂ asta, un item primit prin Share nu era niciodată detectat ca
+  // „modificare locală nesincronizată" — la următorul auto-sync (lansare sau ☁ manual, dacă
+  // remote era mai nou), Pull-ul suprascria S.shareTasks cu varianta veche din cloud, ștergând
+  // silențios exact itemul abia primit. Aceasta era cauza reală a „Share sync nu merge".
+  lw('pb-local-dirty-ts',Date.now());
   render();
 }
 
