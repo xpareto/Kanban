@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V157</title>
+<title>Project Board V158</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -164,7 +164,14 @@ input{font-family:inherit;outline:none}
 <div id="fab-overlay">
   <div id="fab-dialog">
     <div style="font-size:12px;font-weight:700;color:#10B981;letter-spacing:.05em">+ TASK RAPID ÎN NEXT</div>
-    <input id="fab-inp" placeholder="Nume task..." autocomplete="off" autocorrect="off" spellcheck="false"/>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="fab-inp" placeholder="Nume task..." autocomplete="off" autocorrect="off" spellcheck="false" style="flex:1"/>
+      <button id="fab-clip-task" type="button" title="Preluare din clipboard" style="background:none;border:1px dashed #6B7280;color:#9CA3AF;border-radius:7px;padding:8px 10px;font-size:14px;cursor:pointer;touch-action:manipulation;flex-shrink:0">📋</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start">
+      <textarea id="fab-note" placeholder="Notă (opțional)…" rows="2" style="flex:1;background:#111827;color:#F1F5F9;border:1px solid #4B5563;border-radius:8px;padding:7px 10px;font-size:12px;outline:none;width:100%;box-sizing:border-box;resize:none;font-family:inherit"></textarea>
+      <button id="fab-clip-note" type="button" title="Preluare din clipboard" style="background:none;border:1px dashed #6B7280;color:#9CA3AF;border-radius:7px;padding:8px 10px;font-size:14px;cursor:pointer;touch-action:manipulation;flex-shrink:0">📋</button>
+    </div>
     <div style="display:flex;gap:8px">
       <button id="fab-ok" style="flex:1;background:#10B981;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">✓ Adaugă</button>
       <button id="fab-cancel" style="background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;touch-action:manipulation">✕</button>
@@ -1054,7 +1061,7 @@ const DEF=[
 ];
 
 // ── State ──
-let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',showFree:false,wfree:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'all',nextSplitView:true};
+let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',nfreeNote:'',showFree:false,wfree:'',wfreeNote:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'all',nextSplitView:true};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
 function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
@@ -2223,11 +2230,13 @@ function delTask(pid,tid){
 function addWaitFree(){
   const name=S.wfree.trim();if(!name)return;
   const ft={id:gid(),name,ts:Date.now(),modifiedTs:Date.now()};
+  const noteVal=(S.wfreeNote||'').trim(); // C1 (V158)
+  if(noteVal) ft.note=noteVal;
   je({kind:'free-task-create',taskName:name,section:'wait',ts:ft.ts});
   S.waitFreeTasks=[...S.waitFreeTasks,ft];
   S.waitOrder=[...S.waitOrder,{type:'free',id:ft.id}];
   lw(WFK,S.waitFreeTasks);lw(WK,S.waitOrder);
-  S.wfree='';S.showWFree=false;save();render();
+  S.wfree='';S.wfreeNote='';S.showWFree=false;save();render();
 }
 function delWaitFree(id){
   const f=S.waitFreeTasks.find(x=>x.id===id);if(f)je({kind:'free-task-delete',taskName:f.name,section:'wait',ts:Date.now()});
@@ -2276,15 +2285,29 @@ function insertInGreenZone(order, entries){
   return result.slice(0,insertPos).concat(entries).concat(result.slice(insertPos));
 }
 
+// Cl2 (V158): helper generic de citire clipboard — folosit de toate butoanele 📋
+// (creare task/notă și editare notă), ca să nu repetăm try/catch-ul peste tot
+function clipReadText(onOk){
+  if(!(navigator.clipboard&&navigator.clipboard.readText)){
+    fbToast('⚠ Clipboard indisponibil în acest context','#1E2130','#F87171',3000);
+    return;
+  }
+  navigator.clipboard.readText().then(onOk).catch(function(){
+    fbToast('⚠ Nu am putut citi clipboard-ul (permisiune refuzată)','#1E2130','#F87171',3500);
+  });
+}
+
 function addFree(){
   const name=S.nfree.trim();if(!name)return;
   const ft={id:gid(),name,ts:Date.now()};
+  const noteVal=(S.nfreeNote||'').trim(); // C1 (V158)
+  if(noteVal) ft.note=noteVal;
   je({kind:'free-task-create',taskName:name,ts:ft.ts});
   S.freeTasks=[...S.freeTasks,ft];
   S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]);
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
   detectAndSaveZones();
-  S.nfree='';S.showFree=false;
+  S.nfree='';S.nfreeNote='';S.showFree=false;
   triggerAutoSort(name);
   render();
 }
@@ -3878,6 +3901,21 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ta.rows=6;
   ta.addEventListener('input',function(){if(notePreviewWrap){buildNotePreview(ta.value);}});
 
+  // En1 (V158): adaugă (append) conținutul clipboard-ului la nota existentă, nu o înlocuiește
+  var bClipAppend=document.createElement('button');
+  bClipAppend.textContent='📋 Adaugă din clipboard';
+  bClipAppend.style.cssText='align-self:flex-start;background:none;border:1px dashed #8B5CF6;color:#C4B5FD;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  function doClipAppend(){
+    clipReadText(function(txt){
+      if(!txt) return;
+      ta.value=(ta.value&&ta.value.trim())?(ta.value.replace(/\s+$/,'')+'\n'+txt):txt;
+      if(notePreviewWrap) buildNotePreview(ta.value);
+      ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);
+    });
+  }
+  bClipAppend.addEventListener('click',doClipAppend);
+  bClipAppend.addEventListener('touchend',function(e){e.preventDefault();doClipAppend();},{passive:false});
+
   var btns=document.createElement('div');
   btns.className='note-btns';
 
@@ -3900,7 +3938,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
 
   btns.appendChild(bSave);btns.appendChild(bCancel);
-  card.appendChild(titleEl);if(notePreviewWrap)card.appendChild(notePreviewWrap);card.appendChild(ta);card.appendChild(btns);
+  card.appendChild(titleEl);if(notePreviewWrap)card.appendChild(notePreviewWrap);card.appendChild(ta);card.appendChild(bClipAppend);card.appendChild(btns);
   ov.appendChild(card);
   document.body.appendChild(ov);
   setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
@@ -5193,10 +5231,26 @@ function rBoard(){
   // Add free task
   const ab=div('nadd-bar');
   if(S.showFree){
-    const w=div('');w.style.cssText='display:flex;gap:6px;align-items:center';
-    const ai=ip('nadd-inp','Free task in Next...',S.nfree,e=>S.nfree=e.target.value,e=>{if(e.key==='Enter')addFree();if(e.key==='Escape'){S.showFree=false;S.nfree='';render();}});
-    ap(w,ai,bt('bgr','✓',addFree),bt('bg','✕',()=>{S.showFree=false;S.nfree='';render();}));
-    ab.appendChild(w);setTimeout(()=>ai.focus(),40);
+    const w=div('');w.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    const ai=ip('nadd-inp','Free task in Next...',S.nfree,e=>S.nfree=e.target.value,e=>{if(e.key==='Enter')addFree();if(e.key==='Escape'){S.showFree=false;S.nfree='';S.nfreeNote='';render();}});
+    const clipT=mk('button','');clipT.textContent='📋';clipT.title='Preluare din clipboard';
+    clipT.style.cssText='background:none;border:1px dashed #9CA3AF;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer;touch-action:manipulation';
+    clipT.addEventListener('click',()=>clipReadText(txt=>{S.nfree=txt;render();}));
+    clipT.addEventListener('touchend',e=>{e.preventDefault();clipReadText(txt=>{S.nfree=txt;render();});},{passive:false});
+    ap(w,ai,clipT,bt('bgr','✓',addFree),bt('bg','✕',()=>{S.showFree=false;S.nfree='';S.nfreeNote='';render();}));
+    ab.appendChild(w);
+    // C1 (V158): câmp notă, vizibil direct, + preluare din clipboard
+    const nw=div('');nw.style.cssText='display:flex;gap:6px;align-items:flex-start;margin-top:6px';
+    const nta=mk('textarea','');nta.rows=2;nta.placeholder='Notă (opțional)…';nta.value=S.nfreeNote;
+    nta.style.cssText='flex:1;border:1px solid #F59E0B;border-radius:6px;padding:5px 8px;font-size:12px;resize:none;font-family:inherit;box-sizing:border-box';
+    nta.addEventListener('input',e=>S.nfreeNote=e.target.value);
+    const clipN=mk('button','');clipN.textContent='📋';clipN.title='Preluare din clipboard';
+    clipN.style.cssText=clipT.style.cssText;
+    clipN.addEventListener('click',()=>clipReadText(txt=>{S.nfreeNote=txt;render();}));
+    clipN.addEventListener('touchend',e=>{e.preventDefault();clipReadText(txt=>{S.nfreeNote=txt;render();});},{passive:false});
+    ap(nw,nta,clipN);
+    ab.appendChild(nw);
+    setTimeout(()=>ai.focus(),40);
   } else {
     const fb=mk('button','nadd-btn');fb.textContent='+ Next';fb.addEventListener('click',()=>{S.showFree=true;render();});ab.appendChild(fb);
   }
@@ -5404,11 +5458,27 @@ function rBoard(){
   // Add free task waiting
   const wab=div('nadd-bar');
   if(S.showWFree){
-    const ww=div('');ww.style.cssText='display:flex;gap:6px;align-items:center';
-    const wai=ip('nadd-inp','Free task in Waiting...',S.wfree,e=>S.wfree=e.target.value,e=>{if(e.key==='Enter')addWaitFree();if(e.key==='Escape'){S.showWFree=false;S.wfree='';render();}});
+    const ww=div('');ww.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    const wai=ip('nadd-inp','Free task in Waiting...',S.wfree,e=>S.wfree=e.target.value,e=>{if(e.key==='Enter')addWaitFree();if(e.key==='Escape'){S.showWFree=false;S.wfree='';S.wfreeNote='';render();}});
     wai.style.borderColor='#6366F1';
-    ap(ww,wai,bt('bgr','✓',addWaitFree),bt('bg','✕',()=>{S.showWFree=false;S.wfree='';render();}));
-    wab.appendChild(ww);setTimeout(()=>wai.focus(),40);
+    const wclipT=mk('button','');wclipT.textContent='📋';wclipT.title='Preluare din clipboard';
+    wclipT.style.cssText='background:none;border:1px dashed #9CA3AF;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer;touch-action:manipulation';
+    wclipT.addEventListener('click',()=>clipReadText(txt=>{S.wfree=txt;render();}));
+    wclipT.addEventListener('touchend',e=>{e.preventDefault();clipReadText(txt=>{S.wfree=txt;render();});},{passive:false});
+    ap(ww,wai,wclipT,bt('bgr','✓',addWaitFree),bt('bg','✕',()=>{S.showWFree=false;S.wfree='';S.wfreeNote='';render();}));
+    wab.appendChild(ww);
+    // C1 (V158): câmp notă, vizibil direct, + preluare din clipboard
+    const wnw=div('');wnw.style.cssText='display:flex;gap:6px;align-items:flex-start;margin-top:6px';
+    const wnta=mk('textarea','');wnta.rows=2;wnta.placeholder='Notă (opțional)…';wnta.value=S.wfreeNote;
+    wnta.style.cssText='flex:1;border:1px solid #6366F1;border-radius:6px;padding:5px 8px;font-size:12px;resize:none;font-family:inherit;box-sizing:border-box';
+    wnta.addEventListener('input',e=>S.wfreeNote=e.target.value);
+    const wclipN=mk('button','');wclipN.textContent='📋';wclipN.title='Preluare din clipboard';
+    wclipN.style.cssText=wclipT.style.cssText;
+    wclipN.addEventListener('click',()=>clipReadText(txt=>{S.wfreeNote=txt;render();}));
+    wclipN.addEventListener('touchend',e=>{e.preventDefault();clipReadText(txt=>{S.wfreeNote=txt;render();});},{passive:false});
+    ap(wnw,wnta,wclipN);
+    wab.appendChild(wnw);
+    setTimeout(()=>wai.focus(),40);
   } else {
     const wfb=mk('button','nadd-btn');wfb.textContent='+ Waiting';wfb.style.borderColor='#6366F1';wfb.style.color='#6366F1';
     wfb.addEventListener('click',()=>{S.showWFree=true;render();});wab.appendChild(wfb);
@@ -5775,6 +5845,12 @@ function rBoard(){
       const key=item.id+'_'+col.id;
       const ai=ip('ati','+ task...',S.nt[key]||'',e=>S.nt[key]=e.target.value,e=>{if(e.key==='Enter'){e.preventDefault();addTask(item.id,col.id);}});
       atw.appendChild(ai);
+      // C1 (V158): doar clipboard aici — spațiul e prea îngust pentru câmp de notă
+      const clipA=mk('button','atb');clipA.textContent='📋';clipA.title='Preluare din clipboard';
+      clipA.style.fontSize='10px';
+      clipA.addEventListener('click',()=>clipReadText(txt=>{S.nt[key]=txt;render();}));
+      clipA.addEventListener('touchend',e=>{e.preventDefault();clipReadText(txt=>{S.nt[key]=txt;render();});},{passive:false});
+      atw.appendChild(clipA);
       const ab2=mk('button','atb');ab2.textContent='+';
       ab2.addEventListener('touchend',e=>{e.preventDefault();addTask(item.id,col.id);});
       ab2.addEventListener('click',()=>addTask(item.id,col.id));
@@ -5808,16 +5884,48 @@ function autoLinkSelectedToProject(){
   }
   var proj=S.items.find(function(x){return x.id===anchorRow.projectId;});
   if(!proj) return;
-  var freeRows=selRows.filter(function(r){return r.isFree;});
-  traceLog('S1 autoLink: proj='+proj.name+' freeCount='+freeRows.length);
-  freeRows.forEach(function(row){
-    var origFT=S.freeTasks.find(function(x){return x.id===row.id;});
-    var taskLabel=(origFT&&origFT.name)||row.tname||'';
+  // S2 (V158): mută ORICE rând selectat care nu aparține deja ancorei — liber SAU deja legat
+  // de ALT proiect — nu doar cele libere. Varianta veche filtra doar r.isFree, deci un task deja
+  // legat de alt proiect (ex: „kanban" legat de proiectul vechi) nu era mutat niciodată — freeCount
+  // ieșea 0 și bucla nu avea ce face, fără nicio eroare vizibilă (bug raportat).
+  var toMoveRows=selRows.filter(function(r){
+    return r!==anchorRow && (r.isFree || r.projectId!==proj.id);
+  });
+  if(!toMoveRows.length){
+    traceLog('S1 autoLink: nimic de mutat — tot ce e selectat e deja la '+proj.name);
+    fbToast('Tot ce ai selectat e deja legat de „'+proj.name+'"','#1E2130','#9CA3AF',2500);
+    S.selectedNext={};S.selectMode=false;_selOrder=0;
+    render();
+    return;
+  }
+  // S1 (V156): dacă ancora are deja taskuri marcate cu *, taskurile noi primesc și ele *,
+  // altfel regula „doar cele cu *" le face invizibile în NEXT (păreau „nelegate")
+  var _needsStar=(proj.tasks||[]).some(function(t){return t.status==='next'&&(t.name||'').indexOf('*')===0;});
+  traceLog('S1 autoLink: proj='+proj.name+' deMutat='+toMoveRows.length+' needsStar='+_needsStar);
+  toMoveRows.forEach(function(row){
     var newTaskId=gid();
-    var newTask={id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()};
-    if(origFT&&origFT.note) newTask.note=origFT.note;
+    var newTask;
+    if(row.isFree){
+      var origFT=S.freeTasks.find(function(x){return x.id===row.id;});
+      var taskLabel=(origFT&&origFT.name)||row.tname||'';
+      if(_needsStar&&taskLabel.indexOf('*')!==0) taskLabel='*'+taskLabel;
+      newTask={id:newTaskId,name:taskLabel,status:'next',ts:Date.now(),modifiedTs:Date.now()};
+      if(origFT&&origFT.note) newTask.note=origFT.note;
+      markDeleted(row.id);
+      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
+    } else {
+      var srcProj=S.items.find(function(x){return x.id===row.projectId;});
+      var srcTask=srcProj&&srcProj.tasks&&srcProj.tasks.find(function(t){return t.id===row.taskId;});
+      var taskLabel2=(srcTask&&srcTask.name)||row.tname||'';
+      if(_needsStar&&taskLabel2.indexOf('*')!==0) taskLabel2='*'+taskLabel2;
+      newTask={id:newTaskId,name:taskLabel2,status:'next',ts:Date.now(),modifiedTs:Date.now()};
+      if(srcTask&&srcTask.note) newTask.note=srcTask.note;
+      if(srcProj) srcProj.tasks=(srcProj.tasks||[]).filter(function(t){return t.id!==row.taskId;});
+    }
     proj.tasks=[...proj.tasks,newTask];
-    var origPos=S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===row.id;});
+    var origPos=row.isFree
+      ? S.nextOrder.findIndex(function(x){return x.type==='free'&&x.id===row.id;})
+      : S.nextOrder.findIndex(function(x){return x.type==='proj'&&x.projectId===row.projectId&&x.taskId===row.taskId;});
     var newEntry={type:'proj',projectId:proj.id,taskId:newTaskId};
     if(origPos>=0){
       var ord=S.nextOrder.slice();
@@ -5826,9 +5934,10 @@ function autoLinkSelectedToProject(){
     } else {
       S.nextOrder=[...S.nextOrder,newEntry];
     }
-    markDeleted(row.id);
-    S.freeTasks=S.freeTasks.filter(function(x){return x.id!==row.id;});
-    S.nextOrder=S.nextOrder.filter(function(x){return!(x.type==='free'&&x.id===row.id);});
+    S.nextOrder=S.nextOrder.filter(function(x){
+      if(row.isFree) return!(x.type==='free'&&x.id===row.id);
+      return!(x.type==='proj'&&x.projectId===row.projectId&&x.taskId===row.taskId);
+    });
   });
   detectAndSaveZones();
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SK,S.items);
@@ -6595,24 +6704,34 @@ init();
   var fabBtn=document.getElementById('fab-add');
   var overlay=document.getElementById('fab-overlay');
   var inp=document.getElementById('fab-inp');
+  var noteTa=document.getElementById('fab-note');           // C1 (V158)
+  var clipTaskBtn=document.getElementById('fab-clip-task'); // C1 (V158)
+  var clipNoteBtn=document.getElementById('fab-clip-note'); // C1 (V158)
   var okBtn=document.getElementById('fab-ok');
   var cancelBtn=document.getElementById('fab-cancel');
   if(!fabBtn||!overlay) return;
 
+  // C1 (V158): „preluare din clipboard" — înlocuiește conținutul câmpului dat
+  function pasteClipboardInto(el){clipReadText(function(txt){el.value=txt;el.focus();});}
+
   function openFab(){
     overlay.style.display='flex';
     inp.value='';
+    if(noteTa) noteTa.value='';
     setTimeout(function(){inp.focus();},80);
   }
   function closeFab(){
     overlay.style.display='none';
     inp.value='';
+    if(noteTa) noteTa.value='';
   }
   function commitFab(){
     var name=inp.value.trim();
     if(!name){closeFab();return;}
     name=addWeekday(name);
     var ft={id:gid(),name:name,ts:Date.now(),modifiedTs:Date.now()};
+    var noteVal=noteTa?noteTa.value.trim():''; // C1 (V158)
+    if(noteVal) ft.note=noteVal;
     je({kind:'free-task-create',taskName:name,ts:ft.ts});
     S.freeTasks=[...S.freeTasks,ft];
     // Z1 (V155): inserează ÎN zona verde *3 (nu deasupra ei la poziția 0)
@@ -6621,7 +6740,7 @@ init();
     detectAndSaveZones();
     lw('pb-local-dirty-ts',Date.now());
     closeFab();
-    traceLog('commitFab: "'+name.slice(0,20)+'"');
+    traceLog('commitFab: "'+name.slice(0,20)+'"'+(noteVal?' +notă':''));
     triggerAutoSort(name);
     render();
     // scroll la primul element din next
@@ -6637,6 +6756,14 @@ init();
   okBtn.addEventListener('touchend',function(e){e.preventDefault();commitFab();},{passive:false});
   cancelBtn.addEventListener('click',closeFab);
   cancelBtn.addEventListener('touchend',function(e){e.preventDefault();closeFab();},{passive:false});
+  if(clipTaskBtn){
+    clipTaskBtn.addEventListener('click',function(){pasteClipboardInto(inp);});
+    clipTaskBtn.addEventListener('touchend',function(e){e.preventDefault();pasteClipboardInto(inp);},{passive:false});
+  }
+  if(clipNoteBtn&&noteTa){
+    clipNoteBtn.addEventListener('click',function(){pasteClipboardInto(noteTa);});
+    clipNoteBtn.addEventListener('touchend',function(e){e.preventDefault();pasteClipboardInto(noteTa);},{passive:false});
+  }
   inp.addEventListener('keydown',function(e){
     if(e.key==='Enter'){e.preventDefault();commitFab();}
     if(e.key==='Escape'){closeFab();}
