@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V159</title>
+<title>Project Board V160</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -4143,6 +4143,27 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   bClipAppend.addEventListener('click',doClipAppend);
   bClipAppend.addEventListener('touchend',function(e){e.preventDefault();doClipAppend();},{passive:false});
 
+  // N1 (V160): operația inversă — scrie conținutul curent al notei ÎN clipboard
+  var bClipWrite=document.createElement('button');
+  bClipWrite.textContent='📤 Scrie în clipboard';
+  bClipWrite.style.cssText='align-self:flex-start;background:none;border:1px dashed #60A5FA;color:#93C5FD;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+  function doClipWrite(){
+    if(!(navigator.clipboard&&navigator.clipboard.writeText)){
+      fbToast('⚠ Clipboard indisponibil în acest context','#1E2130','#F87171',3000);
+      return;
+    }
+    navigator.clipboard.writeText(ta.value||'').then(function(){
+      fbToast('✅ Nota a fost copiată în clipboard','#0F2A1A','#10B981',2500);
+    }).catch(function(){
+      fbToast('⚠ Nu am putut scrie în clipboard','#1E2130','#F87171',3500);
+    });
+  }
+  bClipWrite.addEventListener('click',doClipWrite);
+  bClipWrite.addEventListener('touchend',function(e){e.preventDefault();doClipWrite();},{passive:false});
+  var clipRow=document.createElement('div');
+  clipRow.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  clipRow.appendChild(bClipAppend);clipRow.appendChild(bClipWrite);
+
   var btns=document.createElement('div');
   btns.className='note-btns';
 
@@ -4165,7 +4186,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
 
   btns.appendChild(bSave);btns.appendChild(bCancel);
-  card.appendChild(titleEl);if(notePreviewWrap)card.appendChild(notePreviewWrap);card.appendChild(ta);card.appendChild(bClipAppend);card.appendChild(btns);
+  card.appendChild(titleEl);if(notePreviewWrap)card.appendChild(notePreviewWrap);card.appendChild(ta);card.appendChild(clipRow);card.appendChild(btns);
   ov.appendChild(card);
   document.body.appendChild(ov);
   setTimeout(function(){ta.focus();var l=ta.value.length;ta.setSelectionRange(l,l);},80);
@@ -4378,6 +4399,15 @@ function rClipJournal(){
 }
 
 // ── Render board ──
+// P1 (V160): culoare pastel distinctă și stabilă per nume de proiect — același nume dă
+// mereu aceeași culoare (hash simplu), ca grupările să se vadă clar pe tabul Prioritare
+var PROJ_COLORS=['#FEF3C7','#DBEAFE','#FCE7F3','#D1FAE5','#EDE9FE','#FFE4E6','#E0F2FE','#FEF9C3','#FFEDD5','#F3E8FF'];
+function colorForProject(name){
+  var h=0,s=name||'';
+  for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0;
+  return PROJ_COLORS[h%PROJ_COLORS.length];
+}
+
 function rBoard(){
   const nr=getNR();
   const pc=S.items.filter(x=>x.type==='project').length;
@@ -4894,13 +4924,19 @@ function rBoard(){
     ];
     var tb=div('');
     tb.style.cssText='display:flex;gap:5px;align-items:center;padding:6px 10px;background:#111827;border-bottom:1px solid #1F2937;overflow-x:auto;flex-wrap:wrap';
-    // P1 (V159): grupare vizuală a zonei Prioritare (verde) pe proiecte — doar afișare,
-    // nu atinge S.nextOrder; la dezactivare revine exact la ordinea dinainte de sortare
+    // P1 (V160): grupare vizuală a zonei Prioritare pe proiecte — doar pe tabul clasic
+    // „Prioritare" (nu în Split-View). Activarea sare automat pe acel tab și iese din Split,
+    // ca grupările (colorate distinct per proiect) să fie chiar vizibile. Nu atinge S.nextOrder —
+    // la dezactivare revine exact la ordinea dinainte de sortare.
     var p1Btn=mk('button','');
     p1Btn.textContent=S.svGreenGroupByProject?'📂 Pe proiecte ✓':'📂 Pe proiecte';
-    p1Btn.title='Grupează vizual zona Prioritare pe proiecte (doar afișare, nu schimbă ordinea reală)';
+    p1Btn.title='Grupează Prioritarele pe proiecte, cu culori distincte (comută pe tabul Prioritare)';
     p1Btn.style.cssText='flex-shrink:0;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;border:1px solid #10B981;background:'+(S.svGreenGroupByProject?'#10B981':'transparent')+';color:'+(S.svGreenGroupByProject?'#0F1117':'#6EE7B7');
-    function doToggleP1(){S.svGreenGroupByProject=!S.svGreenGroupByProject;render();}
+    function doToggleP1(){
+      S.svGreenGroupByProject=!S.svGreenGroupByProject;
+      if(S.svGreenGroupByProject){S.nextTab='prioritare';S.nextSplitView=false;}
+      render();
+    }
     p1Btn.addEventListener('click',doToggleP1);
     p1Btn.addEventListener('touchend',function(e){e.preventDefault();doToggleP1();},{passive:false});
     tb.appendChild(p1Btn);
@@ -5009,20 +5045,8 @@ function rBoard(){
       if(cat==='prioritare') svGreenItems.push(row);
       else if(cat==='termene'||cat==='calendar') svRedCalItems.push(row);
     });
-    // P1 (V159): grupare vizuală pe proiecte în zona verde — transformă doar array-ul local
-    // folosit la afișare; S.nextOrder rămâne neatins, deci dezactivarea revine exact la ordinea reală
-    if(S.svGreenGroupByProject){
-      var _p1WithProj=svGreenItems.filter(function(r){return!r.isFree;});
-      var _p1Free=svGreenItems.filter(function(r){return r.isFree;});
-      var _p1ByProj={};var _p1Order=[];
-      _p1WithProj.forEach(function(r){
-        if(!_p1ByProj[r.pname]){_p1ByProj[r.pname]=[];_p1Order.push(r.pname);}
-        _p1ByProj[r.pname].push(r);
-      });
-      var _p1Grouped=[];
-      _p1Order.forEach(function(pn){_p1Grouped=_p1Grouped.concat(_p1ByProj[pn]);});
-      svGreenItems=_p1Grouped.concat(_p1Free); // taskurile libere, la final
-    }
+    // P1 (V160): gruparea pe proiecte s-a mutat pe tabul clasic „Prioritare" — Split-View
+    // rămâne neschimbat, în ordinea cronologică normală
     // SV1: dreapta — termene + calendar amestecate, sortate cronologic
     svRedCalItems=svRedCalItems.map(function(row){return {row:row,d:extractDateFromRow(row)};})
       .sort(function(a,b){
@@ -5110,6 +5134,19 @@ function rBoard(){
     const e=div('');e.style.cssText='padding:10px 16px;font-size:11px;color:#9CA3AF;border-bottom:1px solid #E5E7EB;background:#fff';
     e.textContent=S.nextTab==='all'?'No tasks in Next.':'Niciun task în această categorie.';
     nsec.appendChild(e);
+  }
+  // P1 (V160): grupare pe proiecte — activă doar pe tabul „Prioritare", cu butonul „📂 Pe proiecte"
+  var _p1Active=(S.nextTab==='prioritare' && S.svGreenGroupByProject);
+  var _p1OrderMap={},_p1Names=[];
+  if(_p1Active){
+    nr.forEach(function(rr){
+      if(!rr.tname||!rr.tname.trim()) return;
+      if(getNextRowCategory(rr)!=='prioritare') return;
+      if(!rr.isFree && _p1Names.indexOf(rr.pname)<0) _p1Names.push(rr.pname);
+    });
+    _p1Names.sort(function(a,b){return a.localeCompare(b,'ro');});
+    _p1Names.forEach(function(n,i){_p1OrderMap[n]=i;});
+    nsec.style.cssText='display:flex;flex-direction:column'; // necesar ca order: să aibă efect
   }
   // Benzi de culoare *1/*2/*3
   var _bandColor=null;
@@ -5232,9 +5269,20 @@ function rBoard(){
       })(row.projectId, row.taskId);
     }
     const nh=sp('phandle','⠿');
-    nh.style.cssText='font-size:16px;color:#CBD5E1;cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
-    attNextHandle(nh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
+    if(_p1Active){
+      // P1 (V160): poziția vizuală nu mai corespunde ordinii reale cât timp e grupat — mânerul
+      // rămâne inert, ca să nu dea rezultate confuze
+      nh.style.cssText='font-size:16px;color:#4B5563;cursor:default;user-select:none;flex-shrink:0;padding:1px 3px;opacity:.5';
+      nh.title='Reordonare dezactivată cât timp gruparea pe proiecte e activă';
+    } else {
+      nh.style.cssText='font-size:16px;color:#CBD5E1;cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
+      attNextHandle(nh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
+    }
     r.appendChild(nh);
+    if(_p1Active){
+      r.style.order=row.isFree?_p1Names.length:(_p1OrderMap[row.pname]!=null?_p1OrderMap[row.pname]:0);
+      if(!row.isFree) r.style.background=colorForProject(row.pname);
+    }
     // Dot: portocaliu normal sau roșu+pulsant dacă warn
     const dot=sp('ndot');
     if(row.warn){dot.style.cssText='width:8px;height:8px;border-radius:50%;background:#EF4444;flex-shrink:0';}
