@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V161</title>
+<title>Project Board V162</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2079,7 +2079,8 @@ function getNextRowCategory(row){
   }
   if(zone==='green') return 'prioritare';
   if(zone==='red') return 'termene';
-  return 'restul'; // galben + fără zonă
+  if(zone==='yellow') return 'zona2';
+  return 'restul';
 }
 
 // ── WAITING rows — toate task-urile cu status 'wait' ──────────
@@ -2898,7 +2899,7 @@ function doSearchNextOnly(q){
     if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fn',name:f.name||'',id:f.id});
   });
   traceLog('F1 doSearchNextOnly: q="'+q+'" results='+res.length);
-  S.sr=res;render();
+  if(res.some(function(r){return r.k==='sh';}))S.shareLimit=999999;S.sr=res;render();
 }
 
 function doSearch(){
@@ -2935,7 +2936,7 @@ function doSearch(){
     var txt=(e.text||'').toLowerCase();
     if(txt.indexOf(q)>=0) res.push({k:'sjrn',ts:e.ts,kind:e.kind||'share-merge',text:e.text||'',date:fmt(e.ts)});
   });
-  S.sr=res;render();
+  if(res.some(function(r){return r.k==='sh';}))S.shareLimit=999999;S.sr=res;render();
 }
 function markDone(projectId, taskId, fromSection){
   // Mută task-ul în done în proiect
@@ -3894,7 +3895,9 @@ function promptRenameTask(oldName,cb){
 // Dy1 (V159): overlay subtaskuri — listă ierarhică pe n niveluri (stil Dynalist/WorkFlowy).
 // subtasksArr: array live de {id,text,done,depth} — e mutat direct; persistFn salvează +
 // marchează dirty după fiecare acțiune (checkbox, editare, indent/outdent, mutare, ștergere).
+var _subOG=null;
 function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
+  var _og=_subOG;_subOG=null;
   var ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
   var card=document.createElement('div');
@@ -3912,17 +3915,17 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
       e.style.cssText='color:#6B7280;font-size:12px;font-style:italic;padding:8px 0';
       listWrap.appendChild(e);
     }
-    subtasksArr.forEach(function(st,idx){
+    subOrder(subtasksArr).forEach(function(idx){var st=subtasksArr[idx];
       var row=document.createElement('div');
       row.style.cssText='display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:1px solid #1E2130;padding-left:'+(st.depth*18)+'px';
       var cb=document.createElement('div');
       cb.style.cssText='width:18px;height:18px;border:2px solid '+(st.done?'#10B981':'#6B7280')+';border-radius:5px;flex-shrink:0;cursor:pointer;touch-action:manipulation;margin-top:2px;background:'+(st.done?'#10B981':'transparent');
-      function doToggleDone(e){e.stopPropagation();e.preventDefault();st.done=!st.done;persistFn();renderList();}
+      function doToggleDone(e){e.stopPropagation();e.preventDefault();st.done=!st.done;if(st.done&&_og){var _o=_og();if(_o&&_o.note)_o.note=removeNoteLine(_o.note,st.text);}persistFn();renderList();}
       cb.addEventListener('click',doToggleDone);
       cb.addEventListener('touchend',doToggleDone,{passive:false});
       var txt=document.createElement('div');
       txt.textContent=st.text;
-      txt.style.cssText='flex:1;font-size:12px;color:'+(st.done?'#6B7280':'#E2E8F0')+';text-decoration:'+(st.done?'line-through':'none')+';word-break:break-word;cursor:text;min-width:0;padding-top:2px';
+      txt.style.cssText='flex:1;font-size:12px;color:'+(st.done?'#6B7280':'#E2E8F0')+';text-decoration:'+(st.done?'line-through':'none')+';word-break:break-word;white-space:pre-wrap;cursor:text;min-width:0;padding-top:2px';
       function doEditText(){
         var inp=document.createElement('input');
         inp.value=st.text;
@@ -4002,7 +4005,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
 function openSubtasksFor(ownerGetter, ownerLabel, writeFn){
   var owner=ownerGetter();
   if(!owner) return;
-  if(!owner.subtasks) owner.subtasks=[];
+  if(!owner.subtasks) owner.subtasks=[];_subOG=ownerGetter;
   showSubtasksOverlay(ownerLabel, owner.subtasks, function(){
     var o=ownerGetter();
     if(o) o.modifiedTs=Date.now();
@@ -4177,7 +4180,8 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   function monTick(){if(!document.body.contains(ov)){monStop();return;}monRead(false);}
   bMonB.addEventListener('click',function(){if(_monOn){monStop();return;}_monOn=true;monRead(true);_monTm=setInterval(monTick,20000);window.addEventListener('focus',monTick);bMonB.textContent='👁 Monitor: pornit';bMonB.style.background='#064E3B';fbToast('👁 Monitor clipboard pornit (la 20s și la revenirea în aplicație)','#0F2A1A','#10B981',3000);});
   clipRow.appendChild(bTopT);clipRow.appendChild(bMonB);
-  if(_own){var bBnB=mkSm('⇣ Subtaskuri din notă','#A78BFA');bBnB.addEventListener('click',function(){var o=_own();if(!o)return;if(!o.subtasks)o.subtasks=[];var n=0;ta.value.split('\n').forEach(function(l){if(!/^\s*\S{1,8}\.\s+\S/.test(l))return;var tx=l.trim();if(o.subtasks.some(function(x){return x.text===tx;}))return;o.subtasks.push({id:gid(),text:tx,done:false,depth:0});n++;});if(n){o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());render();}fbToast('⇣ '+n+' subtaskuri create','#0F2A1A','#10B981',2500);});clipRow.appendChild(bBnB);}
+  if(_own){var bBnB=mkSm('⇣ Subtaskuri din notă','#A78BFA');bBnB.addEventListener('click',function(){var o=_own();if(!o)return;if(!o.subtasks)o.subtasks=[];var n=0;extractSubtasks(ta.value).forEach(function(tx){if(o.subtasks.some(function(x){return x.text===tx;}))return;o.subtasks.push({id:gid(),text:tx,done:false,depth:0});n++;});if(n){o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());render();}fbToast('⇣ '+n+' subtaskuri create','#0F2A1A','#10B981',2500);});clipRow.appendChild(bBnB);
+    var bClnB=mkSm('🧹 Curăță','#F87171');bClnB.addEventListener('click',function(){var o=_own();if(!o||!o.subtasks)return;var n=0;var del=o.subtasks.map(function(x,i){if(!x.done||(x.text||'').trim().indexOf('*')===0)return false;for(var j=i+1;j<o.subtasks.length&&o.subtasks[j].depth>x.depth;j++){if(!o.subtasks[j].done)return false;}return true;});o.subtasks=o.subtasks.filter(function(x,i){if(!del[i])return true;ta.value=removeNoteLine(ta.value,x.text);n++;return false;});if(n){o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());if(notePreviewWrap)buildNotePreview(ta.value);}fbToast('🧹 '+n+' subtaskuri șterse — salvează nota ca să păstrezi și curățarea textului','#0F2A1A','#10B981',3500);});clipRow.appendChild(bClnB);}
 
   var btns=document.createElement('div');
   btns.className='note-btns';
@@ -4920,7 +4924,7 @@ function rBoard(){
   root.appendChild(nd);
 
   // T1 (V141, experimental): contoare pe categorii — folosite atât de banda de taburi, cât și de mesajul „gol"
-  var _catCounts={all:0,prioritare:0,termene:0,calendar:0,restul:0};
+  var _catCounts={all:0,prioritare:0,termene:0,calendar:0,zona2:0,restul:0};
   nr.forEach(function(row){
     if(!row.tname||!row.tname.trim()) return;
     var cat=getNextRowCategory(row);
@@ -4935,6 +4939,7 @@ function rBoard(){
       {id:'prioritare',lbl:'🟢 Prioritare',color:'#10B981'},
       {id:'termene',lbl:'🔴 Termene',color:'#EF4444'},
       {id:'calendar',lbl:'📅 Calendar',color:'#3B82F6'},
+      {id:'zona2',lbl:'Z2-utile',color:'#EAB308'},
       {id:'restul',lbl:'⚪ Restul',color:'#9CA3AF'}
     ];
     var tb=div('');
@@ -5043,7 +5048,12 @@ function rBoard(){
       selRow2.appendChild(sbSort);
     }
     ap(selRow2,sbOpml,sbClear);
-    sb.appendChild(selRow1);sb.appendChild(selRow2);
+    var selRow3=div('');selRow3.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';
+    var bU=mk('button','sel-btn');bU.textContent='☑ Urgente (u)';bU.style.background='#DC2626';bU.addEventListener('click',function(){selectByPrefix(/^[uU][ .]/);});
+    var bW=mk('button','sel-btn');bW.textContent='☑ W (wait)';bW.style.background='#A16207';bW.addEventListener('click',function(){selectByPrefix(/^[wW][ .]/);});
+    var bZ2=mk('button','sel-btn');bZ2.textContent='→ Zona 2';bZ2.style.background='#CA8A04';bZ2.addEventListener('click',function(){moveSelectedToZone2();});
+    ap(selRow3,bU,bW,bZ2);
+    sb.appendChild(selRow1);sb.appendChild(selRow2);sb.appendChild(selRow3);
     root.appendChild(sb);
   }
 
@@ -5062,6 +5072,7 @@ function rBoard(){
     });
     // P1 (V160): gruparea pe proiecte s-a mutat pe tabul clasic „Prioritare" — Split-View
     // rămâne neschimbat, în ordinea cronologică normală
+    svGreenItems=svGreenItems.map(function(r,i){var m=(r.tname||'').match(/^([wWuU])[ .]/);return {r:r,i:i,p:m?(/[uU]/.test(m[1])?0:1):2};}).sort(function(a,b){return a.p-b.p||a.i-b.i;}).map(function(x){return x.r;});
     // SV1: dreapta — termene + calendar amestecate, sortate cronologic
     svRedCalItems=svRedCalItems.map(function(row){return {row:row,d:extractDateFromRow(row)};})
       .sort(function(a,b){
@@ -5164,6 +5175,8 @@ function rBoard(){
     nsec.style.cssText='display:flex;flex-direction:column'; // necesar ca order: să aibă efect
   }
   // Benzi de culoare *1/*2/*3
+  var _rg2Active=false;
+  if(S.nextTab==='prioritare'&&!_p1Active){nr.forEach(function(rr){if(getNextRowCategory(rr)==='prioritare'&&/^[wWuU][ .]/.test(rr.tname||''))_rg2Active=true;});if(_rg2Active)nsec.style.cssText='display:flex;flex-direction:column';}
   var _bandColor=null;
   var _firstFutureFound=false;
   nr.forEach((row,idx)=>{
@@ -5286,7 +5299,7 @@ function rBoard(){
       })(row.projectId, row.taskId);
     }
     const nh=sp('phandle','⠿');
-    if(_p1Active){
+    if(_p1Active||_rg2Active){
       // P1 (V160): poziția vizuală nu mai corespunde ordinii reale cât timp e grupat — mânerul
       // rămâne inert, ca să nu dea rezultate confuze
       nh.style.cssText='font-size:16px;color:#4B5563;cursor:default;user-select:none;flex-shrink:0;padding:1px 3px;opacity:.5';
@@ -5296,6 +5309,7 @@ function rBoard(){
       attNextHandle(nh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
     }
     r.appendChild(nh);
+    if(_rg2Active){var _pm=(row.tname||'').match(/^([wWuU])[ .]/);r.style.order=_pm?(/[uU]/.test(_pm[1])?0:1):2;}
     if(_p1Active){
       r.style.order=row.isFree?_p1Names.length:(_p1OrderMap[row.pname]!=null?_p1OrderMap[row.pname]:0);
       if(!row.isFree) r.style.background=colorForProject(row.pname);
@@ -5350,12 +5364,12 @@ function rBoard(){
           }
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
-            if(ft){ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(newName);}
+            if(ft){var _on=ft.name;ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(newName);onDateAdded(true,null,ft.id,_on,newName);}
           } else {
             var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
             if(proj){
               var task=proj.tasks.find(function(t){return t.id===rowSnap.taskId;});
-              if(task){task.name=newName;task.modifiedTs=Date.now();checkAndCreateFinalizare(newName);save();}
+              if(task){var _on2=task.name;task.name=newName;task.modifiedTs=Date.now();checkAndCreateFinalizare(newName);save();onDateAdded(false,proj.id,task.id,_on2,newName);}
             }
           }
           traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
@@ -5913,7 +5927,7 @@ function rBoard(){
     se.textContent='No items received via Share.';
     shsec.appendChild(se);
   }
-  S.shareTasks.forEach(function(item){
+  S.shareTasks.slice(0,S.shareLimit||20).forEach(function(item){
     const r=div('srow-share');
     r.dataset.shid=item.id;
     var sk='s:'+item.id;
@@ -6016,6 +6030,11 @@ function rBoard(){
     })(item.id,item.name);
     shsec.appendChild(r);
   });
+  var _shL=S.shareLimit||20;
+  if(S.shareTasks.length>_shL){var mb=div('');mb.style.cssText='display:flex;gap:8px;padding:8px 12px;background:#F0FDF4;border-bottom:1px solid #E5E7EB';
+    var mb1=mk('button','btn bgr');mb1.textContent='▼ încă 50 ('+(S.shareTasks.length-_shL)+' ascunse)';mb1.addEventListener('click',function(){S.shareLimit=_shL+50;render();});
+    var mb2=mk('button','btn bg');mb2.textContent='Toate';mb2.addEventListener('click',function(){S.shareLimit=999999;render();});
+    mb.appendChild(mb1);mb.appendChild(mb2);shsec.appendChild(mb);}
   root.appendChild(shsec);
 
   // ══ PROIECTE VIDE ══
@@ -7056,11 +7075,11 @@ function editSelectedSingleTask(){
     var vw=addWeekday(resolveCalCmd(v));
     if(isFree){
       var ft2=S.freeTasks.find(function(x){return x.id===fid;});
-      if(ft2){ft2.name=vw;ft2.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(vw);}
+      if(ft2){var _on3=ft2.name;ft2.name=vw;ft2.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(vw);onDateAdded(true,null,ft2.id,_on3,vw);}
     } else {
       var proj2=S.items.find(function(x){return x.id===pid;});
       var task2=proj2&&proj2.tasks.find(function(t){return t.id===tid;});
-      if(task2){task2.name=vw;task2.modifiedTs=Date.now();checkAndCreateFinalizare(vw);save();}
+      if(task2){var _on4=task2.name;task2.name=vw;task2.modifiedTs=Date.now();checkAndCreateFinalizare(vw);save();onDateAdded(false,proj2.id,task2.id,_on4,vw);}
     }
     S.selectedNext={};S.selectMode=false;_selOrder=0;
     render();
@@ -7165,6 +7184,49 @@ function scanPushCmd(){
   lw(FK,S.freeTasks);lw(SK,S.items);lw('pb-local-dirty-ts',Date.now());
   hits.forEach(function(h){pushOne(h.free,h.pid,h.o.id);});
 }
+function onDateAdded(isFree,pid,tid,oldN,newN){
+  var q=function(n){return !!extractDateFromRow({tname:n||'',isFree:true,id:''});};
+  if(q(oldN)||!q(newN))return;
+  var obj=isFree?S.freeTasks.find(function(x){return x.id===tid;}):(function(){var p=S.items.find(function(x){return x.id===pid;});return p&&p.tasks.find(function(x){return x.id===tid;});})();
+  if(!obj||obj.zone!=='green')return;
+  var idx=S.nextOrder.findIndex(function(e){return isFree?(e.type==='free'&&e.id===tid):(e.type==='proj'&&e.taskId===tid);});
+  var a=-1;for(var i=0;i<S.nextOrder.length&&a<0;i++){var e=S.nextOrder[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&/^\*1/.test(f.name||''))a=i;}}
+  if(idx<0||a<0){traceLog('Mtn: nu pot muta idx='+idx+' *1='+a);return;}
+  var ord=S.nextOrder.slice();var ent=ord.splice(idx,1)[0];
+  ord.splice((a>idx?a-1:a)+1,0,ent);S.nextOrder=ord;lw(NK,S.nextOrder);detectAndSaveZones();
+  traceLog('Mtn: data adaugata la editare -> zona *1 "'+(newN||'').slice(0,20)+'"');
+}
+function subOrder(arr){var bl=[],cur=null;arr.forEach(function(s,i){if(!cur||s.depth===0){cur={done:!!s.done&&s.depth===0,idx:[]};bl.push(cur);}cur.idx.push(i);});var out=[];bl.filter(function(b){return !b.done;}).concat(bl.filter(function(b){return b.done;})).forEach(function(b){out=out.concat(b.idx);});return out;}
+function removeNoteLine(note,text){
+  var L=(note||'').split('\n'),T=(text||'').split('\n').map(function(x){return x.trim();});
+  for(var i=0;i+T.length<=L.length;i++){var ok=true;for(var j=0;j<T.length;j++){if(L[i+j].trim()!==T[j]){ok=false;break;}}if(ok){L.splice(i,T.length);return L.join('\n');}}
+  return note;
+}
+function extractSubtasks(text){
+  var out=[],cur=null,afterSep=false,sep=/^\s*(\.|={2,}|-{3,})\s*$/,lab=/^\s*\S{1,8}\.\s+\S/;
+  (text||'').split('\n').forEach(function(l){
+    if(sep.test(l)){cur=null;afterSep=true;return;}
+    if(!l.trim())return;
+    if(lab.test(l)||afterSep){cur=[l.trim()];out.push(cur);afterSep=false;return;}
+    if(cur)cur.push(l.trim());
+  });
+  return out.map(function(a){return a.join('\n');});
+}
+function selectByPrefix(rx){
+  getNR().forEach(function(r){if(!r.tname||!rx.test(r.tname))return;var c=getNextRowCategory(r);if(c==='marker')return;if(S.nextTab!=='all'&&c!==S.nextTab)return;var k=r.isFree?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;if(!S.selectedNext[k]){_selOrder++;S.selectedNext[k]=_selOrder;}});
+  S.selectMode=true;render();
+}
+function moveSelectedToZone2(){
+  var keys=Object.keys(S.selectedNext);if(!keys.length)return;
+  var u=getNR().map(function(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};});
+  function rk(r){return r.type==='free'?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
+  var set=new Set(keys),sel=u.filter(function(r){return set.has(rk(r));}),rest=u.filter(function(r){return !set.has(rk(r));});
+  var a=-1;for(var i=0;i<rest.length&&a<0;i++){var e=rest[i];if(e.type==='free'){var f=S.freeTasks.find(function(x){return x.id===e.id;});if(f&&/^\*2/.test(f.name||''))a=i;}}
+  if(a<0){fbToast('⚠ Nu există marcatori *2','#1E2130','#F87171',3000);return;}
+  S.nextOrder=rest.slice(0,a+1).concat(sel).concat(rest.slice(a+1));
+  lw(NK,S.nextOrder);detectAndSaveZones();traceLog('Z21: '+sel.length+' -> zona 2');
+  S.selectedNext={};S.selectMode=false;_selOrder=0;render();
+}
 function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _t1=performance.now();
   const app=document.getElementById('app');app.innerHTML='';
   app.appendChild(
@@ -7178,6 +7240,7 @@ function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _
 }
 
 var _ti=performance.now();init();traceLog('V1 init '+Math.round(performance.now()-_ti)+'ms free='+S.freeTasks.length+' share='+S.shareTasks.length+' ls='+Math.round(JSON.stringify(localStorage).length/1024)+'KB');
+(function(){var a=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);a.push([k,Math.round((localStorage.getItem(k)||'').length/1024)]);}a.sort(function(x,y){return y[1]-x[1];});traceLog('V1 ls top: '+a.slice(0,8).map(function(x){return x[0]+'='+x[1]+'KB';}).join(' '));})();
 // ── FAB+ quick-add task la începutul Next ──
 (function(){
   var fabBtn=document.getElementById('fab-add');
