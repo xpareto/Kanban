@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V169</title>
+<title>Project Board V170</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -402,6 +402,9 @@ function subsUnion(res,la,ra){
     var o=(it.subtasks===a.subtasks)?b.subtasks:a.subtasks;
     var m=mergeSubs(it.subtasks,o);
     if(m!==it.subtasks){it.subtasks=m;traceLog('X6 subtasks unite pe '+String(it.id||'').slice(-6));}
+    var oa=(it.attachments===a.attachments)?b.attachments:a.attachments;
+    var ma=mergeSubs(it.attachments,oa);
+    if(ma!==it.attachments){it.attachments=ma;traceLog('X27 atasamente unite pe '+String(it.id||'').slice(-6));}
   });
 }
 var _mia0=mergeItemArray;
@@ -2979,7 +2982,7 @@ function doSearch(){
   // Jurnal principal
   S.journal.forEach(function(e){
     var txt=(e.taskName||e.projectName||'').toLowerCase();
-    if(txt.indexOf(q)>=0) res.push({k:'jrn',ts:e.ts,kind:e.kind,label:(e.taskName||e.projectName||''),date:fmt(e.ts)});
+    if(txt.indexOf(q)>=0) res.push({k:'jrn',ts:e.ts,kind:e.kind,label:(e.taskName||e.projectName||''),date:fmt(e.ts),e:e});
   });
   // Share Journal
   S.shareJournal.forEach(function(e){
@@ -4124,6 +4127,9 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(r.text).then(function(){markSentQ(o,r.marks);renderList();fbToast('📤 '+r.count+' subtaskuri copiate ('+r.marks.length+' marcate cu ?)','#0F2A1A','#10B981',3000);}).catch(function(){fbToast('⚠ Nu am putut scrie în clipboard','#1E2130','#F87171',3000);});}
   });
   function syncDev(){var o=ownerNow();var on=!!(o&&o.dev);bDevS.textContent=on?'Prog ON':'Prog OFF';bDevS.style.background=on?'#065F46':'#2D3048';bCln.style.display=on?'':'none';bNet.style.display=on?'':'none';}
+  var bGoN=hb('📝','#04120A',function(){var g=_og;doClose();openNoteFor(g);});
+  bGoN.title='Mergi la notă';bGoN.style.background='#10B981';bGoN.style.border='1px solid #059669';
+  if(_og)hbtns.appendChild(bGoN);
   hbtns.appendChild(bDevS);hbtns.appendChild(bCln);hbtns.appendChild(bNet);syncDev();
   hrow.appendChild(h);hrow.appendChild(hbtns);hrow.appendChild(closeBtn);
   card.appendChild(hrow);card.appendChild(listWrap);card.appendChild(addRow);
@@ -4146,6 +4152,326 @@ function openSubtasksFor(ownerGetter, ownerLabel, writeFn){
     lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);
     lw('pb-local-dirty-ts',Date.now());
     if(o) promoAfterChange(o);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── V170: Atașamente în Google Drive (scope drive.file) ──────
+// Fișierele se încarcă în Drive › ProjectBoard; pe task se ține doar o listă mică
+// attachments:[{id,fid,name,mime,size,ts,up,url}] (se unește după id la merge — X27)
+// ══════════════════════════════════════════════════════════════
+var DRV_SCOPE='https://www.googleapis.com/auth/drive.file';
+var DRV_TK='pb-drv-token',DRV_FK='pb-drv-folder',DRV_MAX=25*1024*1024;
+var _drvClient=null,_drvPending=null,_drvGisState=0,_drvGisCbs=[];
+function drvValid(){try{var t=JSON.parse(localStorage.getItem(DRV_TK)||'null');if(t&&t.t&&t.exp&&Date.now()<t.exp-60000)return t.t;}catch(_){}return null;}
+function drvLoadGIS(cb){
+  if(window.google&&google.accounts&&google.accounts.oauth2){cb(null);return;}
+  _drvGisCbs.push(cb);
+  if(_drvGisState===1)return;
+  _drvGisState=1;
+  var sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.async=true;
+  sc.onload=function(){_drvGisState=2;var c=_drvGisCbs.splice(0);c.forEach(function(f){f(null);});};
+  sc.onerror=function(){_drvGisState=0;var c=_drvGisCbs.splice(0);c.forEach(function(f){f(new Error('Nu am putut încărca Google Sign-In (fără internet?)'));});};
+  document.head.appendChild(sc);
+}
+// ATENȚIE: apelată fără token valid, trebuie chemată direct dintr-un tap al utilizatorului (popup-ul Google)
+function drvToken(cb){
+  var t=drvValid();if(t){cb(null,t);return;}
+  drvLoadGIS(function(err){
+    if(err){cb(err);return;}
+    try{
+      if(!_drvClient){
+        var cfg={client_id:GCAL_CLIENT_ID,scope:DRV_SCOPE,
+          callback:function(resp){
+            var p=_drvPending;_drvPending=null;if(!p)return;
+            if(resp&&resp.access_token){
+              if(google.accounts.oauth2.hasGrantedAllScopes&&!google.accounts.oauth2.hasGrantedAllScopes(resp,DRV_SCOPE)){p(new Error('Permisiunea Drive nu a fost acordată'));return;}
+              localStorage.setItem(DRV_TK,JSON.stringify({t:resp.access_token,exp:Date.now()+parseInt(resp.expires_in||3600,10)*1000}));
+              p(null,resp.access_token);
+            } else p(new Error((resp&&(resp.error_description||resp.error))||'Autorizare refuzată'));
+          },
+          error_callback:function(er){
+            var p=_drvPending;_drvPending=null;if(!p)return;
+            p(new Error(er&&er.type==='popup_closed'?'Fereastra de autorizare a fost închisă':'Autorizare eșuată'+(er&&er.type?' ('+er.type+')':'')));
+          }};
+        var em=localStorage.getItem('pb-cal-email');if(em)cfg.hint=em;
+        _drvClient=google.accounts.oauth2.initTokenClient(cfg);
+      }
+      _drvPending=cb;
+      _drvClient.requestAccessToken({prompt:''});
+    }catch(e){_drvPending=null;cb(e);}
+  });
+}
+// sw.js întoarce index.html când fetch-ul pică offline → verificăm statusul și tipul răspunsului
+async function drvApi(url,token,opts){
+  opts=opts||{};opts.headers=Object.assign({Authorization:'Bearer '+token},opts.headers||{});
+  var r=await fetch(url,opts);
+  if(r.status===401){localStorage.removeItem(DRV_TK);throw new Error('Sesiunea Drive a expirat — încearcă din nou');}
+  if(!r.ok){
+    var msg='';try{var ej=await r.json();msg=(ej&&ej.error&&ej.error.message)||'';}catch(_){}
+    var er=new Error('Drive '+r.status+(msg?': '+msg:''));er.status=r.status;throw er;
+  }
+  if((r.headers.get('content-type')||'').indexOf('json')<0)throw new Error('Răspuns neașteptat de la Drive (fără conexiune?)');
+  return r;
+}
+async function drvFolder(token){
+  var id=localStorage.getItem(DRV_FK);if(id)return id;
+  var q="name='ProjectBoard' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+  var r=await drvApi('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)+'&fields='+encodeURIComponent('files(id,name)')+'&pageSize=1',token);
+  var j=await r.json();
+  if(j.files&&j.files.length)id=j.files[0].id;
+  else{
+    var r2=await drvApi('https://www.googleapis.com/drive/v3/files?fields=id',token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'ProjectBoard',mimeType:'application/vnd.google-apps.folder'})});
+    id=(await r2.json()).id;
+  }
+  localStorage.setItem(DRV_FK,id);
+  traceLog('X27 folder Drive ProjectBoard: '+String(id).slice(-6));
+  return id;
+}
+async function drvUpload(token,file,name){
+  for(var attempt=0;attempt<2;attempt++){
+    var folder=await drvFolder(token);
+    var meta={name:name,parents:[folder]};
+    var fields='id,name,mimeType,size';
+    try{
+      if(file.size<=5*1024*1024){
+        var fd=new FormData();
+        fd.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+        fd.append('file',file);
+        var r=await drvApi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields='+fields,token,{method:'POST',body:fd});
+        return await r.json();
+      }
+      var ri=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields='+fields,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':file.type||'application/octet-stream','X-Upload-Content-Length':String(file.size)},body:JSON.stringify(meta)});
+      if(ri.status===401){localStorage.removeItem(DRV_TK);throw new Error('Sesiunea Drive a expirat — încearcă din nou');}
+      if(!ri.ok){var e1=new Error('Drive '+ri.status);e1.status=ri.status;throw e1;}
+      var loc=ri.headers.get('Location');if(!loc)throw new Error('Drive: lipsește adresa de încărcare');
+      var rp=await fetch(loc,{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+      if(!rp.ok)throw new Error('Drive '+rp.status);
+      return await rp.json();
+    }catch(e){
+      if(attempt===0&&e.status===404){localStorage.removeItem(DRV_FK);continue;} // folderul a fost șters — îl recreăm o dată
+      throw e;
+    }
+  }
+}
+function fmtSize(n){n=+n||0;if(n<1024)return n+' B';if(n<1048576)return Math.round(n/1024)+' KB';return (n/1048576).toFixed(1)+' MB';}
+function attIcon(m){m=m||'';return m.indexOf('image/')===0?'🖼':m==='application/pdf'?'📄':m.indexOf('video/')===0?'🎞':m.indexOf('audio/')===0?'🎵':'📎';}
+// dialog nume atașament — precompletat; extensia originală se păstrează automat; gol = numele original
+// cb se apelează SINCRON din tap-ul pe ✓ (păstrează gestul utilizatorului pentru popup-ul Google)
+function promptAttachName(title,init,origName,cb){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10002;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border:2px solid #10B981;border-radius:14px;padding:18px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');h.textContent=title;h.style.cssText='color:#34D399;font-weight:800;font-size:14px;margin-bottom:6px';
+  var sub=document.createElement('div');sub.textContent='Dă un nume semnificativ'+(origName&&/\.[A-Za-z0-9]{1,8}$/.test(origName)?' (extensia se păstrează automat):':':');sub.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:10px';
+  var inp=document.createElement('input');inp.value=init||'';
+  inp.style.cssText='width:100%;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box;margin-bottom:12px';
+  var brow=document.createElement('div');brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');bOk.textContent='✓ OK';
+  bOk.style.cssText='flex:1;background:#10B981;color:#04120A;border:none;border-radius:8px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bNo=document.createElement('button');bNo.textContent='✕';
+  bNo.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;touch-action:manipulation';
+  function close(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  function fixExt(v){
+    v=(v||'').trim();if(!v)return origName||'Atașament';
+    var m=(origName||'').match(/\.[A-Za-z0-9]{1,8}$/);
+    if(m&&v.toLowerCase().slice(-m[0].length)!==m[0].toLowerCase())v+=m[0];
+    return v;
+  }
+  function doOk(){var v=fixExt(inp.value);close();cb(v);}
+  bOk.addEventListener('click',doOk);bOk.addEventListener('touchend',function(e){e.preventDefault();doOk();},{passive:false});
+  bNo.addEventListener('click',close);bNo.addEventListener('touchend',function(e){e.preventDefault();close();},{passive:false});
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doOk();}if(e.key==='Escape')close();});
+  brow.appendChild(bOk);brow.appendChild(bNo);
+  card.appendChild(h);card.appendChild(sub);card.appendChild(inp);card.appendChild(brow);ov.appendChild(card);document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();inp.setSelectionRange(0,0);},80);
+}
+function promptAttachLink(cb){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10002;display:flex;align-items:center;justify-content:center;padding:20px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border:2px solid #10B981;border-radius:14px;padding:18px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');h.textContent='🔗 Link către un fișier din Drive';h.style.cssText='color:#34D399;font-weight:800;font-size:14px;margin-bottom:6px';
+  var sub=document.createElement('div');sub.textContent='Lipește linkul (https://…). Se atașează doar legătura, fișierul nu e mutat.';sub.style.cssText='color:#9CA3AF;font-size:11px;margin-bottom:10px';
+  var row=document.createElement('div');row.style.cssText='display:flex;gap:6px;margin-bottom:12px';
+  var inp=document.createElement('input');inp.placeholder='https://drive.google.com/…';
+  inp.style.cssText='flex:1;min-width:0;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box';
+  var bClip=document.createElement('button');bClip.textContent='📋';
+  bClip.style.cssText='background:none;border:1px dashed #6B7280;color:#9CA3AF;border-radius:7px;padding:8px 10px;font-size:14px;cursor:pointer;touch-action:manipulation';
+  bClip.addEventListener('click',function(){clipReadText(function(t){inp.value=(t||'').trim();});});
+  row.appendChild(inp);row.appendChild(bClip);
+  var brow=document.createElement('div');brow.style.cssText='display:flex;gap:8px';
+  var bOk=document.createElement('button');bOk.textContent='✓ Continuă';
+  bOk.style.cssText='flex:1;background:#10B981;color:#04120A;border:none;border-radius:8px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bNo=document.createElement('button');bNo.textContent='✕';
+  bNo.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;touch-action:manipulation';
+  function close(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  function doOk(){
+    var u=inp.value.trim();
+    if(!/^https?:\/\/\S+$/i.test(u)){fbToast('⚠ Linkul trebuie să înceapă cu http:// sau https://','#1E2130','#F87171',3000);return;}
+    close();cb(u);
+  }
+  bOk.addEventListener('click',doOk);bOk.addEventListener('touchend',function(e){e.preventDefault();doOk();},{passive:false});
+  bNo.addEventListener('click',close);bNo.addEventListener('touchend',function(e){e.preventDefault();close();},{passive:false});
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();doOk();}if(e.key==='Escape')close();});
+  brow.appendChild(bOk);brow.appendChild(bNo);
+  card.appendChild(h);card.appendChild(sub);card.appendChild(row);card.appendChild(brow);ov.appendChild(card);document.body.appendChild(ov);
+  setTimeout(function(){inp.focus();},80);
+}
+function openAttachmentsFor(og0,label){
+  var owner=og0();if(!owner)return;
+  var oid=owner.id;
+  var og=function(){return og0()||ownerById(oid);};
+  drvLoadGIS(function(){}); // preîncărcare, ca popup-ul Google să pornească imediat la tap
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border-radius:14px 14px 0 0;padding:14px 14px 20px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 -8px 30px rgba(0,0,0,.5)';
+  var hrow=document.createElement('div');hrow.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-shrink:0';
+  var h=document.createElement('div');h.textContent='📎 Atașamente';h.style.cssText='color:#34D399;font-weight:800;font-size:14px;flex:1';
+  var closeBtn=document.createElement('button');closeBtn.textContent='✕';
+  closeBtn.style.cssText='background:#374151;color:#E2E8F0;border:none;border-radius:8px;padding:6px 14px;font-size:15px;font-weight:800;cursor:pointer;touch-action:manipulation;flex-shrink:0';
+  hrow.appendChild(h);hrow.appendChild(closeBtn);
+  var sub=document.createElement('div');sub.textContent=(label||'').split('\n')[0].slice(0,80);
+  sub.style.cssText='color:#6B7280;font-size:10px;margin-bottom:8px;word-break:break-word;flex-shrink:0';
+  var listWrap=document.createElement('div');listWrap.style.cssText='overflow-y:auto;flex:1;margin-bottom:8px;min-height:40px';
+  var status=document.createElement('div');status.style.cssText='display:none;font-size:11px;margin-bottom:8px;word-break:break-word;flex-shrink:0';
+  var addRow=document.createElement('div');addRow.style.cssText='display:flex;gap:8px;flex-shrink:0';
+  var bAdd=document.createElement('button');bAdd.textContent='+ Adaugă fișier';
+  bAdd.style.cssText='flex:1;background:#10B981;color:#04120A;border:none;border-radius:8px;padding:10px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';
+  var bLink=document.createElement('button');bLink.textContent='🔗 Link Drive';
+  bLink.style.cssText='background:#2D3048;color:#A7F3D0;border:1px solid #10B981;border-radius:8px;padding:10px 12px;font-weight:700;font-size:12px;cursor:pointer;touch-action:manipulation';
+  addRow.appendChild(bAdd);addRow.appendChild(bLink);
+  var hint=document.createElement('div');
+  hint.textContent='Fișierele se încarcă în Drive › ProjectBoard (private, max 25 MB). Scoaterea din task nu șterge fișierul din Drive.';
+  hint.style.cssText='color:#6B7280;font-size:10px;margin-top:8px;line-height:1.5;flex-shrink:0';
+  function arr(){var o=og();if(!o)return [];if(!o.attachments)o.attachments=[];return o.attachments;}
+  function persist(){var o=og();if(o)o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());}
+  var busy=false;
+  function setStatus(msg,col){status.textContent=msg||'';status.style.color=col||'#9CA3AF';status.style.display=msg?'block':'none';}
+  function openUrl(a){var u=a.url||(a.fid?'https://drive.google.com/file/d/'+a.fid+'/view':'');if(/^https?:\/\//i.test(u))window.open(u,'_blank');else setStatus('Legătură invalidă','#F87171');}
+  function mini(t,title,fn,color){
+    var b=document.createElement('button');b.textContent=t;b.title=title;
+    b.style.cssText='background:#2D3048;color:'+(color||'#9CA3AF')+';border:none;border-radius:6px;width:30px;height:30px;font-size:13px;cursor:pointer;touch-action:manipulation;padding:0;flex-shrink:0';
+    function go(e){e.stopPropagation();e.preventDefault();fn();}
+    b.addEventListener('click',go);b.addEventListener('touchend',go,{passive:false});
+    return b;
+  }
+  function renameAtt(a){
+    promptAttachName('✎ Redenumește atașamentul',a.name,a.name,function(nn){
+      if(nn===a.name)return;
+      if(a.up&&a.fid){
+        setStatus('⏳ Redenumesc și în Drive…','#A78BFA');
+        drvToken(function(err,tok){
+          function localOnly(why){a.name=nn;persist();renderList();setStatus('Redenumit doar în aplicație: '+why,'#F59E0B');}
+          if(err){localOnly(err.message);return;}
+          drvApi('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(a.fid)+'?fields=id',tok,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nn})})
+            .then(function(){a.name=nn;persist();renderList();setStatus('✓ Redenumit (și în Drive)','#10B981');})
+            .catch(function(e){localOnly(e.message||String(e));});
+        });
+      } else {a.name=nn;persist();renderList();setStatus('');}
+    });
+  }
+  function renderList(){
+    listWrap.innerHTML='';
+    var A=arr();
+    if(!A.length){
+      var e=document.createElement('div');e.textContent='Niciun atașament încă.';
+      e.style.cssText='color:#6B7280;font-size:12px;font-style:italic;padding:8px 0';listWrap.appendChild(e);
+    }
+    A.forEach(function(a,idx){
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1E2130';
+      var ic=document.createElement('div');ic.textContent=attIcon(a.mime);ic.style.cssText='font-size:18px;flex-shrink:0';
+      var info=document.createElement('div');info.style.cssText='flex:1;min-width:0;cursor:pointer';
+      var nm=document.createElement('div');nm.textContent=a.name||'(fără nume)';nm.style.cssText='font-size:13px;color:#93C5FD;text-decoration:underline;word-break:break-word';
+      var meta=document.createElement('div');meta.textContent=(a.up?'Drive':'link')+(a.size?' · '+fmtSize(a.size):'')+(a.ts?' · '+fmt(a.ts):'');meta.style.cssText='font-size:10px;color:#6B7280;margin-top:1px';
+      info.appendChild(nm);info.appendChild(meta);
+      info.addEventListener('click',function(){openUrl(a);});
+      var bE=mini('✎','Redenumește',function(){renameAtt(a);});
+      var bD=mini('✕','Scoate din task (fișierul rămâne în Drive)',function(){
+        if(!confirm('Scoți „'+(a.name||'atașament')+'" din task?\nFișierul rămâne în Drive.'))return;
+        var X=arr();var i=X.indexOf(a);if(i>=0)X.splice(i,1);persist();renderList();setStatus('');
+      },'#F87171');
+      row.appendChild(ic);row.appendChild(info);row.appendChild(bE);row.appendChild(bD);
+      listWrap.appendChild(row);
+    });
+  }
+  function finishBusy(){busy=false;bAdd.disabled=false;bAdd.style.opacity='1';}
+  function startUpload(f,name){
+    busy=true;bAdd.disabled=true;bAdd.style.opacity='.5';
+    setStatus('⏳ Autorizare Google Drive…','#A78BFA');
+    drvToken(function(err,tok){
+      if(err){finishBusy();setStatus('✕ '+err.message,'#F87171');return;}
+      setStatus('⏳ Se încarcă „'+name+'" ('+fmtSize(f.size)+')…','#A78BFA');
+      drvUpload(tok,f,name).then(function(j){
+        var a={id:gid(),fid:j.id,name:name,mime:j.mimeType||f.type||'',size:+(j.size||f.size)||0,ts:Date.now(),up:true,url:'https://drive.google.com/file/d/'+j.id+'/view'};
+        arr().push(a);persist();finishBusy();
+        traceLog('X27 atasament incarcat: '+name.slice(0,20)+' '+fmtSize(a.size));
+        setStatus('✓ Încărcat în Drive','#10B981');renderList();
+        if(!document.body.contains(ov))render();
+      }).catch(function(e){finishBusy();traceLog('X27 upload eroare: '+(e.message||e));setStatus('✕ '+(e.message||e),'#F87171');});
+    });
+  }
+  function doAddFile(){
+    if(busy)return;
+    var inp=document.createElement('input');inp.type='file';inp.style.display='none';document.body.appendChild(inp);
+    function rm(){if(inp.parentNode)inp.parentNode.removeChild(inp);}
+    inp.addEventListener('cancel',rm);
+    inp.addEventListener('change',function(){
+      var f=inp.files&&inp.files[0];rm();
+      if(!f)return;
+      if(f.size>DRV_MAX){setStatus('✕ Fișier prea mare ('+fmtSize(f.size)+'); maxim 25 MB','#F87171');return;}
+      promptAttachName('📎 Nume atașament',f.name,f.name,function(name){startUpload(f,name);});
+    });
+    inp.click();
+  }
+  function doAddLink(){
+    promptAttachLink(function(url){
+      var dn=/drive\.google|docs\.google/i.test(url)?'Link Drive':'Link';
+      promptAttachName('🔗 Nume pentru link',dn,'',function(name){
+        var m=url.match(/\/d\/([A-Za-z0-9_-]{10,})/)||url.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+        arr().push({id:gid(),fid:m?m[1]:'',name:name,mime:'',size:0,ts:Date.now(),up:false,url:url});
+        persist();renderList();setStatus('');
+      });
+    });
+  }
+  function doClose(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);render();}
+  bAdd.addEventListener('click',doAddFile);
+  bLink.addEventListener('click',doAddLink);
+  closeBtn.addEventListener('click',doClose);
+  closeBtn.addEventListener('touchend',function(e){e.preventDefault();doClose();},{passive:false});
+  ov.addEventListener('click',function(e){if(e.target===ov)doClose();});
+  renderList();
+  card.appendChild(hrow);card.appendChild(sub);card.appendChild(listWrap);card.appendChild(status);card.appendChild(addRow);card.appendChild(hint);
+  ov.appendChild(card);document.body.appendChild(ov);
+}
+// buton 📎 pe rândurile de task (NEXT/WAIT, libere și de proiect)
+function mkAttBtn(getOwner,label){
+  var o=getOwner();var n=(o&&o.attachments&&o.attachments.length)||0;
+  var b=mk('button','note-btn'+(n?' has-note':''));
+  b.textContent='📎'+(n?n:'');b.title='Atașamente (Google Drive)';
+  function go(e){e.stopPropagation();e.preventDefault();openAttachmentsFor(getOwner,label);}
+  b.addEventListener('click',go);
+  b.addEventListener('touchend',function(e){e.preventDefault();go(e);},{passive:false});
+  return b;
+}
+// X25: deschide editorul de notă pentru orice proprietar (folosit din ecranul de subtaskuri)
+function openNoteFor(og){
+  var o=og?og():null;if(!o)return;
+  var title=(o.name||'').split('\n')[0];
+  function persist(){lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());}
+  _noteOwner=og;
+  showNoteOverlay(title,o.note||'',o.name||'',function(newNote,clearTask){
+    var o2=og();if(!o2)return;
+    o2.note=newNote;o2.modifiedTs=Date.now();persist();
+    if(clearTask){
+      var old=o2.name;render();
+      promptRenameTask(old,function(nn){var o3=og();if(o3){o3.name=nn||old;o3.modifiedTs=Date.now();persist();}render();});
+      return;
+    }
+    render();
   });
 }
 
@@ -4325,7 +4651,15 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
     bBnB.style.display=_dev?'':'none';
     var bDev=mkSm(_dev?'Prog ON':'Prog OFF','#34D399');bDev.title='Mod program: arată butoanele de dezvoltare';if(_dev)bDev.style.background='#065F46';
     bDev.addEventListener('click',function(){var o=_own();if(!o)return;_dev=!_dev;o.dev=_dev;o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());bDev.textContent=_dev?'Prog ON':'Prog OFF';bDev.style.background=_dev?'#065F46':'none';bBnB.style.display=_dev?'':'none';});
-    clipRow.appendChild(bDev);}
+    clipRow.appendChild(bDev);
+    var bGoSub=mkSm('☰ Sub','#10B981');bGoSub.title='Mergi la subtaskuri';
+    bGoSub.style.background='#10B981';bGoSub.style.color='#04120A';bGoSub.style.border='1px solid #059669';
+    bGoSub.addEventListener('click',function(){
+      if(ta.value!==(currentNote||''))saveFn(ta.value,false);
+      if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);
+      openSubtasksFor(_own,taskTitle,function(){});
+    });
+    clipRow.insertBefore(bGoSub,clipRow.firstChild);}
 
   var btns=document.createElement('div');
   btns.className='note-btns';
@@ -4417,10 +4751,7 @@ function rJournal(){
       rb2.textContent='↩ Refă';
       rb2.style.cssText='margin-top:5px;background:#1E3A2F;border:1px solid #10B981;color:#34D399;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer';
       rb2.onclick=function(){
-        if(!e.pid||!e.taskSnap){fbToast('Date insuficiente pentru refacere','#1E2130','#F87171',3000);return;}
-        var proj=S.items.find(x=>x.id===e.pid);
-        if(!proj){fbToast('Proiectul nu mai există','#1E2130','#F87171',3000);return;}
-        try{var t=JSON.parse(e.taskSnap);t.id=gid();t.ts=Date.now();proj.tasks=[...proj.tasks,t];save();render();}catch(_){}
+        var t=restoreTaskDelete(e);if(t)render();
       };
       d.appendChild(rb2);el.appendChild(d);
     }
@@ -4437,9 +4768,7 @@ function rJournal(){
       rb.textContent='↩ Refă';
       rb.style.cssText='margin-top:5px;background:#1E3A2F;border:1px solid #10B981;color:#34D399;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer';
       rb.onclick=function(){
-        var ft={id:gid(),name:e.taskName,note:e.note||'',ts:Date.now(),modifiedTs:Date.now()};
-        S.freeTasks.push(ft);S.nextOrder.push({type:'free',id:ft.id});
-        lw(FK,S.freeTasks);lw(NK,S.nextOrder);render();
+        restoreFreeDelete(e);render();
       };
       d.appendChild(rb);
       el.appendChild(d);
@@ -4953,6 +5282,29 @@ function rBoard(){
           var jln=document.createElement('div');jln.textContent=r.label;jln.style.cssText='font-size:12px;font-weight:600;word-break:break-word';
           var jdt=document.createElement('div');jdt.textContent=r.date;jdt.style.cssText='font-size:10px;color:#9CA3AF';
           jd2.appendChild(jln);jd2.appendChild(jdt);row.appendChild(jd2);
+          var _jk=r.kind,_je=r.e;
+          if(_je&&(_jk==='free-task-delete'||_jk==='task-delete'||_jk==='subtask-clean')){
+            var rbS=document.createElement('button');rbS.textContent='↩ Refă';rbS.title='Refă / reactivează';
+            rbS.style.cssText='flex-shrink:0;background:#1E3A2F;border:1px solid #10B981;color:#34D399;border-radius:5px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+            var doRestoreS=function(ev){
+              ev.stopPropagation();ev.preventDefault();
+              if(_jk==='free-task-delete'){
+                var nft=restoreFreeDelete(_je);S.sq='';S.sr=null;_x3Tab(nft.id,nft.name);render();
+                fbToast('↩ Task refăcut în NEXT','#0F2A1A','#10B981',2500);
+                setTimeout(function(){var el=document.querySelector('[data-fid="'+nft.id+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='#FEF9C3';setTimeout(function(){el.style.background='';},1200);}},80);
+              } else if(_jk==='task-delete'){
+                var nt=restoreTaskDelete(_je);if(!nt)return;
+                S.sq='';S.sr=null;render();
+                fbToast('↩ Task refăcut în proiect','#0F2A1A','#10B981',2500);
+                setTimeout(function(){var inNext=getNR().some(function(rr){return !rr.isFree&&rr.taskId===nt.id;});if(inNext)_x21Task({taskId:nt.id});else navigateTo(_je.pid);},60);
+              } else {
+                S.sq='';S.sr=null;restoreClean(_je);
+              }
+            };
+            rbS.addEventListener('click',doRestoreS);
+            rbS.addEventListener('touchend',doRestoreS,{passive:false});
+            row.appendChild(rbS);
+          }
           row._srNav=function(){
             S.sq='';S.sr=null;S.view='journal';render();
             setTimeout(function(){var el=document.querySelector('[data-jts="'+r.ts+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.outline='2px solid #6366F1';setTimeout(function(){el.style.outline='';},1800);}},120);
@@ -5623,6 +5975,9 @@ function rBoard(){
         sb.addEventListener('touchend',function(e){e.preventDefault();doSub(e);},{passive:false});
         r.appendChild(sb);
       })(row.projectId, row.taskId, row.tname);
+      (function(pid,tid,tname){
+        r.appendChild(mkAttBtn(function(){var pr=S.items.find(function(x){return x.id===pid;});return pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});},tname));
+      })(row.projectId, row.taskId, row.tname);
       // P1: buton ⊞ pentru a adăuga task nou la același proiect
       (function(pid,tid){
         const p1b=document.createElement('button');
@@ -5698,6 +6053,9 @@ function rBoard(){
           sb.addEventListener('click',doSub);
           sb.addEventListener('touchend',function(e){e.preventDefault();doSub(e);},{passive:false});
           r.appendChild(sb);
+        })(row.id, row.tname);
+        (function(fid,fname){
+          r.appendChild(mkAttBtn(function(){return S.freeTasks.find(function(x){return x.id===fid;});},fname));
         })(row.id, row.tname);
         (function(fid,fname){
           // Buton promovare
@@ -5924,6 +6282,9 @@ function rBoard(){
         sb.addEventListener('touchend',function(e){e.preventDefault();doSub(e);},{passive:false});
         r.appendChild(sb);
       })(row.projectId, row.taskId, row.tname);
+      (function(pid,tid,tname){
+        r.appendChild(mkAttBtn(function(){var pr=S.items.find(function(x){return x.id===pid;});return pr&&pr.tasks&&pr.tasks.find(function(t){return t.id===tid;});},tname));
+      })(row.projectId, row.taskId, row.tname);
       (function(pid){
         const gb=document.createElement('button');
         gb.textContent='▶';
@@ -5987,6 +6348,9 @@ function rBoard(){
         sb.addEventListener('click',doSub);
         sb.addEventListener('touchend',function(e){e.preventDefault();doSub(e);},{passive:false});
         r.appendChild(sb);
+      })(row.id, row.tname);
+      (function(fid,fname){
+        r.appendChild(mkAttBtn(function(){return S.waitFreeTasks.find(function(x){return x.id===fid;});},fname));
       })(row.id, row.tname);
       const xb=mk('button','ndel');xb.textContent='✕';
       xb.addEventListener('touchend',e=>{e.stopPropagation();e.preventDefault();delWaitFree(row.id);},{passive:false});
@@ -7295,7 +7659,7 @@ function insertNew(order,ft){
   }
   return insertInGreenZone(order,entry);
 }
-function subHit(o,q){return (o.subtasks||[]).some(function(s){return ((s.text||'')+' '+(s.note||'')).toLowerCase().indexOf(q)>=0;});}
+function subHit(o,q){return (o.subtasks||[]).some(function(s){return ((s.text||'')+' '+(s.note||'')).toLowerCase().indexOf(q)>=0;})||(o.attachments||[]).some(function(a){return (a.name||'').toLowerCase().indexOf(q)>=0;});}
 function syncWaitCopies(){
   var rx=/^\*?[wW][ .]/,changed=false,now=Date.now(),srcs=[],live={};
   S.freeTasks.forEach(function(f){var id=f.id||'';if(id.indexOf('cal::')===0||id.indexOf('wl::')===0)return;if(rx.test(f.name||''))srcs.push({o:f,src:{free:true,id:f.id}});});
@@ -7786,6 +8150,22 @@ function confirmExtract(nw,ex,cb){
   var no=document.createElement('button');no.textContent='✕ Renunță';no.style.cssText='background:#374151;color:#9CA3AF;border:none;border-radius:8px;padding:10px 14px;font-size:12px;cursor:pointer';
   no.addEventListener('click',close);
   row.appendChild(ok);row.appendChild(no);c.appendChild(row);ov.appendChild(c);document.body.appendChild(ov);
+}
+function restoreFreeDelete(e){
+  var ft={id:gid(),name:e.taskName,note:e.note||'',ts:Date.now(),modifiedTs:Date.now()};
+  S.freeTasks.push(ft);
+  S.nextOrder=insertNew(S.nextOrder,ft);
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  detectAndSaveZones();
+  lw('pb-local-dirty-ts',Date.now());
+  traceLog('X26 restoreFreeDelete: '+(ft.name||'').slice(0,20));
+  return ft;
+}
+function restoreTaskDelete(e){
+  if(!e.pid||!e.taskSnap){fbToast('Date insuficiente pentru refacere','#1E2130','#F87171',3000);return null;}
+  var proj=S.items.find(function(x){return x.id===e.pid;});
+  if(!proj){fbToast('Proiectul nu mai există','#1E2130','#F87171',3000);return null;}
+  try{var t=JSON.parse(e.taskSnap);t.id=gid();t.ts=Date.now();t.modifiedTs=Date.now();proj.tasks=[...proj.tasks,t];save();traceLog('X26 restoreTaskDelete: '+(t.name||'').slice(0,20));return t;}catch(_){return null;}
 }
 function restoreClean(e){
   var o=null;
