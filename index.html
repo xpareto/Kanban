@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V171</title>
+<title>Project Board V172</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -294,7 +294,7 @@ function fbPayloadData(){
   };
 }
 function fbPayloadShare(){
-  return {shareTasks:S.shareTasks,mergeFlags:S.mergeFlags,ts:Date.now()};
+  return {shareTasks:S.shareTasks,mergeFlags:S.mergeFlags,shareDeleted:shareDelGet(),ts:Date.now()};
 }
 function fbPayloadJournal(){
   return {journal:S.journal,ts:Date.now()};
@@ -423,7 +423,7 @@ function rescueSubtasks(lItems,rItems,lFree,rFree){
   (rFree||[]).forEach(function(f){var a=lf[f.id];if(!a||!a.subtasks||!a.subtasks.length)return;var m=mergeSubs(f.subtasks,a.subtasks);if(m!==f.subtasks){f.subtasks=m;n++;}});
   if(n)traceLog('X6 rescueSubtasks: '+n+' taskuri cu subtaskuri locale pastrate la Pull');
 }
-async function fbPush(){
+async function fbPush(light){
   if(!fbDb||!fbUser) return {ok:false,err:'not authenticated'};
   // Refuză push cu date demo — protecție împotriva suprascrierii accidentale
   if(!fbIsRealData(S.items,S.freeTasks)){
@@ -435,17 +435,24 @@ async function fbPush(){
   if(_lastGood>0 && _newSize<_lastGood*(1-SIZE_GUARD_PCT)){
     traceLog('G1: guard push declanșat — lastGood='+_lastGood+' new='+_newSize);
     // G3: aduce datele din cloud DOAR acum (guard declanșat) ca să calculeze diferența reală, pe categorii
-    var _pushDiff=null;
+    var _pushDiff=null,_remSize=null;
     try{
       var _remSnap=await fbDb.collection('users').doc(fbUser.uid+'-data').get();
       var _remShareSnap=await fbDb.collection('users').doc(fbUser.uid+'-share').get();
       if(_remSnap.exists){
         var _remData=_remSnap.data();
         var _remShareData=_remShareSnap.exists?_remShareSnap.data():{};
+        _remSize=dataSize(_remData.items||[],_remData.freeTasks||[]);
         _pushDiff=diffTaskSets(S.items,S.freeTasks,_remData.items||[],_remData.freeTasks||[],
           S.waitFreeTasks,_remData.waitFreeTasks||[],S.shareTasks,_remShareData.shareTasks||[]);
       }
     }catch(_e){traceLog('G3: fetch remote pt diff eșuat: '+(_e.message||_e));}
+    if(_remSize!==null&&_newSize>=_remSize*(1-SIZE_GUARD_PCT)){
+      // V172: local ≈ cloud — reperul salvat era depășit (ex. marcaje de ștergere numărate în trecut); fără alarmă
+      traceLog('V172 guard: local='+_newSize+' cloud='+_remSize+' lastGood='+_lastGood+' -> reper vechi, resetat, fără alarmă');
+      lw(LAST_GOOD_SIZE_KEY,_newSize);
+      return await _doActualPush(light);
+    }
     var _proceed=await confirmSizeGuard(_lastGood,_newSize,'Push (trimite local → cloud, suprascrie ce e în Firebase)','Local',true,_pushDiff);
     if(_proceed==='pull'){
       traceLog('G1: utilizator a ales Pull în loc de Push');
@@ -468,23 +475,31 @@ async function fbPush(){
       return {ok:false,err:'Push anulat — scădere semnificativă de date detectată local',guardCancelled:true};
     }
   }
-  return await _doActualPush();
+  return await _doActualPush(light);
 }
 
 // G4 (V155): scrierea efectivă în Firestore, extrasă din fbPush ca să poată fi
 // apelată direct și după un Merge (fără să re-declanșeze guard-ul de mărime)
-async function _doActualPush(){
+async function _doActualPush(light){
   // S1: salvează zona fiecărui item înainte de push (green/red/yellow/null)
   detectAndSaveZones();
   try{
     var uid=fbUser.uid;
     var col=fbDb.collection('users');
-    await Promise.all([
+    var _wr=[
       col.doc(uid+'-data').set(Object.assign({uid:uid},fbPayloadData())),
-      col.doc(uid+'-share').set(Object.assign({uid:uid},fbPayloadShare())),
-      col.doc(uid+'-journal').set(Object.assign({uid:uid},fbPayloadJournal())),
-      col.doc(uid+'-sj').set(Object.assign({uid:uid},fbPayloadShareJournal()))
-    ]);
+      col.doc(uid+'-share').set(Object.assign({uid:uid},fbPayloadShare()))
+    ];
+    // push „ușor" (automat după modificări): datele + Share; jurnalele (mari) pleacă doar la push complet sau, dacă s-au schimbat, cel mult o dată la 10 minute
+    var _jSig=S.journal.length+'|'+S.shareJournal.length;
+    var _jTs=parseInt(localStorage.getItem('pb-jr-pushed-ts')||'0',10),_jOld=localStorage.getItem('pb-jr-pushed-sig');
+    var _needJ=!light||(_jSig!==_jOld&&Date.now()-_jTs>600000);
+    if(_needJ){
+      _wr.push(col.doc(uid+'-journal').set(Object.assign({uid:uid},fbPayloadJournal())));
+      _wr.push(col.doc(uid+'-sj').set(Object.assign({uid:uid},fbPayloadShareJournal())));
+    }
+    await Promise.all(_wr);
+    if(_needJ){try{localStorage.setItem('pb-jr-pushed-ts',String(Date.now()));localStorage.setItem('pb-jr-pushed-sig',_jSig);}catch(_){}}
     lw(LAST_GOOD_SIZE_KEY,dataSize(S.items,S.freeTasks)); // G1: starea acceptată acum devine noul reper „ultima stare bună"
     return {ok:true};
   }catch(e){console.warn('fbPush error:',e);return {ok:false,err:e.message||String(e)};}
@@ -508,6 +523,7 @@ function dataSize(items,freeTasks){
   var projCount=(items||[]).filter(function(x){return x.type==='project';}).length;
   var taskCount=(items||[]).reduce(function(a,p){return a+(p.tasks?p.tasks.length:0);},0);
   var freeCount=(freeTasks||[]).filter(function(f){
+    if(f._deleted) return false; // V172: marcajele de ștergere nu sunt conținut
     if((f.id||'').startsWith('cal::')) return false;
     if(/^\*[123]/.test(f.name||'')) return false;
     return true;
@@ -862,6 +878,7 @@ async function fbPull(mode){
           _noteResolutions=await resolveNoteConflictsSequentially(_noteConflicts);
         }
         // ── MERGE per-item: combină local + remote, câștigă modifiedTs mai mare ──
+        importRemoteTombstones(rData.freeTasks);
         S.items=mergeProjects(S.items, remoteItems);
         S.freeTasks=mergeItemArray(S.freeTasks, rData.freeTasks||[]);
         // nextOrder: union dedup cu zone-aware insert
@@ -898,6 +915,8 @@ async function fbPull(mode){
         // ele însele suprascrise de regula modifiedTs-câștigă din mergeItemArray/mergeProjectTasks
         if(_noteAutoAdopt.length)_noteResolutions=_noteResolutions.concat(_noteAutoAdopt);if(_noteResolutions.length) applyNoteResolutions(_noteResolutions);
         traceLog('fbPull merge done: nextOrder='+S.nextOrder.length+' freeTasks='+S.freeTasks.length);
+        lw(LAST_GOOD_SIZE_KEY,dataSize(S.items,S.freeTasks)); // V172: reperul se resetează după un merge reușit
+        setTimeout(dupToastAfterMerge,1800);
         S.labels=rData.labels||S.labels;
         lw('pb-last-push-ts',Date.now());
         lw('pb-local-dirty-ts',0);
@@ -942,7 +961,8 @@ async function fbPull(mode){
             if(!seen2.has(k)&&knownIds2.has(e.type==='free'?e.id:e.taskId)){seen2.add(k);merged2.push(e);}
           });
           S.nextOrder=tunsPlace(merged2,remNew2,rData.freeTasks||[])||merged2;
-          S.freeTasks=rData.freeTasks||S.freeTasks;
+          importRemoteTombstones(rData.freeTasks);
+          S.freeTasks=(rData.freeTasks||S.freeTasks).filter(function(x){return !x._deleted;});
           S.waitOrder=rData.waitOrder||S.waitOrder;
           S.waitFreeTasks=rData.waitFreeTasks||S.waitFreeTasks;
           S.labels=rData.labels||S.labels;
@@ -963,11 +983,13 @@ async function fbPull(mode){
     if(rShare){
       var rShareTs=rShare.ts||0;
       var localTs2=ls('pb-last-push-ts')||0;
+      shareDelImport(rShare.shareDeleted);
+      var _shDel=shareDelGet();var _shOk=function(x){return !_shDel[x.id];};
       if(mode==='merge'||mode==='overwrite'||rShareTs>localTs2){
         if(mode==='merge'){
-          S.shareTasks=mergeItemArray(S.shareTasks, rShare.shareTasks||[]);
+          S.shareTasks=mergeItemArray(S.shareTasks, rShare.shareTasks||[]).filter(_shOk);
         } else {
-          S.shareTasks=rShare.shareTasks||S.shareTasks;
+          S.shareTasks=(rShare.shareTasks||S.shareTasks).filter(_shOk);
           S.mergeFlags=rShare.mergeFlags||S.mergeFlags;
         }
         lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
@@ -990,8 +1012,9 @@ async function fbPull(mode){
 
 // ── Pull automat la deschidere — compară ts remote cu ts ultimului push local ──
 // ── Sync automat la startup: push dacă dirty + pull dacă remote mai nou ──
-async function fbPullIfNewer(){
+async function fbPullIfNewer(quiet){
   if(!fbDb||!fbUser) return;
+  var qt=function(){if(!quiet)fbToast.apply(null,arguments);};
   try{
     var uid=fbUser.uid;
     var snap=await fbDb.collection('users').doc(uid+'-data').get();
@@ -1014,21 +1037,21 @@ async function fbPullIfNewer(){
       // Ambele au date noi → merge automat
       var okM=await fbPull('merge');
       if(okM){
-        var resM=await fbPush();
+        var resM=await fbPush(quiet);
         if(resM.ok){
           lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);
           var d2=new Date(remoteTs);
           var ds2=d2.toLocaleDateString('ro-RO')+' '+d2.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-          fbToast('☁⟳ Merge automat la lansare (remote din '+ds2+')','#0F2A1A','#10B981',4000);
+          qt('☁⟳ Merge automat la lansare (remote din '+ds2+')','#0F2A1A','#10B981',4000);
           render();
         }
       }
     } else if(hasDirty){
       // Doar local dirty → push
-      var res=await fbPush();
+      var res=await fbPush(quiet);
       if(res.ok){
         lw('pb-last-push-ts',Date.now());lw('pb-local-dirty-ts',0);
-        fbToast('☁↑ Push automat la lansare','#0F2A1A','#10B981',3000);
+        qt('☁↑ Push automat la lansare','#0F2A1A','#10B981',3000);
       } else if(res.switchedToPull){
         fbToast(res.pullOk?'☁↓ Pull automat (protecție date) — verifică':'❌ Push blocat, Pull automat eșuat și el','#0F2A1A',res.pullOk?'#10B981':'#EF4444',5000);
         render();
@@ -1042,7 +1065,7 @@ async function fbPullIfNewer(){
         lw('pb-last-push-ts',remoteTs);lw('pb-local-dirty-ts',0);
         var d=new Date(remoteTs);
         var ds=d.toLocaleDateString('ro-RO')+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});
-        fbToast('☁↓ Pull automat la lansare: date din '+ds,'#0F2A1A','#10B981',3000);
+        qt('☁↓ Pull automat la lansare: date din '+ds,'#0F2A1A','#10B981',3000);
         render();
         setTimeout(function(){
           applyWeekdaysToAll();
@@ -1055,6 +1078,34 @@ async function fbPullIfNewer(){
     // dacă nimic nu e nou — tăcere, nu afișăm nimic
   }catch(e){console.warn('fbPullIfNewer error:',e);}
 }
+
+
+// ── V172 (X35): sincronizare automată la ~8 s după fiecare modificare + la revenirea în aplicație ──
+var _autoSyncTimer=null,_autoSyncBusy=false,_lastFgSync=0;
+function overlayOpen(){
+  if(document.querySelector('.note-ov'))return true;
+  var fo=document.getElementById('fab-overlay');if(fo&&fo.style.display==='flex')return true;
+  var kids=document.body.children;
+  for(var i=0;i<kids.length;i++){var c=kids[i],st=c.style;
+    if(st&&st.position==='fixed'&&parseInt(st.zIndex||'0',10)>=9999&&st.pointerEvents!=='none'&&c.id!=='ghost')return true;}
+  return false;
+}
+function fbAutoSyncSoon(){
+  if(!fbUser||!fbDb)return;
+  clearTimeout(_autoSyncTimer);
+  _autoSyncTimer=setTimeout(fbAutoSyncRun,8000);
+}
+async function fbAutoSyncRun(){
+  if(!fbUser||!fbDb||_autoSyncBusy||!navigator.onLine)return;
+  if(overlayOpen()){fbAutoSyncSoon();return;} // nu în timpul editării (un merge ar înlocui obiectele deschise)
+  var dirtyTs=ls('pb-local-dirty-ts')||0,lastPush=ls('pb-last-push-ts')||0;
+  if(!(dirtyTs>lastPush&&dirtyTs>0&&fbIsRealData(S.items,S.freeTasks)))return;
+  _autoSyncBusy=true;
+  try{traceLog('X35 autosync');await fbPullIfNewer(true);}catch(e){traceLog('X35 autosync eroare: '+(e.message||e));}
+  finally{_autoSyncBusy=false;}
+}
+var _lw0=lw;
+lw=function(k,v){_lw0(k,v);if(k==='pb-local-dirty-ts'&&v)fbAutoSyncSoon();};
 
 // ── Sync manual (buton ↑ Sync) ──
 // ── Helper toast ──
@@ -3768,12 +3819,13 @@ function doClrShare(){
   var col=document.createElement('div');col.style.cssText='display:flex;flex-direction:column;gap:8px';
   function close(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
   function doClear(){
-    S.shareTasks.forEach(function(it){markDeleted(it.id);});
+    markShareDeleted(S.shareTasks.map(function(it){return it.id;}));
     S.shareTasks=[];S.mergeFlags={};S.shareLimit=20;
     lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);lw('pb-local-dirty-ts',Date.now());
     traceLog('X30 Share golit: '+n+' itemi');
     fbToast('🗑 Share golit ('+n+' iteme)','#0F2A1A','#10B981',2500);
     render();
+    if(fbUser&&fbDb)fbPushShareNow().then(function(r){fbToast(r.ok?'☁ Share golit și în cloud':'☁ Share golit doar local ('+(r.err||'eroare')+')','#0F2A1A',r.ok?'#10B981':'#F59E0B',3500);});
   }
   function b(t,bg,fg,fn){var x=document.createElement('button');x.textContent=t;x.style.cssText='background:'+bg+';color:'+fg+';border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation';x.addEventListener('click',fn);col.appendChild(x);return x;}
   b('💾 Salvează TXT, apoi golește','#10B981','#04120A',function(){doExportShareItemsTxt();close();setTimeout(function(){if(confirm('Ai salvat fișierul TXT? Golesc acum Share ('+n+' iteme)?'))doClear();},600);});
@@ -3792,7 +3844,7 @@ function moveSharedToNext(){
   });
   fts.forEach(function(ft){je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});S.freeTasks.push(ft);});
   fts.slice().reverse().forEach(function(ft){S.nextOrder=insertNew(S.nextOrder,ft);}); // păstrează ordinea din Share (cel mai nou sus)
-  items.forEach(function(it){markDeleted(it.id);delete S.mergeFlags['s:'+it.id];});
+  items.forEach(function(it){markShareDeleted(it.id);delete S.mergeFlags['s:'+it.id];});
   var ids={};items.forEach(function(it){ids[it.id]=1;});
   S.shareTasks=S.shareTasks.filter(function(it){return !ids[it.id];});
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
@@ -4186,7 +4238,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
     var o=ownerNow();if(!o||!o.subtasks)return;
     var r=buildNeterminate(o);
     if(!r.count){fbToast('Nu există subtaskuri neterminate','#1E2130','#9CA3AF',2500);return;}
-    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(r.text).then(function(){markSentQ(o,r.marks);renderList();fbToast('📤 '+r.count+' subtaskuri copiate ('+r.marks.length+' marcate cu ?)','#0F2A1A','#10B981',3000);}).catch(function(){fbToast('⚠ Nu am putut scrie în clipboard','#1E2130','#F87171',3000);});}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(r.text).then(function(){markSentQ(o,r.marks);renderList();fbToast('📤 '+r.count+' subtaskuri copiate ('+r.marks.length+' marcate cu ?)'+(r.skipDone?' · '+r.skipDone+' bifate sărite':''),'#0F2A1A','#10B981',4000);}).catch(function(){fbToast('⚠ Nu am putut scrie în clipboard','#1E2130','#F87171',3000);});}
   });
   function syncDev(){var o=ownerNow();var on=!!(o&&o.dev);bDevS.textContent=on?'Prog ON':'Prog OFF';bDevS.style.background=on?'#065F46':'#2D3048';bCln.style.display=on?'':'none';bNet.style.display=on?'':'none';}
   var bGoN=hb('📝','#04120A',function(){var g=_og;doClose();openNoteFor(g);});
@@ -4520,7 +4572,7 @@ function mkAttBtn(getOwner,label){
   return b;
 }
 // X25: deschide editorul de notă pentru orice proprietar (folosit din ecranul de subtaskuri)
-function openNoteFor(og){
+function openNoteFor(og,draft){
   var o=og?og():null;if(!o)return;
   var title=(o.name||'').split('\n')[0];
   function persist(){lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());}
@@ -4534,11 +4586,11 @@ function openNoteFor(og){
       return;
     }
     render();
-  });
+  },draft);
 }
 
 var _noteOwner=null;
-function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
+function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
   var _own=_noteOwner;_noteOwner=null;var _clipTop=!!(_own&&_own()&&_own().noteTop);var _dev=!!(_own&&_own()&&_own().dev);
   var ov=document.createElement('div');
   ov.className='note-ov';
@@ -4552,7 +4604,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   // Dacă nota e goală → arată picker (chiar dacă taskText = taskTitle)
   var noteEmpty=!(currentNote&&currentNote.trim());
   var hasTaskText=!!(taskText&&taskText.trim());
-  if(noteEmpty&&hasTaskText){
+  if(noteEmpty&&hasTaskText&&draftText==null){
     // ── Picker inițial ──
     card.appendChild(titleEl);
     var pickLbl=document.createElement('div');
@@ -4648,10 +4700,18 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   }
   var ta=document.createElement('textarea');
   ta.className='note-ta';
-  ta.value=currentNote||'';
+  ta.value=(draftText!=null)?draftText:(currentNote||'');
   ta.placeholder='Scrie orice notă, link, detalii…';
   ta.rows=6;
   ta.addEventListener('input',function(){if(notePreviewWrap){buildNotePreview(ta.value);}});
+  // X37 (V172): adresa taskului + draftul se țin în memorie cât timp editorul e deschis; se șterg la ieșirea normală
+  var _sessId=null;try{var _oo=_own?_own():null;if(_oo)_sessId=_oo.id;}catch(_){}
+  function writeSess(){if(_sessId){try{localStorage.setItem('pb-edit-session',JSON.stringify({k:'note',id:_sessId,draft:ta.value,ts:Date.now()}));}catch(_){}}}
+  function clearSess(){if(_sessId){try{localStorage.removeItem('pb-edit-session');}catch(_){}}window._noteFlush=null;}
+  function closeNote(){clearSess();if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  var _sessT=null;
+  ta.addEventListener('input',function(){clearTimeout(_sessT);_sessT=setTimeout(writeSess,300);});
+  if(_sessId){window._noteFlush=writeSess;writeSess();}
 
   // En1 (V158): adaugă (append) conținutul clipboard-ului la nota existentă, nu o înlocuiește
   var bClipAppend=document.createElement('button');
@@ -4708,8 +4768,9 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
           ln[x.line]='X'+e.xn+' '+ln[x.line].replace(/^\s+/,'');});
         ta.value=ln.join('\n');o.subtasks=_clipTop?add.concat(o.subtasks):o.subtasks.concat(add);
         o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());
-        if(notePreviewWrap)buildNotePreview(ta.value);render();
-        fbToast('⇣ '+add.length+' subtaskuri noi, '+ex.length+' existente marcate (salvează nota pentru a păstra marcajele)','#0F2A1A','#10B981',3500);
+        if(notePreviewWrap)buildNotePreview(ta.value);
+        saveFn(ta.value,false);currentNote=ta.value; // V172 (Y2): marcajele X se salvează imediat în notă
+        fbToast('⇣ '+add.length+' subtaskuri noi, '+ex.length+' existente; marcajele X au fost salvate în notă','#0F2A1A','#10B981',3500);
       });
     });clipRow.appendChild(bBnB);
     bBnB.style.display=_dev?'':'none';
@@ -4720,7 +4781,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
     bGoSub.style.background='#10B981';bGoSub.style.color='#04120A';bGoSub.style.border='1px solid #059669';
     bGoSub.addEventListener('click',function(){
       if(ta.value!==(currentNote||''))saveFn(ta.value,false);
-      if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);
+      closeNote();
       openSubtasksFor(_own,taskTitle,function(){});
     });
     clipRow.insertBefore(bGoSub,clipRow.firstChild);}
@@ -4736,8 +4797,11 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
 
   function doSave(){saveFn(ta.value,false);currentNote=ta.value;fbToast('✓ Notă salvată','#0F2A1A','#10B981',1200);}
   function doCancel(){
-    if(ta.value!==(currentNote||'')&&!confirm('Ai modificări nesalvate în notă.\nÎnchizi fără să salvezi?'))return;
-    if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);
+    if(ta.value===(currentNote||'')){closeNote();return;}
+    askUnsaved(function(ch){
+      if(ch==='save'){saveFn(ta.value,false);currentNote=ta.value;closeNote();}
+      else if(ch==='discard')closeNote();
+    });
   }
 
   bSave.addEventListener('click',doSave);
@@ -4747,6 +4811,12 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn){
   ov.addEventListener('click',function(e){if(e.target===ov)doCancel();});
   ov.addEventListener('touchend',function(e){if(e.target===ov){e.preventDefault();doCancel();}},{passive:false});
 
+  var bShare=mkSm('📤','#93C5FD');bShare.title='Partajează nota (alegi aplicația)';
+  bShare.addEventListener('click',function(){
+    var txt=ta.value;if(!txt.trim()){fbToast('Nota e goală','#1E2130','#9CA3AF',2000);return;}
+    shareOrCopyText(taskTitle,txt);
+  });
+  clipRow.appendChild(bShare);
   clipRow.appendChild(bSave);clipRow.appendChild(bCancel);
   Array.prototype.forEach.call(clipRow.children,function(b){b.style.padding='6px 6px';b.style.fontSize='10px';b.style.flexShrink='0';b.style.whiteSpace='nowrap';b.style.alignSelf='center';});
   clipRow.style.cssText='display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;align-items:center;flex-shrink:0';
@@ -5214,6 +5284,10 @@ function rBoard(){
     var sp2rowF=div('');sp2rowF.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center';
     var clrShareBtn=mk('button','btn');clrShareBtn.style.cssText='background:#7F1D1D;color:#FCA5A5;border:1px solid #EF4444;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
     clrShareBtn.addEventListener('click',function(){S.showSettings=false;doClrShare();});
+    var z2Btn=mk('button','btn');z2Btn.style.cssText='background:#713F12;color:#FDE68A;border:1px solid #EAB308;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    z2Btn.addEventListener('click',function(){S.showSettings=false;render();openZone2Dialog();});
+    var dupBtn=mk('button','btn');dupBtn.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation';
+    dupBtn.addEventListener('click',function(){S.showSettings=false;render();openDuplicatesDialog();});
     var _fileRows=[
       [trData,'Date','Export/import JSON (copie completă, reimportabilă) + sincronizare Firebase + backup-uri locale'],
       [trJournal,'Jurnal','Jurnalul acțiunilor; export JSON (reimportabil) sau TXT (text fără diacritice)'],
@@ -5222,7 +5296,9 @@ function rBoard(){
       [trProj,'+ Proiect','Adaugă un proiect nou (cu verificare de dublură)'],
       [resetBtn,'🔄 Reset calendar','Curăță cache-ul calendarului Google (depanare); apoi apasă 📅'],
       [traceBtn,'📋 Copiază TRACE','Copiază în clipboard jurnalul tehnic de diagnostic (text)'],
-      [clrShareBtn,'🗑 Golește Share','Șterge toate itemele din secțiunea SHARE ('+S.shareTasks.length+'), cu export TXT opțional']
+      [clrShareBtn,'🗑 Golește Share','Șterge toate itemele din secțiunea SHARE ('+S.shareTasks.length+'), cu export TXT opțional'],
+      [z2Btn,'🟡 Zona 2','Export TXT și/sau golire a zonei Z2-utile (taskurile libere se șterg, cele de proiect ies din zonă)'],
+      [dupBtn,'🔍 Caută dubluri','Găsește taskuri cu același nume și aceeași notă (hash); tu alegi ce se șterge']
     ];
     sp2rowF.style.flexDirection='column';sp2rowF.style.alignItems='stretch';sp2rowF.style.gap='7px';
     _fileRows.forEach(function(fr){
@@ -5615,12 +5691,22 @@ function rBoard(){
       sbSort.addEventListener('touchend',function(e){e.preventDefault();sortSelectedByDate();},{passive:false});
       selRow2.appendChild(sbSort);
     }
-    ap(selRow2,sbOpml,sbClear);
+    var sbOpmlSh=mk('button','sel-btn');sbOpmlSh.textContent='📤 OPML';
+    sbOpmlSh.style.background='#075985';sbOpmlSh.style.color='#fff';
+    sbOpmlSh.title='Partajează textul OPML (alegi aplicația)';
+    sbOpmlSh.addEventListener('click',function(){exportSelectedOPML(true);});
+    sbOpmlSh.addEventListener('touchend',function(e){e.preventDefault();exportSelectedOPML(true);},{passive:false});
+    var sbTxt=mk('button','sel-btn');sbTxt.textContent='📝 Text';
+    sbTxt.style.background='#0F766E';sbTxt.style.color='#fff';
+    sbTxt.title='Text formatat: nume, linie dublă, notă, bullet pe subtask';
+    sbTxt.addEventListener('click',function(){showSelectedText();});
+    sbTxt.addEventListener('touchend',function(e){e.preventDefault();showSelectedText();},{passive:false});
+    ap(selRow2,sbOpml,sbOpmlSh,sbTxt,sbClear);
     var selRow3=div('');selRow3.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';
     var bU=mk('button','sel-btn');bU.textContent='U';bU.style.background='#DC2626';bU.addEventListener('click',function(){applyPrefixSelected('u');});
     var bW=mk('button','sel-btn');bW.textContent='W';bW.style.background='#A16207';bW.addEventListener('click',function(){applyPrefixSelected('w');});
     var bZ2=mk('button','sel-btn');bZ2.textContent='→ Zona 2';bZ2.style.background='#CA8A04';bZ2.addEventListener('click',function(){moveSelectedToZone2();});
-    var bSt=mk('button','sel-btn');bSt.textContent='⊟ → Subtask';bSt.title='Primul selectat = ținta; restul devin subtaskurile lui';bSt.style.background='#7C3AED';bSt.addEventListener('click',moveSelectedAsSubtasks);
+    var bSt=mk('button','sel-btn');bSt.textContent='⊟ → Subtask';bSt.title='Primul selectat = ținta. Alegi: subtaskuri, subtask nou cu rânduri în notă, sau notă de subtask existent';bSt.style.background='#7C3AED';bSt.addEventListener('click',openSubtaskMoveMenu);
     ap(selRow3,bU,bW,bZ2,bSt);
     sb.appendChild(selRow1);sb.appendChild(selRow2);sb.appendChild(selRow3);
     root.appendChild(sb);
@@ -6586,6 +6672,7 @@ function rBoard(){
           je({kind:'free-task-create',taskName:ft.name,ts:ft.ts});
           S.freeTasks=[...S.freeTasks,ft];
           S.nextOrder=insertNew(S.nextOrder,ft);
+          markShareDeleted(sid);
           S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
           delete S.mergeFlags['s:'+sid];
           lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
@@ -6606,6 +6693,7 @@ function rBoard(){
         // share-delete → NUMAI în shareJournal, NU în jurnalul principal
         S.shareJournal.push({ts:Date.now(),kind:'share-delete',text:sname});
         lw(SHJK,S.shareJournal);
+        markShareDeleted(sid);
         S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
         delete S.mergeFlags['s:'+sid];
         lw(SHK,S.shareTasks);lw(MK,S.mergeFlags);
@@ -7545,7 +7633,7 @@ function sortSelectedByDate(){
 }
 
 // Sel1: Export selecție în format OPML pentru WorkFlowy
-function exportSelectedOPML(){
+function exportSelectedOPML(share){
   var selKeys=Object.keys(S.selectedNext);
   if(!selKeys.length){fbToast('Nicio selecție','#1E2130','#6B7280',2000);return;}
   // Sortează după ordinea de selecție
@@ -7599,6 +7687,8 @@ function exportSelectedOPML(){
   });
   lines.push('  </body>','</opml>');
   var opmlText=lines.join('\n');
+  // X42 (V172): partajare prin fereastra Android (alegi aplicația); fără suport → copiere
+  if(share&&navigator.share){navigator.share({title:'OPML — '+sortedKeys.length+' items',text:opmlText}).catch(function(){});return;}
   // Copiază în clipboard
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(opmlText).then(function(){
@@ -7930,7 +8020,7 @@ function normFullYearDate(text){
 function subColor(t){var c=(t||'').trim().charAt(0);return c==='!'?'#F87171':c==='?'?'#FBBF24':c==='*'?'#9CA3AF':'#E2E8F0';}
 // X14 (V168): „Neterminate" în două secțiuni — A. Îmi par nerezolvate (!) și B. Noi
 function buildNeterminate(o){
-  var A=[],B=[],marks=[],skD=-1,n=0;
+  var A=[],B=[],marks=[],skD=-1,n=0,skipDone=0;
   function ind(d){return '  '.repeat(d);}
   function item(x,d){
     var out=[ind(d)+(x.xn?'X'+x.xn+' ':'')+x.text];
@@ -7942,7 +8032,8 @@ function buildNeterminate(o){
     if(skD>=0){if(d>skD)return;skD=-1;}
     var c=(x.text||'').trim().charAt(0);
     if(c==='*'){skD=d;return;}
-    if(c==='?'||x.done)return;
+    if(x.done){skipDone++;return;}
+    if(c==='?')return;
     n++;
     if(c==='!')A=A.concat(item(x,d));
     else{B=B.concat(item(x,d));marks.push(x);}
@@ -7950,7 +8041,7 @@ function buildNeterminate(o){
   var lines=['Neterminate — '+(o.name||'').split('\n')[0]+' ('+VERSION+'):'];
   if(A.length){lines.push('A. Îmi par nerezolvate');A.forEach(function(l){lines.push(l);});}
   if(B.length){lines.push('B. Noi');B.forEach(function(l){lines.push(l);});}
-  return {text:lines.join('\n'),marks:marks,count:n};
+  return {text:lines.join('\n'),marks:marks,count:n,skipDone:skipDone};
 }
 // după copiere: doar rândurile Noi (B) primesc „? " (cele cu ! se schimbă doar manual; cele promovate N… nu se ating)
 function markSentQ(o,marks){
@@ -8237,6 +8328,318 @@ function confirmExtract(nw,ex,cb){
   no.addEventListener('click',close);
   row.appendChild(ok);row.appendChild(no);c.appendChild(row);ov.appendChild(c);document.body.appendChild(ov);
 }
+// ══════════════════════════════════════════════════════════════
+// ── V172: tombstones Share, dubluri (hash), zona 2, text/OPML, mutare în notă, sesiune de editare ──
+// ══════════════════════════════════════════════════════════════
+var SHD_KEY='pb-share-deleted';
+function shareDelGet(){try{return JSON.parse(localStorage.getItem(SHD_KEY)||'{}');}catch(_){return {};}}
+function markShareDeleted(ids){
+  var m=shareDelGet(),n=Date.now();
+  (Array.isArray(ids)?ids:[ids]).forEach(function(i){if(i)m[i]=n;});
+  try{localStorage.setItem(SHD_KEY,JSON.stringify(m));}catch(_){}
+}
+function shareDelImport(remote){
+  if(!remote)return;
+  var m=shareDelGet(),ch=false;
+  Object.keys(remote).forEach(function(k){if(!m[k]){m[k]=remote[k];ch=true;}});
+  if(ch){try{localStorage.setItem(SHD_KEY,JSON.stringify(m));}catch(_){}}
+}
+function importRemoteTombstones(arr){
+  var del;try{del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');}catch(_){del={};}
+  var ch=false;
+  (arr||[]).forEach(function(x){if(x&&x._deleted&&x.id&&!del[x.id]){del[x.id]=x.modifiedTs||Date.now();ch=true;}});
+  if(ch){try{localStorage.setItem('pb-deleted-ids',JSON.stringify(del));}catch(_){}}
+}
+function pruneTombstones(){
+  var lim=Date.now()-90*86400000;
+  ['pb-deleted-ids',SHD_KEY].forEach(function(k){
+    try{
+      var m=JSON.parse(localStorage.getItem(k)||'{}'),n=0;
+      Object.keys(m).forEach(function(i){if(m[i]<lim){delete m[i];n++;}});
+      if(n){localStorage.setItem(k,JSON.stringify(m));traceLog('V172 tombstones >90 zile eliminate din '+k+': '+n);}
+    }catch(_){}
+  });
+}
+// scrie imediat doar documentul Share în cloud (după „Golește Share")
+async function fbPushShareNow(){
+  if(!fbDb||!fbUser)return {ok:false,err:'neconectat'};
+  try{await fbDb.collection('users').doc(fbUser.uid+'-share').set(Object.assign({uid:fbUser.uid},fbPayloadShare()));return {ok:true};}
+  catch(e){return {ok:false,err:e.message||String(e)};}
+}
+// ── modale mici reutilizabile ──
+function mkModal(title,color,z){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:'+(z||10003)+';display:flex;align-items:center;justify-content:center;padding:16px';
+  var card=document.createElement('div');
+  card.style.cssText='background:#1A1D2E;border:2px solid '+(color||'#10B981')+';border-radius:14px;padding:16px;max-width:420px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+  var h=document.createElement('div');h.textContent=title;h.style.cssText='font-weight:800;font-size:14px;margin-bottom:8px;color:'+(color||'#34D399');
+  card.appendChild(h);ov.appendChild(card);document.body.appendChild(ov);
+  function close(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
+  return {ov:ov,card:card,close:close};
+}
+function mmBtn(parent,text,bg,fg,fn){
+  var b=document.createElement('button');b.textContent=text;
+  b.style.cssText='display:block;width:100%;background:'+bg+';color:'+fg+';border:none;border-radius:8px;padding:11px;font-weight:800;font-size:13px;cursor:pointer;touch-action:manipulation;margin-top:8px;text-align:left';
+  b.addEventListener('click',fn);parent.appendChild(b);return b;
+}
+function mmText(parent,text,color){var d=document.createElement('div');d.textContent=text;d.style.cssText='font-size:12px;line-height:1.5;color:'+(color||'#CBD5E1')+';margin-bottom:4px;word-break:break-word';parent.appendChild(d);return d;}
+function promptSimple(title,sub,init,cb){
+  var m=mkModal(title,'#10B981',10003);
+  if(sub)mmText(m.card,sub,'#9CA3AF');
+  var inp=document.createElement('input');inp.value=init||'';
+  inp.style.cssText='width:100%;border:1px solid #10B981;border-radius:7px;padding:9px 10px;font-size:13px;background:#0F1117;color:#F1F5F9;outline:none;box-sizing:border-box;margin:6px 0 4px';
+  m.card.appendChild(inp);
+  function ok(){var v=inp.value.trim();if(!v){fbToast('⚠ Scrie un titlu','#1E2130','#F87171',2000);return;}m.close();cb(v);}
+  mmBtn(m.card,'✓ OK','#10B981','#04120A',ok);
+  mmBtn(m.card,'✕ Renunț','#374151','#E2E8F0',m.close);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();ok();}if(e.key==='Escape')m.close();});
+  setTimeout(function(){inp.focus();inp.setSelectionRange(0,inp.value.length);},80);
+}
+// X38: ✕ din notă cu modificări nesalvate — trei opțiuni
+function askUnsaved(cb){
+  var m=mkModal('⚠ Modificări nesalvate în notă','#F59E0B',10004);
+  mmText(m.card,'Ce vrei să faci cu textul scris?');
+  mmBtn(m.card,'💾 Salvează și ieși','#10B981','#04120A',function(){m.close();cb('save');});
+  mmBtn(m.card,'🚪 Ieși fără salvare','#7F1D1D','#FCA5A5',function(){m.close();cb('discard');});
+  mmBtn(m.card,'✎ Rămân în notă','#374151','#E2E8F0',function(){m.close();cb('stay');});
+}
+// ── X43: text formatat al taskurilor (nume, linie dublă, notă, bullet pe subtask) ──
+function fmtTaskText(o,name){
+  var nm=(name!=null?name:(o.name||'')).split('\n')[0].replace(/^\*/,'').trim()||'(fără nume)';
+  var L=[nm,'═'.repeat(Math.min(Math.max(nm.length,6),48))];
+  var note=(o.note||'').replace(/\s+$/,'');
+  var subs=o.subtasks||[];
+  if(note)L.push(note);
+  if(note&&subs.length)L.push('');
+  subs.forEach(function(st){
+    var ind='  '.repeat(st.depth||0),lines=(st.text||'').split('\n');
+    L.push(ind+'• '+lines[0]);
+    for(var i=1;i<lines.length;i++)L.push(ind+'  '+lines[i]);
+  });
+  return L.join('\n');
+}
+function ownerFromSelKey(k){
+  if(k.indexOf('f::')===0){var f=S.freeTasks.find(function(x){return x.id===k.slice(3);});return f?{o:f,kind:'free'}:null;}
+  if(k.indexOf('p::')===0){var pr=k.split('::'),P=S.items.find(function(x){return x.id===pr[1];}),t=P&&P.tasks.find(function(x){return x.id===pr[2];});return t?{o:t,kind:'proj',P:P}:null;}
+  if(k.indexOf('v::')===0){var fs=findSub(k.slice(3));return fs?{o:fs.o,kind:'sub',st:fs.st}:null;}
+  return null;
+}
+function shareOrCopyText(title,text){
+  if(navigator.share){navigator.share({title:title,text:text}).catch(function(){});return;}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){fbToast('📋 Copiat (partajarea nu e disponibilă)','#0F2A1A','#10B981',2500);});}
+}
+function showTextDialog(title,text){
+  var m=mkModal(title,'#0369A1',10003);
+  var ta=document.createElement('textarea');ta.value=text;ta.rows=14;
+  ta.style.cssText='width:100%;background:#0F1117;color:#E2E8F0;border:1px solid #374151;border-radius:8px;padding:9px;font-size:12px;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;white-space:pre';
+  m.card.appendChild(ta);
+  mmBtn(m.card,'📋 Copiază textul','#0369A1','#fff',function(){
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(ta.value).then(function(){fbToast('📋 Text copiat','#0F2A1A','#10B981',2000);}).catch(function(){ta.select();});
+    else{ta.select();try{document.execCommand('copy');}catch(_){}}
+  });
+  mmBtn(m.card,'📤 Partajează (alegi aplicația)','#2D3048','#93C5FD',function(){shareOrCopyText(title,ta.value);});
+  mmBtn(m.card,'✕ Închide','#374151','#E2E8F0',m.close);
+}
+function showSelectedText(){
+  var keys=Object.keys(S.selectedNext).sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  if(!keys.length){fbToast('Nicio selecție','#1E2130','#6B7280',2000);return;}
+  var parts=[];
+  keys.forEach(function(k){
+    var X=ownerFromSelKey(k);if(!X)return;
+    if(X.kind==='sub')parts.push(fmtTaskText({name:stripPromoPrefix(X.st.text||''),note:X.st.note||'',subtasks:[]}));
+    else parts.push(fmtTaskText(X.o,(X.kind==='proj'?X.P.name+' › ':'')+(X.o.name||'')));
+  });
+  showTextDialog('📝 Text — '+parts.length+' taskuri selectate',parts.join('\n\n'));
+}
+// ── X33: zona 2 (Z2-utile) — export + golire ──
+function z2Rows(){return getNR().filter(function(r){return r.tname&&r.tname.trim()&&getNextRowCategory(r)==='zona2';});}
+function z2Text(){
+  return z2Rows().map(function(r){var o=promoOwner(r);return fmtTaskText(o||{name:r.tname},(r.isFree?'':r.pname+' › ')+r.tname);}).join('\n\n');
+}
+function exportZone2Txt(){
+  var t=z2Text();if(!t){fbToast('Zona 2 e goală','#1E2130','#9CA3AF',2000);return false;}
+  dlBlob(t,'zona2-'+todayStr()+'.txt','text/plain');return true;
+}
+function clearZone2(){
+  var rows=z2Rows(),nf=0,np=0,now=Date.now();
+  rows.forEach(function(r){
+    if(r.isFree){
+      var f=S.freeTasks.find(function(x){return x.id===r.id;});if(!f)return;
+      je({kind:'free-task-delete',taskName:f.name,note:f.note||'',ts:now});
+      markDeleted(f.id);
+      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==f.id;});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&e.id===f.id);});
+      nf++;
+    } else {
+      var idx=S.nextOrder.findIndex(function(e){return e.type==='proj'&&e.projectId===r.projectId&&e.taskId===r.taskId;});
+      if(idx>=0){var ent=S.nextOrder.splice(idx,1)[0];S.nextOrder.push(ent);np++;} // iese din zonă, în „Restul"
+    }
+  });
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);detectAndSaveZones();lw('pb-local-dirty-ts',Date.now());
+  traceLog('X33 zona 2 golită: '+nf+' libere șterse, '+np+' de proiect scoase din zonă');
+  fbToast('🗑 Zona 2: '+nf+' taskuri libere șterse, '+np+' de proiect mutate în Restul','#0F2A1A','#10B981',4000);
+  render();
+}
+function openZone2Dialog(){
+  var rows=z2Rows(),nf=rows.filter(function(r){return r.isFree;}).length,np=rows.length-nf;
+  if(!rows.length){fbToast('Zona 2 (Z2-utile) e goală','#1E2130','#9CA3AF',2500);return;}
+  var m=mkModal('Zona 2 (Z2-utile) — '+rows.length+' rânduri','#EAB308',10003);
+  mmText(m.card,'Export TXT: nume + notă + subtaskuri, text simplu UTF-8 (zona2-DATA.txt).');
+  mmText(m.card,'Golire: cele '+nf+' taskuri libere se șterg (↩ Refă în Jurnal); cele '+np+' taskuri de proiect NU se șterg — ies din zonă, în „Restul".','#FCD34D');
+  mmBtn(m.card,'💾 Doar export TXT','#0369A1','#fff',function(){m.close();exportZone2Txt();});
+  mmBtn(m.card,'💾 Export TXT, apoi golește','#10B981','#04120A',function(){m.close();if(exportZone2Txt())setTimeout(function(){if(confirm('Ai salvat fișierul? Golesc acum zona 2?'))clearZone2();},600);});
+  mmBtn(m.card,'🗑 Golește fără export','#7F1D1D','#FCA5A5',function(){m.close();clearZone2();});
+  mmBtn(m.card,'✕ Renunț','#374151','#E2E8F0',m.close);
+}
+// ── X34: dubluri după hash (nume + notă normalizate) ──
+function dupHash(name,note){return nhash(normSub(name)+'\u0001'+normSub(note));}
+function findDuplicateGroups(){
+  var m={};
+  function add(o,where,pname,pid){
+    var nm=(o.name||'').replace(/^\*/,'').trim();
+    var id=o.id||'';
+    if(o._deleted||nm.length<3||/^\*[123]/.test(o.name||'')||id.indexOf('cal::')===0||id.indexOf('wl::')===0)return;
+    var h=dupHash(nm,o.note||'');
+    (m[h]=m[h]||[]).push({o:o,where:where,pname:pname||'',pid:pid||null,mts:o.modifiedTs||o.ts||0});
+  }
+  S.freeTasks.forEach(function(f){add(f,'NEXT');});
+  S.waitFreeTasks.forEach(function(f){add(f,'WAIT');});
+  S.items.forEach(function(p){if(p.type!=='project')return;(p.tasks||[]).forEach(function(t){if(t.status==='done')return;add(t,t.status==='wait'?'WAIT':'NEXT',p.name,p.id);});});
+  return Object.keys(m).map(function(k){return m[k];}).filter(function(g){return g.length>1;});
+}
+function dupDelete(x){
+  var now=Date.now(),o=x.o;
+  if(!x.pid){
+    je({kind:'free-task-delete',taskName:o.name,note:o.note||'',section:x.where==='WAIT'?'wait':undefined,ts:now});
+    markDeleted(o.id);
+    if(x.where==='WAIT'){S.waitFreeTasks=S.waitFreeTasks.filter(function(f){return f.id!==o.id;});S.waitOrder=S.waitOrder.filter(function(e){return !(e.type==='free'&&e.id===o.id);});}
+    else{S.freeTasks=S.freeTasks.filter(function(f){return f.id!==o.id;});S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&e.id===o.id);});}
+  } else {
+    var P=S.items.find(function(p){return p.id===x.pid;});if(!P)return;
+    je({kind:'task-delete',taskName:o.name,projectName:P.name,note:o.note||'',pid:P.id,tid:o.id,taskSnap:JSON.stringify(o),ts:now});
+    P.tasks=P.tasks.filter(function(t){return t.id!==o.id;});
+    S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='proj'&&e.taskId===o.id);});
+    S.waitOrder=S.waitOrder.filter(function(e){return !(e.type==='proj'&&e.taskId===o.id);});
+  }
+}
+function openDuplicatesDialog(){
+  var groups=findDuplicateGroups();
+  if(!groups.length){fbToast('✓ Nu am găsit dubluri (nume + notă identice)','#0F2A1A','#10B981',3000);return;}
+  var m=mkModal('🔍 '+groups.length+' grupuri de posibile dubluri','#F59E0B',10003);
+  mmText(m.card,'Taskuri cu același nume și aceeași notă. Nu șterg nimic singur: alegi pentru fiecare grup.','#9CA3AF');
+  var left=groups.length;
+  groups.forEach(function(g){
+    g.sort(function(a,b){return b.mts-a.mts;});
+    var box=document.createElement('div');box.style.cssText='border:1px solid #374151;border-radius:8px;padding:8px;margin-top:8px';
+    var t=document.createElement('div');t.textContent=(g[0].o.name||'').split('\n')[0].slice(0,80);t.style.cssText='font-weight:700;font-size:12px;color:#F1F5F9;margin-bottom:4px;word-break:break-word';box.appendChild(t);
+    g.forEach(function(x,i){mmText(box,(i===0?'✓ păstrat · ':'✕ șters · ')+x.where+(x.pname?' › '+x.pname:'')+' · '+fmt(x.mts),i===0?'#34D399':'#FCA5A5');});
+    var row=document.createElement('div');row.style.cssText='display:flex;gap:6px';
+    function mini(txt,bg,fg,fn){var b=document.createElement('button');b.textContent=txt;b.style.cssText='flex:1;background:'+bg+';color:'+fg+';border:none;border-radius:7px;padding:8px;font-weight:700;font-size:11px;cursor:pointer;touch-action:manipulation';b.addEventListener('click',fn);row.appendChild(b);}
+    mini('Păstrează cel mai nou, șterge restul','#7F1D1D','#FCA5A5',function(){
+      g.slice(1).forEach(dupDelete);
+      lw(FK,S.freeTasks);lw(SK,S.items);lw(WFK,S.waitFreeTasks);lw(NK,S.nextOrder);lw(WK,S.waitOrder);
+      detectAndSaveZones();lw('pb-local-dirty-ts',Date.now());
+      box.remove();if(--left<=0)m.close();render();
+    });
+    mini('Păstrează toate','#374151','#E2E8F0',function(){box.remove();if(--left<=0)m.close();});
+    box.appendChild(row);m.card.appendChild(box);
+  });
+  mmBtn(m.card,'✕ Închide','#374151','#E2E8F0',m.close);
+}
+function dupToastAfterMerge(){
+  try{
+    var n=findDuplicateGroups().length,seen=parseInt(localStorage.getItem('pb-dup-seen')||'0',10);
+    localStorage.setItem('pb-dup-seen',String(n));
+    if(n>seen)fbToast('🔍 '+n+' grupuri de posibile dubluri — Settings → Caută dubluri','#1E2130','#F59E0B',5000);
+  }catch(_){}
+}
+// ── X40: mutare taskuri selectate în subtaskuri / în nota unui subtask (3 variante) ──
+function openSubtaskMoveMenu(){
+  var keys=Object.keys(S.selectedNext).sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  if(keys.length<2){fbToast('Selectează cel puțin 2 (primul = ținta)','#1E2130','#F87171',3000);return;}
+  var T=ownerFromSelKey(keys[0]);
+  if(!T||T.kind==='sub'||(T.o.id||'').indexOf('cal::')===0){fbToast('Primul selectat trebuie să fie un task','#1E2130','#F87171',3500);return;}
+  var tname=(T.o.name||'').split('\n')[0].replace(/^\*/,'').slice(0,50);
+  var openSubs=(T.o.subtasks||[]).filter(function(s){return !s.done;});
+  var m=mkModal('⊟ → Subtask · țintă: „'+tname+'"','#7C3AED',10003);
+  mmText(m.card,(keys.length-1)+' taskuri selectate se mută. Alege cum:','#9CA3AF');
+  mmBtn(m.card,'1 · Ca subtaskuri în „'+tname+'" (ca până acum)','#7C3AED','#fff',function(){m.close();moveSelectedAsSubtasks();});
+  mmBtn(m.card,'2 · Subtask nou, cu cele selectate ca rânduri în notă','#2D3048','#C4B5FD',function(){
+    m.close();
+    promptSimple('⊞ Titlul subtaskului nou','Cele selectate vor fi rânduri în nota lui. Doar taskuri fără subtaskuri.','',function(title){moveSelectedIntoNote(keys,T,null,title);});
+  });
+  var b3=mmBtn(m.card,'3 · Într-un subtask existent'+(openSubs.length?' ('+openSubs.length+')':' — ținta nu are subtaskuri'),openSubs.length?'#2D3048':'#1F2937',openSubs.length?'#C4B5FD':'#6B7280',function(){
+    if(!openSubs.length)return;
+    m.close();
+    var pm=mkModal('Alege subtaskul destinație','#7C3AED',10003);
+    mmText(pm.card,'Cele selectate se adaugă în nota lui ('+(T.o.noteTop?'la început — Top ON':'la sfârșit — Top OFF')+').','#9CA3AF');
+    (T.o.subtasks||[]).forEach(function(st){
+      if(st.done)return;
+      var label='  '.repeat(st.depth||0)+(st.xn?'X'+st.xn+' ':'')+(st.text||'').split('\n')[0].slice(0,60);
+      var bb=mmBtn(pm.card,label,'#2D3048','#E2E8F0',function(){pm.close();moveSelectedIntoNote(keys,T,st,null);});
+      bb.style.whiteSpace='pre';bb.style.fontWeight='600';bb.style.fontSize='12px';
+    });
+    mmBtn(pm.card,'✕ Renunț','#374151','#E2E8F0',pm.close);
+  });
+  mmBtn(m.card,'✕ Renunț','#374151','#E2E8F0',m.close);
+}
+function moveSelectedIntoNote(keys,T,targetSub,newTitle){
+  var srcs=[];
+  for(var i=1;i<keys.length;i++){
+    var X=ownerFromSelKey(keys[i]);if(!X)continue;
+    var nm=(X.o.name||'').split('\n')[0];
+    if(X.kind==='sub'){fbToast('⚠ Selecția conține subtaskuri promovate — nu pot fi mutate în notă','#1E2130','#F87171',4000);return;}
+    if((X.o.id||'').indexOf('cal::')===0||/^\*[123]/.test(X.o.name||'')){fbToast('⚠ „'+nm.slice(0,30)+'" nu poate fi mutat (marcator/calendar)','#1E2130','#F87171',4000);return;}
+    if(X.o.subtasks&&X.o.subtasks.length){fbToast('⚠ „'+nm.slice(0,30)+'" are subtaskuri — variantele 2 și 3 acceptă doar taskuri simple','#1E2130','#F87171',4500);return;}
+    srcs.push(X);
+  }
+  if(!srcs.length)return;
+  var lines=[];
+  srcs.forEach(function(X){
+    lines.push((X.o.name||'').split('\n')[0].replace(/^\*/,'').trim());
+    var nt=(X.o.note||'').replace(/\s+$/,'');
+    if(nt)nt.split('\n').forEach(function(l){lines.push('  '+l);});
+  });
+  var block=lines.join('\n'),top=!!T.o.noteTop,now=Date.now();
+  if(!T.o.subtasks)T.o.subtasks=[];
+  if(targetSub){
+    var cur=(targetSub.note||'').replace(/\s+$/,'');
+    targetSub.note=!cur?block:(top?block+'\n'+cur:cur+'\n'+block);
+  } else {
+    var ns={id:gid(),text:newTitle,done:false,depth:0,note:block};
+    if(top)T.o.subtasks.unshift(ns);else T.o.subtasks.push(ns);
+  }
+  srcs.forEach(function(X){
+    if(X.kind==='free'){
+      je({kind:'free-task-delete',taskName:X.o.name,note:X.o.note||'',ts:now});markDeleted(X.o.id);
+      S.freeTasks=S.freeTasks.filter(function(f){return f.id!==X.o.id;});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&e.id===X.o.id);});
+    } else {
+      je({kind:'task-delete',taskName:X.o.name,projectName:X.P.name,note:X.o.note||'',pid:X.P.id,tid:X.o.id,taskSnap:JSON.stringify(X.o),ts:now});
+      X.P.tasks=X.P.tasks.filter(function(t){return t.id!==X.o.id;});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='proj'&&e.taskId===X.o.id);});
+    }
+  });
+  T.o.modifiedTs=now;
+  lw(FK,S.freeTasks);lw(SK,S.items);lw(NK,S.nextOrder);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',now);
+  detectAndSaveZones();
+  traceLog('X40 '+srcs.length+' taskuri mutate în nota unui subtask ('+(targetSub?'existent':'nou')+')');
+  S.selectedNext={};S.selectMode=false;_selOrder=0;
+  fbToast('⊟ '+srcs.length+' taskuri mutate în nota subtaskului '+(targetSub?'ales':'nou')+(top?' (la început)':' (la sfârșit)'),'#0F2A1A','#10B981',3500);
+  render();
+}
+// ── X37: redeschide nota la care lucrai (adresa + draft salvate cât timp editorul e deschis) ──
+function resumeEditSession(){
+  var s0=null;try{s0=JSON.parse(localStorage.getItem('pb-edit-session')||'null');}catch(_){}
+  if(!s0||!s0.id)return;
+  if(Date.now()-(s0.ts||0)>7*86400000){localStorage.removeItem('pb-edit-session');return;}
+  if(document.querySelector('.note-ov'))return;
+  if(!ownerById(s0.id)){localStorage.removeItem('pb-edit-session');return;}
+  var sid=s0.id;
+  openNoteFor(function(){return ownerById(sid);},s0.draft);
+  fbToast('↩ Am redeschis nota la care lucrai','#0F2A1A','#10B981',3500);
+}
+
 function journalRestorable(e){
   if(!e)return false;var k=e.kind;
   return k==='free-task-delete'||k==='task-delete'||k==='subtask-clean'||k==='project-archive'||(k==='task-move'&&e.toCol==='done');
@@ -8474,6 +8877,7 @@ function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _
 
 var _ti=performance.now();init();traceLog('V1 init '+Math.round(performance.now()-_ti)+'ms free='+S.freeTasks.length+' share='+S.shareTasks.length+' ls='+Math.round(JSON.stringify(localStorage).length/1024)+'KB');
 (function(){var b=getFbBackups();if(b.some(function(x){return x.shareTasks;})){b.forEach(function(x){delete x.shareTasks;});try{localStorage.setItem(BACKUP_KEY,JSON.stringify(b));traceLog('V1 backup-uri slim: fara Share');}catch(_){}}})();
+pruneTombstones();
 memRecord();
 (function(){var a=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);a.push([k,Math.round((localStorage.getItem(k)||'').length/1024)]);}a.sort(function(x,y){return y[1]-x[1];});traceLog('V1 ls top: '+a.slice(0,8).map(function(x){return x[0]+'='+x[1]+'KB';}).join(' '));})();
 // ── FAB+ quick-add task la începutul Next ──
@@ -8674,6 +9078,7 @@ function doMergeDelete(){
     if(item){
       S.shareJournal.push({ts:Date.now(),kind:'share-delete',text:item.name});
     }
+    markShareDeleted(sid);
     S.shareTasks=S.shareTasks.filter(function(x){return x.id!==sid;});
     delete S.mergeFlags['s:'+sid];
   });
@@ -8896,6 +9301,16 @@ setTimeout(function(){
   sortBetweenMarkers();
   setTimeout(function(){sortRestNext();},300);
 },2500);
+setTimeout(resumeEditSession,1600); // X37
+// X35/X37: la părăsirea aplicației se salvează draftul notei; la revenire (după ≥60 s) sincronizare silențioasă
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'){try{if(window._noteFlush)window._noteFlush();}catch(_){}}
+  else{
+    var n=Date.now();
+    if(n-_lastFgSync>60000&&fbUser&&fbDb&&!overlayOpen()){_lastFgSync=n;fbPullIfNewer(true);}
+  }
+});
+window.addEventListener('pagehide',function(){try{if(window._noteFlush)window._noteFlush();}catch(_){}});
 </script>
 </body>
 </html>
