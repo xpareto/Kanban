@@ -1,4 +1,4 @@
-var CACHE = 'projectboard-v174'
+var CACHE = 'projectboard-v175'
 
 var FILES = [
   '/index.html',
