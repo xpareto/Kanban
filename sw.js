@@ -1,4 +1,4 @@
-var CACHE = 'projectboard-v175'
+var CACHE = 'projectboard-v176'
 
 var FILES = [
   '/index.html',
@@ -12,7 +12,7 @@ self.addEventListener('install', function(e) {
     caches.open(CACHE).then(function(cache) {
       return cache.addAll(FILES);
     })
-  );
+  )6
   self.skipWaiting();
 });
 
