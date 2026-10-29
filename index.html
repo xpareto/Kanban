@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V176</title>
+<title>Project Board V177</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -4334,7 +4334,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
 function openSubtasksFor(ownerGetter, ownerLabel, writeFn){
   var owner=ownerGetter();
   if(!owner) return;
-  var oid=owner.id;
+  var oid=owner.id;touchUse(oid);
   var og=function(){return ownerGetter()||ownerById(oid);};
   if(!owner.subtasks) owner.subtasks=[];_subOG=og;
   showSubtasksOverlay(ownerLabel, owner.subtasks, function(){
@@ -4512,7 +4512,7 @@ function promptAttachLink(cb){
 }
 function openAttachmentsFor(og0,label){
   var owner=og0();if(!owner)return;
-  var oid=owner.id;
+  var oid=owner.id;touchUse(oid);
   var og=function(){return og0()||ownerById(oid);};
   drvLoadGIS(function(){}); // preîncărcare, ca popup-ul Google să pornească imediat la tap
   var ov=document.createElement('div');
@@ -4783,6 +4783,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
   ta.addEventListener('input',function(){if(notePreviewWrap){buildNotePreview(ta.value);}});
   // X37 (V172): adresa taskului + draftul se țin în memorie cât timp editorul e deschis; se șterg la ieșirea normală
   var _sessId=null;try{var _oo=_own?_own():null;if(_oo)_sessId=_oo.id;}catch(_){}
+  if(_sessId)touchUse(_sessId);
   function writeSess(){if(_sessId){try{localStorage.setItem('pb-edit-session',JSON.stringify({k:'note',id:_sessId,draft:ta.value,ts:Date.now()}));}catch(_){}}}
   function clearSess(){if(_sessId){try{localStorage.removeItem('pb-edit-session');}catch(_){}}window._noteFlush=null;}
   function closeNote(){clearSess();if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
@@ -5700,7 +5701,7 @@ function rBoard(){
     p1Btn.style.cssText='flex-shrink:0;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;border:1px solid #10B981;background:'+(S.svGreenGroupByProject?'#10B981':'transparent')+';color:'+(S.svGreenGroupByProject?'#0F1117':'#6EE7B7');
     function doToggleP1(){
       S.svGreenGroupByProject=!S.svGreenGroupByProject;
-      if(S.svGreenGroupByProject){S.nextTab='prioritare';S.nextSplitView=false;}
+      if(S.svGreenGroupByProject){S.nextTab='prioritare';S.nextSplitView=false;S.useSort=null;}
       render();
     }
     p1Btn.addEventListener('click',doToggleP1);
@@ -5715,6 +5716,24 @@ function rBoard(){
     svBtn.addEventListener('click',doToggleSplit);
     svBtn.addEventListener('touchend',function(e){e.preventDefault();doToggleSplit();},{passive:false});
     svBtn.style.padding='3px 7px';svBtn.style.fontSize='10px';nd.appendChild(svBtn);
+    // X70: sortare după utilizare — doar la afișare, pe tabul curent (nu pe „Toate" și nu în Split)
+    function mkUseBtn(mode,ic,ttl){
+      var on=S.useSort===mode;
+      var b=mk('button','');b.textContent=ic;b.title=ttl;
+      b.style.cssText='flex-shrink:0;border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;border:1px solid #F59E0B;background:'+(on?'#F59E0B':'transparent')+';color:'+(on?'#0F1117':'#FCD34D');
+      function go(){
+        if(S.nextSplitView||S.nextTab==='all'){fbToast('Alege un tab (Prioritare, Termene, Calendar, Z2-utile sau Restul) — sortarea după utilizare nu se aplică pe „Toate" și în Split','#1E2130','#F59E0B',3500);return;}
+        S.useSort=on?null:mode;
+        if(S.useSort)S.svGreenGroupByProject=false;
+        render();
+      }
+      b.addEventListener('click',go);
+      b.addEventListener('touchend',function(e){e.preventDefault();go();},{passive:false});
+      return b;
+    }
+    nd.appendChild(mkUseBtn('freq','★','Sortare după frecvența utilizării (apasă din nou = ordinea reală)'));
+    nd.appendChild(mkUseBtn('recent','🕘','Sortare după ultima utilizare, cele mai recente sus (apasă din nou = ordinea reală)'));
+    var _allBtn=null;
     tabDefs.forEach(function(td){
       var active=!S.nextSplitView&&S.nextTab===td.id;
       var btn=mk('button','');
@@ -5724,8 +5743,9 @@ function rBoard(){
       function doTab(){S.nextTab=td.id;S.nextSplitView=false;render();}
       btn.addEventListener('click',doTab);
       btn.addEventListener('touchend',function(e){e.preventDefault();doTab();},{passive:false});
-      (td.id==='all'?nd:tb).appendChild(btn);
+      if(td.id==='all'){btn.style.marginLeft='auto';_allBtn=btn;}else tb.appendChild(btn);
     });
+    if(_allBtn)tb.appendChild(_allBtn);
     root.appendChild(tb);
   })();
 
@@ -5923,6 +5943,25 @@ function rBoard(){
   }
   // P1 (V160): grupare pe proiecte — activă doar pe tabul „Prioritare", cu butonul „📂 Pe proiecte"
   var _p1Active=(S.nextTab==='prioritare' && S.svGreenGroupByProject);
+  // X70: sortare după utilizare (view only, ordinea reală nu se atinge)
+  var _useActive=!!(S.useSort&&!S.nextSplitView&&S.nextTab!=='all'&&!_p1Active),_useRank={};
+  if(_useActive){
+    var _um=useMap(),_rs=[];
+    nr.forEach(function(rr,ri){
+      if(!rr.tname||!rr.tname.trim())return;
+      var cc=getNextRowCategory(rr);
+      if(cc==='marker'||cc!==S.nextTab)return;
+      var uid=rr.isFree?rr.id:rr.taskId,u=_um[uid]||{c:0,l:0};
+      _rs.push({id:uid,c:u.c,l:u.l,i:ri});
+    });
+    _rs.sort(function(a,b){
+      if(S.useSort==='freq'){if(b.c!==a.c)return b.c-a.c;if(b.l!==a.l)return b.l-a.l;}
+      else if(b.l!==a.l)return b.l-a.l;
+      return a.i-b.i;
+    });
+    _rs.forEach(function(x,i){_useRank[x.id]=i;});
+    nsec.style.cssText='display:flex;flex-direction:column';
+  }
   var _p1OrderMap={},_p1Names=[];
   if(_p1Active){
     nr.forEach(function(rr){
@@ -5936,7 +5975,7 @@ function rBoard(){
   }
   // Benzi de culoare *1/*2/*3
   var _rg2Active=false;
-  if(S.nextTab==='prioritare'&&!_p1Active){nr.forEach(function(rr){if(getNextRowCategory(rr)==='prioritare'&&(/^[wWuU][ .]/.test(rr.tname||'')||promoList(rr).some(function(v){return v.pri;})))_rg2Active=true;});if(_rg2Active)nsec.style.cssText='display:flex;flex-direction:column';}
+  if(S.nextTab==='prioritare'&&!_p1Active&&!_useActive){nr.forEach(function(rr){if(getNextRowCategory(rr)==='prioritare'&&(/^[wWuU][ .]/.test(rr.tname||'')||promoList(rr).some(function(v){return v.pri;})))_rg2Active=true;});if(_rg2Active)nsec.style.cssText='display:flex;flex-direction:column';}
   var _pp=promoPlan(nr);var _newMap=newIdsGet();if(S.nextTab==='prioritare'||S.nextTab==='all'){_pp.orph.forEach(function(v){var e=promoEl(v);e.style.order=-1;nsec.appendChild(e);});}
   var _bandColor=null;
   var _firstFutureFound=false;
@@ -6036,7 +6075,7 @@ function rBoard(){
       })(row.projectId, row.taskId);
     }
     const nh=sp('phandle','⠿');
-    if(_p1Active){
+    if(_p1Active||_useActive){
       // P1 (V160): poziția vizuală nu mai corespunde ordinii reale cât timp e grupat — mânerul
       // rămâne inert, ca să nu dea rezultate confuze
       nh.style.cssText='font-size:16px;color:#4B5563;cursor:default;user-select:none;flex-shrink:0;padding:1px 3px;opacity:.5';
@@ -6051,6 +6090,7 @@ function rBoard(){
       r.style.order=row.isFree?_p1Names.length:(_p1OrderMap[row.pname]!=null?_p1OrderMap[row.pname]:0);
       if(!row.isFree) r.style.background=colorForProject(row.pname);
     }
+    if(_useActive){var _rid=row.isFree?row.id:row.taskId;r.style.order=String(_useRank[_rid]!=null?_useRank[_rid]:9999);}
     // Dot: portocaliu normal sau roșu+pulsant dacă warn
     var dot;
     if(!row.isFree){ // X67: P = urmează numele unui proiect (roșu dacă proiectul are mai multe To Do fără *)
@@ -6116,7 +6156,7 @@ function rBoard(){
               if(task){var _on2=task.name;task.name=newName;task.modifiedTs=Date.now();checkAndCreateFinalizare(newName);save();onDateAdded(false,proj.id,task.id,_on2,newName);}
             }
           }
-          traceLog('saveEditTask: "'+newName.slice(0,20)+'"');
+          traceLog('saveEditTask: "'+newName.slice(0,20)+'"');touchUse(rowSnap.isFree?rowSnap.id:rowSnap.taskId);
           // Dacă task-ul era în zona *1 (roșie), sort oricum
           var _wasInBand1=false;
           (function(){
@@ -7817,6 +7857,14 @@ function editSelectedSingleTask(){
     if(fsv)openSubtaskEditor(fsv.o,fsv.st);
     return;
   }
+  if(key.indexOf('f::')===0||key.indexOf('p::')===0){ // V177: editor complet (nume + notă), ca în căutare
+    var res0,id0=null;
+    if(key.indexOf('f::')===0){id0=key.slice(3);if(!S.freeTasks.find(function(x){return x.id===id0;}))return;res0={k:'fn',id:id0,name:''};}
+    else{var pr0=key.split('::');res0={k:'task',projectId:pr0[1],taskId:pr0[2]};}
+    S.selectedNext={};S.selectMode=false;_selOrder=0;render();
+    openEntityEditor(res0,function(){var el=id0?document.querySelector('[data-fid="'+id0+'"]'):null;if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='#FEF9C3';setTimeout(function(){el.style.background='';},1200);}});
+    return;
+  }
   var isFree=key.indexOf('f::')===0;
   var fid=null,pid=null,tid=null,currentName='';
   if(isFree){
@@ -7880,6 +7928,7 @@ function editSelectedSingleTask(){
 }
 
 function moveSelectedNext(where){
+  if(where==='top')convertSelectedCalEvents();
   var nr=getNR();
   var selKeys=Object.keys(S.selectedNext); // chei: 'f::id' sau 'p::pid::tid'
   if(!selKeys.length) return;
@@ -8171,6 +8220,7 @@ function selectByPrefix(rx){
   S.selectMode=true;render();
 }
 function moveSelectedToZone2(){
+  convertSelectedCalEvents();
   var keys=Object.keys(S.selectedNext);if(!keys.length)return;
   var u=getNR().map(function(r){return r.isFree?{type:'free',id:r.id}:{type:'proj',projectId:r.projectId,taskId:r.taskId};});
   function rk(r){return r.type==='free'?'f::'+r.id:'p::'+r.projectId+'::'+r.taskId;}
@@ -8337,6 +8387,7 @@ function promoMergeSplit(nr,greens){
   return out;
 }
 function applyPrefixSelected(p){
+  convertSelectedCalEvents();
   var keys=Object.keys(S.selectedNext);if(!keys.length)return;
   function tf(n){var m=(n||'').match(/^(\*?)([\s\S]*)$/),star=m[1],rest=m[2],c=rest.match(/^([uUwW])[ .]\s*/);
     if(c){if(c[1].toLowerCase()===p)return star+rest.slice(c[0].length);return star+p+' '+rest.slice(c[0].length);}
@@ -9038,7 +9089,7 @@ function openSubtaskEditor(o,st){
   mmBtn(m.card,'✓ Salvează','#10B981','#04120A',function(){
     var nb=ta.value.trim();
     if(nb)st.text=pre+nb;
-    st.note=nt.value;
+    st.note=nt.value;touchUse(o.id);
     o.modifiedTs=Date.now();
     lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());
     m.close();render();
@@ -9046,6 +9097,51 @@ function openSubtaskEditor(o,st){
   mmBtn(m.card,'☰ Arborele de subtaskuri al tatălui','#2D3048','#C4B5FD',function(){m.close();openSubtasksFor(function(){return ownerById(oid);},pname,function(){});});
   mmBtn(m.card,'↶ Depromovează (revine la tatăl lui)','#0F766E','#fff',function(){m.close();S.selectedNext={};S.selectedNext['v::'+st.id]=1;depromoteSelected();});
   mmBtn(m.card,'✕ Închide','#374151','#E2E8F0',m.close);
+}
+// ══ V177: evenimente din calendar → taskuri, istoric de utilizare + sortare ══
+// X69: evenimentele din calendar selectate devin taskuri obișnuite (originalul se bifează — K2 — și apare în Jurnal); puse în Prioritare; selecția trece pe noile taskuri
+function convertSelectedCalEvents(){
+  var calKeys=Object.keys(S.selectedNext).filter(function(k){return k.indexOf('f::cal::')===0;});
+  if(!calKeys.length)return 0;
+  var now=Date.now(),n=0,entries=[];
+  calKeys.sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  calKeys.forEach(function(k){
+    var ft=S.freeTasks.find(function(x){return x.id===k.slice(3);});
+    if(!ft)return;
+    var nm=(ft.name||'').replace(/^↺\s*/,'').trim();
+    var d=ft.calStart?new Date(ft.calStart):null;
+    if(d&&!isNaN(d.getTime())&&!extractDateFromRow({tname:nm,isFree:true,id:''}))nm=nm+' '+d.getDate()+'.'+(d.getMonth()+1);
+    nm=addWeekday(nm);
+    var nt={id:gid(),name:nm,ts:now,modifiedTs:now+n};
+    je({kind:'cal-event-check',taskName:ft.name,ts:now});
+    markDeleted(ft.id);
+    S.freeTasks=S.freeTasks.filter(function(x){return x.id!==ft.id;});
+    S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&e.id===ft.id);});
+    S.freeTasks.push(nt);entries.push({type:'free',id:nt.id});
+    var ord=S.selectedNext[k];delete S.selectedNext[k];S.selectedNext['f::'+nt.id]=ord;
+    n++;
+  });
+  if(entries.length)S.nextOrder=insertInGreenZone(S.nextOrder,entries);
+  lw(FK,S.freeTasks);lw(NK,S.nextOrder);lw('pb-local-dirty-ts',now);
+  if(n)detectAndSaveZones(); // zona stocată trebuie să reflecte imediat poziția (altfel U/W le lasă în Restul)
+  traceLog('X69 '+n+' evenimente din calendar transformate în taskuri');
+  if(n)fbToast('📅 '+n+' evenimente din calendar au devenit taskuri (originalul e bifat)','#0F2A1A','#10B981',3500);
+  return n;
+}
+// X70: istoric de utilizare (local, nesincronizat): {id:{c:nr utilizări,l:ultima utilizare}}
+var USE_KEY='pb-usage',_useCache=null,_useT=null;
+function useMap(){if(!_useCache){try{_useCache=JSON.parse(localStorage.getItem(USE_KEY)||'{}');}catch(_){_useCache={};}}return _useCache;}
+function touchUse(id){
+  if(!id)return;
+  var m=useMap(),e=m[id]||(m[id]={c:0,l:0});
+  e.c++;e.l=Date.now();
+  clearTimeout(_useT);
+  _useT=setTimeout(function(){try{localStorage.setItem(USE_KEY,JSON.stringify(m));}catch(_){}},600);
+}
+function pruneUsage(){
+  var m=useMap(),lim=Date.now()-90*86400000,n=0;
+  Object.keys(m).forEach(function(i){if(m[i].l<lim){delete m[i];n++;}});
+  if(n){try{localStorage.setItem(USE_KEY,JSON.stringify(m));}catch(_){}traceLog('X70 utilizări >90 zile eliminate: '+n);}
 }
 function journalRestorable(e){
   if(!e)return false;var k=e.kind;
@@ -9227,10 +9323,11 @@ function openEntityEditor(res,goFn){
     var v=nameTa.value.trim();close();
     if(v){
       if(isTask)v=addWeekday(resolveCalCmd(v));
-      obj.name=v;
+      var _oldNm=obj.name;obj.name=v;
       if(hasNote)obj.note=noteTa.value;
+      touchUse(obj.id);
       obj.modifiedTs=Date.now();wr();lw('pb-local-dirty-ts',Date.now());
-      if(isTask){checkAndCreateFinalizare(v);triggerAutoSort(v);}
+      if(isTask){checkAndCreateFinalizare(v);triggerAutoSort(v);onDateAdded(kind==='fn',res.projectId||null,kind==='fn'?res.id:res.taskId,_oldNm,v);}
     }
     S.sq='';S.sr=null;
     if(v&&/\/w(?:\s|$)/i.test(v)){if(kind==='fn')moveToWait(res.id,null);else if(kind==='task')moveToWait(res.taskId,res.projectId);return;}
@@ -9289,7 +9386,7 @@ function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _
 
 var _ti=performance.now();init();traceLog('V1 init '+Math.round(performance.now()-_ti)+'ms free='+S.freeTasks.length+' share='+S.shareTasks.length+' ls='+Math.round(JSON.stringify(localStorage).length/1024)+'KB');
 (function(){var b=getFbBackups();if(b.some(function(x){return x.shareTasks;})){b.forEach(function(x){delete x.shareTasks;});try{localStorage.setItem(BACKUP_KEY,JSON.stringify(b));traceLog('V1 backup-uri slim: fara Share');}catch(_){}}})();
-pruneTombstones();
+pruneTombstones();pruneUsage();
 memRecord();
 (function(){var a=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);a.push([k,Math.round((localStorage.getItem(k)||'').length/1024)]);}a.sort(function(x,y){return y[1]-x[1];});traceLog('V1 ls top: '+a.slice(0,8).map(function(x){return x[0]+'='+x[1]+'KB';}).join(' '));})();
 // ── FAB+ quick-add task la începutul Next ──
@@ -9334,7 +9431,7 @@ memRecord();
     detectAndSaveZones();
     lw('pb-local-dirty-ts',Date.now());
     closeFab();
-    traceLog('commitFab: "'+name.slice(0,20)+'"'+(noteVal?' +notă':''));if(_fsubs.length)promoAfterChange(ft);
+    traceLog('commitFab: "'+name.slice(0,20)+'"'+(noteVal?' +notă':''));touchUse(ft.id);if(_fsubs.length)promoAfterChange(ft);
     triggerAutoSort(name);
     render();
     // scroll la primul element din next
