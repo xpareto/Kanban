@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V178</title>
+<title>Project Board V179</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -388,7 +388,7 @@ function mergeProjects(localItems, remoteItems){
 }
 
 // X6 (V166): subtaskurile se unesc dupa id la merge (nu mai câștigă o listă întreagă); lista goală nu o suprascrie pe cea plină
-function mergeSubs(base,other){
+function mergeSubsOld(base,other){
   if(!other||!other.length)return base;
   if(!base||!base.length)return other.slice();
   var ids={};base.forEach(function(s){ids[s.id]=1;});
@@ -480,7 +480,7 @@ async function fbPush(light){
 
 // G4 (V155): scrierea efectivă în Firestore, extrasă din fbPush ca să poată fi
 // apelată direct și după un Merge (fără să re-declanșeze guard-ul de mărime)
-async function _doActualPush(light){
+async function _doActualPush(light){try{stampSubs();}catch(_){}
   // S1: salvează zona fiecărui item înainte de push (green/red/yellow/null)
   detectAndSaveZones();
   try{
@@ -858,7 +858,7 @@ function applyNoteResolutions(resolutions){
   // alegerea trebuie să ajungă în cloud chiar dacă push-ul imediat eșuează
   if(resolutions.some(function(r){return !r.adopt&&r.auto!=='remote';}))setTimeout(function(){lw('pb-local-dirty-ts',Date.now());},0);
 }
-async function fbPull(mode){
+async function fbPull(mode){try{stampSubs();}catch(_){}
   _lastPullWasGuardCancelled=false;
   if(!fbDb||!fbUser) return false;
   // compatibilitate cu vechile apeluri boolean
@@ -965,6 +965,11 @@ async function fbPull(mode){
           }
         }
         if(shouldOverwrite){
+          var _ovConf=findNoteConflicts(S.items,S.freeTasks,remoteItems,rData.freeTasks||[]);
+          var _ovRes=[];
+          if(_ovConf.length){traceLog('X75: '+_ovConf.length+' conflicte de notă la Pull-overwrite — cer rezolvare');_ovRes=await resolveNoteConflictsSequentially(_ovConf);}
+          var _ovAuto=_noteAutoAdopt.slice();
+          var _ovKeep=keepLocalNotesChangedSinceSync(S.items,S.freeTasks,remoteItems,rData.freeTasks||[]);
           rescueSubtasks(S.items,remoteItems,S.freeTasks,rData.freeTasks);S.items=remoteItems;
           // nextOrder: merge conservator — local castiga, remote adauga doar elemente noi
           var knownIds2=new Set((rData.freeTasks||[]).map(function(x){return x.id;}));
@@ -982,6 +987,7 @@ async function fbPull(mode){
           S.nextOrder=tunsPlace(merged2,remNew2,rData.freeTasks||[])||merged2;
           importRemoteTombstones(rData.freeTasks);
           S.freeTasks=(rData.freeTasks||S.freeTasks).filter(function(x){return !x._deleted;});
+          var _ovAll=_ovRes.concat(_ovAuto,_ovKeep);if(_ovAll.length)applyNoteResolutions(_ovAll);
           S.waitOrder=rData.waitOrder||S.waitOrder;
           S.waitFreeTasks=rescueWaitFree(S.waitFreeTasks,rData.waitFreeTasks,rData.freeTasks);
           S.labels=rData.labels||S.labels;
@@ -3242,6 +3248,7 @@ function resolveCalCmd(text){
   var numDate=parsed.day+'.'+parsed.month;
   var replacement=numDate;
   if(parsed.timeStr&&parsed.timeStr!=='09:00') replacement+=' '+parsed.timeStr;
+  if(parsed.rep){var _rl2={rz:'zil',rs:'sapt',rl:'lunar',ra:'anual'};replacement+=' ('+(_rl2[parsed.rep]||parsed.rep)+')';}
   var result=text.replace(parsed.full,replacement).replace(/\s{2,}/g,' ').trim();
   traceLog('Dzs resolveCalCmd: "'+parsed.full+'" -> "'+replacement+'" result="'+result.slice(0,40)+'"');
   return result;
@@ -3277,7 +3284,8 @@ function maybeAddCalBtn(rowEl, taskName, saveFn){
       var _nd=parseInt(_mn[2]),_nm=parseInt(_mn[3]);
       if(_nd>=1&&_nd<=31&&_nm>=1&&_nm<=12){
         
-        parsed={day:_nd,month:_nm,rep:null,timeStr:'09:00',full:_mn[0].trim(),fromNumeric:true};
+        var _tail=taskName.slice(_mn.index+_mn[0].length);var _tm=_tail.match(/^\s*(?:\((?:lun|mar|mie|joi|vin|sam|dum)\))?\s*(\d{1,2}:\d{2})?\s*(?:\((zil|sapt|lunar|anual)\))?/);var _rmap={zil:'rz',sapt:'rs',lunar:'rl',anual:'ra'};
+        parsed={day:_nd,month:_nm,rep:(_tm&&_tm[2])?_rmap[_tm[2].toLowerCase()]:null,timeStr:(_tm&&_tm[1])?_tm[1]:'09:00',full:_mn[0].trim(),fromNumeric:true};
         isNew=false; // nu reînlocuiește textul, doar deschide Calendar
       }
     }
@@ -3705,7 +3713,7 @@ function doImp(e){
         if(p.labels){S.labels=p.labels;lw(LBLK,p.labels);}
       }
       else throw 0;
-      alert('✓ Imported!');render();
+      lw('pb-local-dirty-ts',Date.now());alert('✓ Imported!');render();
     }catch(_){alert('❌ Invalid file.');}
   };
   r.readAsText(f);e.target.value='';
@@ -3970,7 +3978,7 @@ function rData(){
   var t=mk('div','h1');t.textContent='Data';
   hl.appendChild(sp('logo','◈'));hl.appendChild(t);
   h.appendChild(hl);
-  h.appendChild(bt('bg','← Board',function(){S.view='board';render();}));
+  var _dg=div('');_dg.style.cssText='display:flex;gap:6px;align-items:center';_dg.appendChild(bt('bg','?',function(){showTextHelp('? Ecranul Date',HELP_DATA_TXT);}));_dg.appendChild(bt('bg','← Board',function(){S.view='board';render();}));h.appendChild(_dg);
   root.appendChild(h);
   root.appendChild(mkExportBar({
     color:'#9CA3AF',label:'DATA',
@@ -4007,7 +4015,7 @@ function rData(){
     fbInfo.style.cssText='background:#0F1117;padding:10px 14px;font-size:12px;color:#9CA3AF;line-height:1.8';
     fbInfo.innerHTML='<span style="color:#34D399">● conectat</span> · '+fbUser.email;
     var fbBtns=div('');fbBtns.style.cssText='background:#0F1117;padding:0 14px 12px;display:flex;gap:8px';
-    var bPush=mk('button','btn');bPush.textContent='↑ Push';bPush.title='Scrie local → Firebase';
+    var bPush=mk('button','btn');bPush.textContent='↑ Push';bPush.title='Smart Sync: compară cu cloud-ul și face Push, Merge sau Pull';
     bPush.style.cssText='background:#1E3A5F;color:#93C5FD;border:1px solid #3B82F6;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';
     bPush.addEventListener('click',function(){fbSync();S.view='board';render();});
     bPush.addEventListener('touchend',function(e){e.preventDefault();fbSync();S.view='board';render();},{passive:false});
@@ -4060,7 +4068,7 @@ function rData(){
       }
       bR.addEventListener('click',doRestore);
       bR.addEventListener('touchend',function(e){e.preventDefault();doRestore();},{passive:false});
-      row.appendChild(lbl);row.appendChild(bR);
+      var bS=mk('button','btn');bS.textContent='💾';bS.title='Salvează pe disc: slv-backup-firebase-'+(idx+1)+'-AALLZZ.json';bS.style.cssText='background:#0F2A1A;color:#34D399;border:1px solid #10B981;border-radius:6px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;touch-action:manipulation';bS.addEventListener('click',function(){saveBackupToDisk(bk,idx);});bS.addEventListener('touchend',function(e){e.preventDefault();saveBackupToDisk(bk,idx);},{passive:false});row.appendChild(lbl);row.appendChild(bS);row.appendChild(bR);
       bkWrap.appendChild(row);
     });
     fbPanel.appendChild(bkWrap);
@@ -4137,9 +4145,9 @@ function promptRenameTask(oldName,cb){
 // Dy1 (V159): overlay subtaskuri — listă ierarhică pe n niveluri (stil Dynalist/WorkFlowy).
 // subtasksArr: array live de {id,text,done,depth} — e mutat direct; persistFn salvează +
 // marchează dirty după fiecare acțiune (checkbox, editare, indent/outdent, mutare, ștergere).
-var _subOG=null;
+var _subOG=null;var _subAskCopy=false;
 function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
-  var _og=_subOG;_subOG=null;var _p0=persistFn;persistFn=function(){var _m=execSubCmds(subtasksArr);if(_m)fbToast(_m,'#1E2130','#F59E0B',3500);_p0();};
+  var _askCopy=_subAskCopy;_subAskCopy=false;var _og=_subOG;_subOG=null;var _p0=persistFn;persistFn=function(){var _m=execSubCmds(subtasksArr);if(_m)fbToast(_m,'#1E2130','#F59E0B',3500);_p0();};
   var ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-end;justify-content:center;padding:0';
   var card=document.createElement('div');
@@ -4322,11 +4330,12 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
   bGoN.title='Mergi la notă';bGoN.style.background='#10B981';bGoN.style.border='1px solid #059669';
   if(_og)hbtns.appendChild(bGoN);
   hbtns.appendChild(bDevS);hbtns.appendChild(bCln);hbtns.appendChild(bNet);syncDev();
-  hbtns.appendChild(hb('?','#93C5FD',function(){showHelpDialog('? Subtaskuri — comenzi',HELP_SUB);}));hrow.appendChild(h);hrow.appendChild(hbtns);hrow.appendChild(closeBtn);
+  hbtns.appendChild(hb('?','#93C5FD',function(){showTextHelp('? Subtaskuri — comenzi',HELP_SUB_TXT);}));hrow.appendChild(h);hrow.appendChild(hbtns);hrow.appendChild(closeBtn);
   card.appendChild(hrow);card.appendChild(listWrap);card.appendChild(addRow);
   ov.appendChild(card);
   document.body.appendChild(ov);
   setTimeout(function(){addInp.focus();},80);
+  if(_askCopy){var bn=document.createElement('div');bn.style.cssText='background:#12301F;border:1px solid #10B981;border-radius:8px;padding:8px;margin-bottom:8px;flex-shrink:0;font-size:12px;color:#A7F3D0;line-height:1.5';bn.textContent='⇣ Subtaskuri create — verifică lista. Copiez în clipboard secțiunile A și B (noi+active), pentru Claude?';var br=document.createElement('div');br.style.cssText='display:flex;gap:8px;margin-top:6px';var b1=document.createElement('button');b1.textContent='📤 Da, copiază';b1.style.cssText='background:#10B981;color:#04120A;border:none;border-radius:7px;padding:7px 12px;font-weight:800;font-size:12px;cursor:pointer;touch-action:manipulation';b1.addEventListener('click',function(){if(bn.parentNode)bn.parentNode.removeChild(bn);bNet.click();});var b2=document.createElement('button');b2.textContent='Nu acum';b2.style.cssText='background:#374151;color:#E2E8F0;border:none;border-radius:7px;padding:7px 12px;font-size:12px;cursor:pointer;touch-action:manipulation';b2.addEventListener('click',function(){if(bn.parentNode)bn.parentNode.removeChild(bn);});br.appendChild(b1);br.appendChild(b2);bn.appendChild(br);card.insertBefore(bn,listWrap);}
 }
 // Dy1 (V159): deschide overlay-ul de subtaskuri pentru orice task — ownerGetter re-caută
 // obiectul la fiecare persist (ca să nu lucreze pe o referință învechită după render), writeFn
@@ -4668,6 +4677,7 @@ function openNoteFor(og,draft){
 
 var _noteOwner=null;
 function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
+  var _sf0=saveFn;saveFn=function(a,b){var r=_sf0(a,b);try{lw('pb-local-dirty-ts',Date.now());}catch(_){}return r;};
   var _own=_noteOwner;_noteOwner=null;var _clipTop=!!(_own&&_own()&&_own().noteTop);var _dev=!!(_own&&_own()&&_own().dev);
   var ov=document.createElement('div');
   ov.className='note-ov';
@@ -4841,7 +4851,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
         var mx=0;o.subtasks.forEach(function(q){if(q.xn>mx)mx=q.xn;});
         (ta.value.match(/^\s*X(\d+)\s/gm)||[]).forEach(function(m){var k=parseInt(m.replace(/\D/g,''));if(k>mx)mx=k;});
         var ln=ta.value.split('\n'),add=[];
-        it.forEach(function(x){var nt=normSub(x.text);var e=o.subtasks.find(function(q){return normSub(q.text)===nt;})||add.find(function(q){return normSub(q.text)===nt;});
+        (_clipTop?it.slice().reverse():it).forEach(function(x){var nt=normSub(x.text);var e=o.subtasks.find(function(q){return normSub(q.text)===nt;})||add.find(function(q){return normSub(q.text)===nt;});
           if(!e){e={id:gid(),text:x.text,done:false,depth:0,xn:++mx};if(x.note)e.note=x.note;add.push(e);}else{if(!e.xn)e.xn=++mx;if(x.note&&!e.note)e.note=x.note;}
           ln[x.line]='X'+e.xn+' '+ln[x.line].replace(/^\s+/,'');});
         ta.value=ln.join('\n');o.subtasks=_clipTop?add.concat(o.subtasks):o.subtasks.concat(add);
@@ -4849,6 +4859,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
         if(notePreviewWrap)buildNotePreview(ta.value);
         saveFn(ta.value,false);currentNote=ta.value; // V172 (Y2): marcajele X se salvează imediat în notă
         fbToast('⇣ '+add.length+' subtaskuri noi, '+ex.length+' existente; marcajele X au fost salvate în notă','#0F2A1A','#10B981',3500);
+        closeNote();_subAskCopy=true;openSubtasksFor(_own,taskTitle,function(){});
       });
     });clipRow.appendChild(bBnB);
     bBnB.style.display=_dev?'':'none';
@@ -4894,7 +4905,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
     var txt=ta.value;if(!txt.trim()){fbToast('Nota e goală','#1E2130','#9CA3AF',2000);return;}
     shareOrCopyText(taskTitle,txt);
   });
-  clipRow.appendChild(bShare);var bHelpN=mkSm('?','#93C5FD');bHelpN.title='Comenzi și butoane';bHelpN.addEventListener('click',function(){showHelpDialog('? Editorul de notă',HELP_NOTE);});clipRow.appendChild(bHelpN);
+  clipRow.appendChild(bShare);var bHelpN=mkSm('?','#93C5FD');bHelpN.title='Comenzi și butoane';bHelpN.addEventListener('click',function(){showTextHelp('? Editorul de notă',HELP_NOTE_TXT);});clipRow.appendChild(bHelpN);
   clipRow.appendChild(bSave);clipRow.appendChild(bCancel);
   Array.prototype.forEach.call(clipRow.children,function(b){b.style.padding='6px 6px';b.style.fontSize='10px';b.style.flexShrink='0';b.style.whiteSpace='nowrap';b.style.alignSelf='center';});
   clipRow.style.cssText='display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;align-items:center;flex-shrink:0';
@@ -6149,7 +6160,7 @@ function rBoard(){
           }
           if(rowSnap.isFree){
             var ft=S.freeTasks.find(function(x){return x.id===rowSnap.id;});
-            if(ft){var _on=ft.name;ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);checkAndCreateFinalizare(newName);onDateAdded(true,null,ft.id,_on,newName);}
+            if(ft){var _on=ft.name;ft.name=newName;ft.modifiedTs=Date.now();lw(FK,S.freeTasks);lw('pb-local-dirty-ts',Date.now());checkAndCreateFinalizare(newName);onDateAdded(true,null,ft.id,_on,newName);}
           } else {
             var proj=S.items.find(function(x){return x.id===rowSnap.projectId;});
             if(proj){
@@ -8173,7 +8184,7 @@ function normFullYearDate(text){
 // X14 (V168): culori în arborele de subtaskuri: ! roșu, ? galben, * gri
 function subColor(t){var c=(t||'').trim().charAt(0);return c==='!'?'#F87171':c==='?'?'#FBBF24':c==='*'?'#9CA3AF':'#E2E8F0';}
 // X14 (V168): „Neterminate" în două secțiuni — A. Îmi par nerezolvate (!) și B. Noi
-function buildNeterminate(o){
+function buildNeterminateOld(o){
   var A=[],B=[],marks=[],skD=-1,n=0,skipDone=0;
   function ind(d){return '  '.repeat(d);}
   function item(x,d){
@@ -9580,6 +9591,235 @@ function rescueWaitFree(localArr,remoteArr,remoteFree){
   return remoteArr.concat(kept);
 }
 
+// ══ V179: help în text-outline (X78), salvare backup pe disc (X77), note/subtaskuri la sincronizare (X75), numerotare X cronologică (X83) ══
+function showTextHelp(title,text){
+  var m=mkModal(title,'#3B82F6',10006);
+  var pre=document.createElement('div');pre.textContent=text;
+  pre.style.cssText='white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.55;color:#CBD5E1;background:#0F1117;border:1px solid #2D3048;border-radius:8px;padding:10px;max-height:70vh;overflow:auto';
+  m.card.appendChild(pre);
+  mmBtn(m.card,'✕ Închide','#374151','#E2E8F0',m.close);
+}
+var HELP_ADD_TXT=`TEXT TASK
+  Dată
+    care se poate duce în Google Calendar
+    (doar prin butonul 📅; nimic nu se sincronizează automat)
+      /c5.5   /c21.mai      dată + buton 📅
+      /c5.5 14:00           + oră (fără oră: 09:00, durată 30 min)
+      /c5.5rl 14:00         + repetare: rz zilnic, rs săptămânal,
+                            rl lunar, ra anual; rămâne scrisă în
+                            text: 5.5 (joi) 14:00 (lunar)
+      14.5                  orice dată numerică are și ea 📅
+    care rămâne doar în Kanban
+      21.mai                lună cu litere: fără buton 📅
+      6.7-20.7   26.7+31    interval; cu 4 zile înainte de final
+                            apare rândul FINALIZARE
+    ziua din săptămână
+      /cl /cma /cmi /cj /cv /cs /cd    săptămâna curentă
+      /cnl /cnma …                     săptămâna viitoare
+    dată cu an
+      3.3.2027              ziua săptămânii se pune după an
+  Mutare
+    în interiorul NEXT, în față
+      u     urgent: roșu, urcă în vârful Prioritare (doar vizual)
+      w     wait legat: galben + copie în WAITING
+    din NEXT în afară
+      /w    în WAITING
+    din afară în NEXT
+      /n    din WAITING, în fruntea NEXT
+      *     la începutul unui To Do din proiect
+      Share → Next / → Mută…
+    în Zona 2
+      doar din selecție (→ Zona 2)
+  Sincronizare
+    /p      push punctual: trimite în cloud doar acest task
+
+ÎN TEXTUL NOTEI
+  Subtaskuri în masă (⇣, cu Prog ON)
+    bucățile de text separate de rânduri cu un singur .
+    (sau ==, ---, sau etichetă Bn1.) devin subtaskuri
+    opțional: #notă, apoi textul notei, până la un rând cu doar .
+  Marcaj automat
+    X1, X2 … se pun în notă după generare (xn = legătura cu
+    subtaskul); numerotare cronologică: cel mai nou bloc are
+    numărul maxim`;
+var HELP_SUB_TXT=`ÎN TEXTUL SUBTASK
+  Evidența stării (copiere în clipboard către Claude)
+    *   ignoră rândul (comentariu; manual)
+    !   nerezolvat (manual): intră în secțiunea A
+    ?   trimis, netestat: pus automat la copiere; nu se retrimite
+  Indentare
+    la crearea taskului: 2 spații la început
+    în ecran: ⇥ ⇤ sau tragere cu ⠿
+  Mutare în arbore (comanda dispare după execuție)
+    sursa
+      .m text
+    destinația
+      frate           .f text    (după subarborele lui)
+      tată            .t text    (ultimul lui copil)
+      rândul curent (cel în care pui prefixul)
+        .1 text       prima poziție printre frații lui
+        .l text       ultima poziție printre frații lui
+        .+3 text   .-2 text    sus / jos peste 3 / 2 frați
+  Promovare ca task în NEXT
+    N text      N+U text (urgent)      N+W text (wait)
+
+BUTOANE
+  Concatenare selectivă în clipboard (📤 noi+active, cu Prog ON)
+    pentru trimiterea în chat la Claude; doar rândurile nebifate:
+    cele cu ! (secțiunea A) și cele noi, fără semn (secțiunea B)
+    cele cu ? nu se retrimit; ordinea e crescătoare după numărul X
+  Curățare (🧹, cu Prog ON)
+    scoate rândurile bifate; arhiva rămâne în notă (și în Jurnal,
+    cu ↩ Refă); nu scoate cele cu * sau ?
+  Terminare
+    📝 revenire în notă
+    ✕ revenire în ecranul NEXT, cu salvare (se salvează singur)`;
+var HELP_NOTE_TXT=`CREARE
+  combinație de
+    copiere din clipboard (R📋)
+    scriere manuală
+EXPORTARE
+  scriere în clipboard (W📋)
+  share către orice aplicație (📤)
+  creare subtaskuri din blocurile de aici (⇣, în mod programare),
+  pentru a fi concatenate selectiv
+LINKURI
+  apar și într-o fereastră mică, sus; click deschide linkul
+MODURI DE LUCRU
+  Programare (Prog ON)
+    blocul = o secvență care începe cu etichetă (Bn1.) sau vine
+    după un separator (. -- ==)
+    opțional, blocul are și notă proprie: începe cu #notă și
+    se termină la un rând cu doar .
+    ⇣ creează automat subtaskuri din blocuri și le dă etichete
+    X n (cronologic: cel mai nou bloc = numărul maxim)
+    după ⇣ ajungi în ecranul de subtaskuri și ești întrebat dacă
+    copiezi în clipboard
+    fără Prog: text oarecare, nu se creează subtaskuri
+  Top ON / OFF
+    ON: bara de butoane și rândurile / blocurile noi stau sus
+    OFF: jos
+TERMINARE
+  salvare (✓ Salv)
+  ieșire (✕)
+  trecere la subtaskuri (☰ Sub; salvează înainte)`;
+var HELP_DATA_TXT=`EXPORT / IMPORT JSON
+  Export JSON (+dată)
+    salvează pb-date-AAAA-LL-ZZ.json cu toate datele (proiecte,
+    taskuri, Wait, Share, jurnale, etichete)
+  Import JSON
+    înlocuiește datele locale cu cele din fișier (fără confirmare)
+    și le marchează ca modificate, ca să ajungă în cloud
+
+STATISTICI
+  proiecte · taskuri · intrări jurnal · iteme Share · intrări
+  jurnal Share
+
+FIREBASE SYNC (cloud Firestore)
+  ● conectat · email
+    ești logat în cloud
+  ↑ Push
+    de fapt Smart Sync (la fel ca ☁), compară cloud-ul cu ultima
+    sincronizare
+      local mai nou: scrie local în cloud
+      cloud mai nou + modificări locale: merge, apoi push
+      cloud mai nou, fără modificări locale: Pull cu suprascriere
+  ↓ Pull
+    aduce cloud-ul peste local (suprascriere), după un backup
+    automat; te avertizează dacă în cloud e cu 10% mai puțin
+  Deconectare
+    te scoate din cont, nu șterge date
+
+BACKUP-URI LOCALE (n/5)
+  Ce sunt
+    copii ale stării locale: proiecte, taskuri libere, Wait,
+    ordine, etichete (fără Share și jurnale)
+  Când se fac
+    automat, înainte de fiecare Pull: manual, la pornire, la
+    revenirea în aplicație, la sincronizare
+  Câte
+    ultimele 5, cele mai noi primele; cu Pull-uri dese cele bune
+    se pierd repede
+  Unde stau
+    în memoria browserului; dispar dacă Android curăță datele
+    aplicației
+  💾 Salvează pe disc
+    slv-backup-firebase-N-AALLZZ.json (N = poziția 1–5, AALLZZ =
+    data salvării), în Descărcări; poate fi importat cu Import JSON
+  Restore
+    după confirmare, înlocuiește datele locale cu acel backup; se
+    marchează ca modificate și ajunge în cloud
+
+RECOMANDARE
+  Înainte de Restore sau de un Pull riscant, fă Export JSON`;
+function saveBackupToDisk(bk,idx){
+  var d=new Date(),p=function(n){return String(n).padStart(2,'0');};
+  var name='slv-backup-firebase-'+(idx+1)+'-'+String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate())+'.json';
+  dlBlob(JSON.stringify(bk,null,2),name,'application/json',true);
+  fbToast('💾 '+name+' — în Descărcări (Downloads)','#0F2A1A','#10B981',5000);
+}
+// ── X75: subtaskuri — marcaj de modificare per subtask (sg = amprentă, mts = momentul detectării) ──
+function subSig(s){return nhash((s.text||'')+'\u0001'+(s.done?1:0)+'\u0001'+(s.note||'')+'\u0001'+(s.depth||0));}
+function stampSubs(){
+  var now=Date.now(),ch=0,n=0;
+  function walk(o){(o&&o.subtasks||[]).forEach(function(s){var g=subSig(s);if(s.sg===undefined){s.sg=g;ch++;}else if(s.sg!==g){s.sg=g;s.mts=now;ch++;n++;}});}
+  S.freeTasks.forEach(walk);S.waitFreeTasks.forEach(walk);
+  S.items.forEach(function(p){(p.tasks||[]).forEach(walk);});
+  if(ch){lw(FK,S.freeTasks);lw(SK,S.items);lw(WFK,S.waitFreeTasks);}
+  if(n)traceLog('X75 stampSubs: '+n+' subtaskuri modificate local detectate');
+}
+function mergeSubs(base,other){
+  if(!other||!other.length)return base;
+  if(!base||!base.length)return other.slice();
+  var idx={};base.forEach(function(s,i){idx[s.id]=i;});
+  var out=null,add=[];
+  other.forEach(function(s){
+    var i=idx[s.id];
+    if(i===undefined){add.push(s);return;}
+    var b=base[i];
+    // același subtask pe ambele părți: câștigă versiunea modificată mai recent (mts)
+    if(s.sg!==undefined&&b.sg!==undefined&&s.sg!==b.sg&&(s.mts||0)>(b.mts||0)){if(!out)out=base.slice();out[i]=s;}
+  });
+  var res=out||base;
+  return add.length?res.concat(add):res;
+}
+// ── X75: la Pull-overwrite nota locală scrisă după ultima sincronizare nu se mai pierde când cea din cloud e goală ──
+function keepLocalNotesChangedSinceSync(lItems,lFree,rItems,rFree){
+  var lp=ls('pb-last-push-ts')||0,out=[],rf={},rp={};
+  (rFree||[]).forEach(function(x){rf[x.id]=x;});
+  (lFree||[]).forEach(function(l){
+    var r=rf[l.id];if(!r||r._deleted||l._deleted)return;
+    var ln=(l.note||'').trim(),rn=(r.note||'').trim();
+    if(ln&&!rn&&(l.modifiedTs||0)>lp)out.push({kind:'free',id:l.id,name:(l.name||'').split('\n')[0],localNote:ln,remoteNote:'',auto:'local'});
+  });
+  (rItems||[]).forEach(function(p){if(p.type==='project')rp[p.id]=p;});
+  (lItems||[]).forEach(function(p){
+    if(p.type!=='project')return;var q=rp[p.id];if(!q)return;
+    var rt={};(q.tasks||[]).forEach(function(t){rt[t.id]=t;});
+    (p.tasks||[]).forEach(function(t){
+      var r=rt[t.id];if(!r)return;
+      var ln=(t.note||'').trim(),rn=(r.note||'').trim();
+      if(ln&&!rn&&(t.modifiedTs||0)>lp)out.push({kind:'proj',projectId:p.id,taskId:t.id,name:(t.name||'').split('\n')[0],localNote:ln,remoteNote:'',auto:'local'});
+    });
+  });
+  if(out.length)traceLog('X75 note locale păstrate la Pull-overwrite (cloud gol): '+out.length);
+  return out;
+}
+// ── X83: concatenarea („noi+active") în ordinea crescătoare a numerelor X; cele fără număr, primele ──
+function subOrderAsc(arr){
+  var bl=[],cur=null;
+  arr.forEach(function(s,i){if(!cur||(s.depth||0)===0){cur={idx:[],xn:s.xn||0,i:bl.length};bl.push(cur);}cur.idx.push(i);});
+  var un=bl.filter(function(b){return !b.xn;});
+  var nu=bl.filter(function(b){return !!b.xn;}).sort(function(a,b){return a.xn-b.xn||a.i-b.i;});
+  var out=[];un.concat(nu).forEach(function(b){out=out.concat(b.idx);});
+  return out;
+}
+function buildNeterminate(o){
+  var arr=o.subtasks||[];
+  var ord=subOrderAsc(arr).map(function(i){return arr[i];});
+  return buildNeterminateOld({name:o.name,subtasks:ord});
+}
+
 function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _t1=performance.now();
   const app=document.getElementById('app');app.innerHTML='';
   app.appendChild(
@@ -9609,7 +9849,7 @@ memRecord();
   var okBtn=document.getElementById('fab-ok');
   var cancelBtn=document.getElementById('fab-cancel');
   if(!fabBtn||!overlay) return;
-  var _fh=document.getElementById('fab-help');if(_fh)_fh.addEventListener('click',function(){showHelpDialog('? Adăugare task — comenzi',HELP_ADD);});
+  var _fh=document.getElementById('fab-help');if(_fh)_fh.addEventListener('click',function(){showTextHelp('? Adăugare task — comenzi',HELP_ADD_TXT);});
 
   // C1 (V158): „preluare din clipboard" — înlocuiește conținutul câmpului dat
   function pasteClipboardInto(el){clipReadText(function(txt){el.value=txt;el.focus();});}
