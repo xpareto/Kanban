@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V179</title>
+<title>Project Board V180</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -3984,7 +3984,8 @@ function rData(){
     color:'#9CA3AF',label:'DATA',
     buttons:[
       {lbl:'Export JSON (+dată)',title:'Salvează pb-date-AAAA-LL-ZZ.json',fn:function(){doExp(true);}},
-      {lbl:'Import JSON',title:'Încarcă un fișier .json exportat anterior',fn:function(){impI2.click();}}
+      {lbl:'Import JSON',title:'Încarcă un fișier .json exportat anterior',fn:function(){impI2.click();}},
+      {lbl:'Export istoric TXT',title:'Text complet pentru AI: stare + jurnal',fn:function(){openHistoryExportDialog();}}
     ],
     backFn:function(){S.view='board';render();}
   }));
@@ -4214,6 +4215,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
   }
   function renderList(){
     listWrap.innerHTML='';
+    try{if(typeof bCntUpd==='function')bCntUpd();}catch(_){}
     if(!subtasksArr.length){
       var e=document.createElement('div');
       e.textContent='Niciun subtask încă.';
@@ -4285,7 +4287,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
   function doAdd(){
     var v=addInp.value.trim();if(!v)return;
     var depth=subtasksArr.length?subtasksArr[subtasksArr.length-1].depth:0;
-    subtasksArr.push({id:gid(),text:v,done:false,depth:depth});
+    subtasksArr.push({id:gid(),text:v,done:false,depth:depth,ts:Date.now()});
     addInp.value='';
     persistFn();renderList();
     listWrap.scrollTop=listWrap.scrollHeight;
@@ -4325,11 +4327,13 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
     if(!r.count){fbToast('Nu există subtaskuri neterminate','#1E2130','#9CA3AF',2500);return;}
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(r.text).then(function(){markSentQ(o,r.marks);renderList();fbToast('📤 '+r.count+' subtaskuri copiate ('+r.marks.length+' marcate cu ?)'+(r.skipDone?' · '+r.skipDone+' bifate sărite':''),'#0F2A1A','#10B981',4000);}).catch(function(){fbToast('⚠ Nu am putut scrie în clipboard','#1E2130','#F87171',3000);});}
   });
-  function syncDev(){var o=ownerNow();var on=!!(o&&o.dev);bDevS.textContent=on?'Prog ON':'Prog OFF';bDevS.style.background=on?'#065F46':'#2D3048';bCln.style.display=on?'':'none';bNet.style.display=on?'':'none';}
+  var bCnt=hb('C1·C2','#FCD34D',function(){var o=ownerNow();if(o)showCountersDialog(o);});
+  function bCntUpd(){var o=ownerNow();if(!o||!bCnt)return;var c=subCounters(o);bCnt.textContent='C1 '+c.c1+' · C2 '+c.c2;bCnt.style.display=o.dev?'':'none';bCnt.style.borderColor=(c.c1!==c.c2)?'#F59E0B':'#4B5563';}
+  function syncDev(){var o=ownerNow();var on=!!(o&&o.dev);bDevS.textContent=on?'Prog ON':'Prog OFF';bDevS.style.background=on?'#065F46':'#2D3048';bCln.style.display=on?'':'none';bNet.style.display=on?'':'none';bCntUpd();}
   var bGoN=hb('📝','#04120A',function(){var g=_og;doClose();openNoteFor(g);});
   bGoN.title='Mergi la notă';bGoN.style.background='#10B981';bGoN.style.border='1px solid #059669';
   if(_og)hbtns.appendChild(bGoN);
-  hbtns.appendChild(bDevS);hbtns.appendChild(bCln);hbtns.appendChild(bNet);syncDev();
+  hbtns.appendChild(bDevS);hbtns.appendChild(bCnt);hbtns.appendChild(bCln);hbtns.appendChild(bNet);syncDev();
   hbtns.appendChild(hb('?','#93C5FD',function(){showTextHelp('? Subtaskuri — comenzi',HELP_SUB_TXT);}));hrow.appendChild(h);hrow.appendChild(hbtns);hrow.appendChild(closeBtn);
   card.appendChild(hrow);card.appendChild(listWrap);card.appendChild(addRow);
   ov.appendChild(card);
@@ -4850,11 +4854,11 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
       confirmExtract(nw,ex,function(){
         var mx=0;o.subtasks.forEach(function(q){if(q.xn>mx)mx=q.xn;});
         (ta.value.match(/^\s*X(\d+)\s/gm)||[]).forEach(function(m){var k=parseInt(m.replace(/\D/g,''));if(k>mx)mx=k;});
-        var ln=ta.value.split('\n'),add=[];
+        var _mx0=mx;var ln=ta.value.split('\n'),add=[];
         (_clipTop?it.slice().reverse():it).forEach(function(x){var nt=normSub(x.text);var e=o.subtasks.find(function(q){return normSub(q.text)===nt;})||add.find(function(q){return normSub(q.text)===nt;});
-          if(!e){e={id:gid(),text:x.text,done:false,depth:0,xn:++mx};if(x.note)e.note=x.note;add.push(e);}else{if(!e.xn)e.xn=++mx;if(x.note&&!e.note)e.note=x.note;}
+          if(!e){e={id:gid(),text:x.text,done:false,depth:0,xn:++mx,ts:Date.now()};if(x.note)e.note=x.note;add.push(e);}else{if(!e.xn)e.xn=++mx;if(x.note&&!e.note)e.note=x.note;}
           ln[x.line]='X'+e.xn+' '+ln[x.line].replace(/^\s+/,'');});
-        ta.value=ln.join('\n');o.subtasks=_clipTop?add.concat(o.subtasks):o.subtasks.concat(add);
+        ta.value=ln.join('\n');o.subtasks=_clipTop?add.concat(o.subtasks):o.subtasks.concat(add);if(o.cGen===undefined)o.cGen=_mx0;o.cGen+=add.length;
         o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());
         if(notePreviewWrap)buildNotePreview(ta.value);
         saveFn(ta.value,false);currentNote=ta.value; // V172 (Y2): marcajele X se salvează imediat în notă
@@ -4866,6 +4870,8 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
     var bDev=mkSm(_dev?'Prog ON':'Prog OFF','#34D399');bDev.title='Mod program: arată butoanele de dezvoltare';if(_dev)bDev.style.background='#065F46';
     bDev.addEventListener('click',function(){var o=_own();if(!o)return;_dev=!_dev;o.dev=_dev;o.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());bDev.textContent=_dev?'Prog ON':'Prog OFF';bDev.style.background=_dev?'#065F46':'none';bBnB.style.display=_dev?'':'none';});
     clipRow.appendChild(bDev);
+    var bCntN=mkSm('C','#FCD34D');var updCntN=function(){var o=_own();if(!o)return;var c=subCounters(o);bCntN.textContent='C1 '+c.c1+'·C2 '+c.c2;bCntN.style.display=_dev?'':'none';};
+    bCntN.title='Contori: generate din notă / trimise în clipboard';bCntN.addEventListener('click',function(){var o=_own();if(o)showCountersDialog(o);});bDev.addEventListener('click',function(){updCntN();});clipRow.appendChild(bCntN);updCntN();
     var bGoSub=mkSm('☰ Sub','#10B981');bGoSub.title='Mergi la subtaskuri';
     bGoSub.style.background='#10B981';bGoSub.style.color='#04120A';bGoSub.style.border='1px solid #059669';
     bGoSub.addEventListener('click',function(){
@@ -5812,7 +5818,7 @@ function rBoard(){
     selRow1.appendChild(sbHelp);
     // SB1: rândul 2 — restul acțiunilor + Cancel mereu vizibil la final
     ap(selRow2,sbProj,sbAutoLink,sbSub);
-    if(selCount===2){
+    if(false&&selCount===2){
       var sbSort=mk('button','sel-btn');sbSort.textContent='⇅ Sortare dată';
       sbSort.style.background='#7C3AED';
       sbSort.addEventListener('click',function(){sortSelectedByDate();});
@@ -5824,20 +5830,20 @@ function rBoard(){
     sbOpmlSh.title='Partajează textul OPML (alegi aplicația)';
     sbOpmlSh.addEventListener('click',function(){exportSelectedOPML(true);});
     sbOpmlSh.addEventListener('touchend',function(e){e.preventDefault();exportSelectedOPML(true);},{passive:false});
-    var sbTxt=mk('button','sel-btn');sbTxt.textContent='📝 Text';
+    var sbTxt=mk('button','sel-btn');sbTxt.textContent='📤 Text';
     sbTxt.style.background='#0F766E';sbTxt.style.color='#fff';
-    sbTxt.title='Text formatat: nume, linie dublă, notă, bullet pe subtask';
-    sbTxt.addEventListener('click',function(){showSelectedText();});
-    sbTxt.addEventListener('touchend',function(e){e.preventDefault();showSelectedText();},{passive:false});
-    ap(selRow2,sbOpml,sbOpmlSh,sbTxt,sbClear);
+    sbTxt.title='Partajează textul selectatelor (nume, notă, subtaskuri); fereastra Android are și Copiază';
+    sbTxt.addEventListener('click',function(){shareSelectedText();});
+    sbTxt.addEventListener('touchend',function(e){e.preventDefault();shareSelectedText();},{passive:false});
+    var selRow4=div('');selRow4.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';ap(selRow4,sbOpmlSh,sbTxt);
     var selRow3=div('');selRow3.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap';
     var bU=mk('button','sel-btn');bU.textContent='U';bU.style.background='#DC2626';bU.addEventListener('click',function(){applyPrefixSelected('u');});
     var bW=mk('button','sel-btn');bW.textContent='W';bW.style.background='#A16207';bW.addEventListener('click',function(){applyPrefixSelected('w');});
     var bZ2=mk('button','sel-btn');bZ2.textContent='→ Zona 2';bZ2.style.background='#CA8A04';bZ2.addEventListener('click',function(){moveSelectedToZone2();});
     var bSt=mk('button','sel-btn');bSt.textContent='⊟ → Subtask';bSt.title='Primul selectat = ținta. Alegi: subtaskuri, subtask nou cu rânduri în notă, sau notă de subtask existent';bSt.style.background='#7C3AED';bSt.addEventListener('click',openSubtaskMoveMenu);
     var bDp=mk('button','sel-btn');bDp.textContent='↶ Depromovează';bDp.style.background='#0F766E';bDp.title='Inversa promovării: subtaskurile promovate selectate revin la tatăl lor';bDp.addEventListener('click',depromoteSelected);
-    ap(selRow3,bU,bW,bZ2,bSt,bDp);
-    sb.appendChild(selRow1);sb.appendChild(selRow2);sb.appendChild(selRow3);
+    ap(selRow3,bSt,bDp);bZ2.textContent='Z2';bZ2.title='Mută în Zona 2 (Z2-utile)';selRow1.insertBefore(bU,sbHelp);selRow1.insertBefore(bW,sbHelp);selRow1.insertBefore(bZ2,sbHelp);selRow1.insertBefore(sbClear,sbHelp);
+    sb.appendChild(selRow1);sb.appendChild(selRow2);sb.appendChild(selRow3);sb.appendChild(selRow4);
     root.appendChild(sb);
   }
 
@@ -8166,7 +8172,7 @@ function parseFabSubs(txt){
     if(!l.trim())return;
     var sp=(l.match(/^[ \t]*/)[0]).replace(/\t/g,'  ').length;
     var d=Math.floor(sp/2);if(d>prev+1)d=prev+1;if(d<0)d=0;
-    out.push({id:gid(),text:l.trim(),done:false,depth:d});prev=d;
+    out.push({id:gid(),text:l.trim(),done:false,depth:d,ts:Date.now()});prev=d;
   });
   execSubCmds(out);
   return out;
@@ -8209,7 +8215,7 @@ function buildNeterminateOld(o){
   return {text:lines.join('\n'),marks:marks,count:n,skipDone:skipDone};
 }
 // după copiere: doar rândurile Noi (B) primesc „? " (cele cu ! se schimbă doar manual; cele promovate N… nu se ating)
-function markSentQ(o,marks){
+function markSentQOld(o,marks){
   var n=0;
   marks.forEach(function(x){
     if(parsePromo(x.text))return;
@@ -8387,7 +8393,12 @@ function promoEl(v){
   t.addEventListener('dblclick',_ope);
   t.addEventListener('touchend',function(){dbt('pse'+v.st.id,_ope);});
   var tbg=sp('nbadge','T');tbg.style.cssText=BADGE_CSS+';background:#10B981;color:#04120A';tbg.title='Task tată (are subtaskuri promovate)';
-  r.appendChild(sc);r.appendChild(cb);r.appendChild(hd);r.appendChild(tbg);r.appendChild(t);r.appendChild(sbt);return r;
+  r.appendChild(sc);r.appendChild(cb);r.appendChild(hd);r.appendChild(tbg);var _sa=v.owner.subtasks||[],_si=_sa.indexOf(v.st),_sn=_si>=0?_subBlk(_sa,_si)-_si-1:0;
+  var sbt2=document.createElement('button');sbt2.textContent='↳☰'+(_sn?' '+_sn:'');sbt2.title='Subtaskurile acestui subtask';
+  sbt2.style.cssText='background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;padding:4px 6px;font-size:12px;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:30px;min-height:30px';
+  function osb2(e){e.stopPropagation();e.preventDefault();openSubtreeFor(v.pk,v.st.id,v.text);}
+  sbt2.addEventListener('click',osb2);sbt2.addEventListener('touchend',osb2,{passive:false});
+  r.appendChild(t);r.appendChild(sbt);r.appendChild(sbt2);return r;
 }
 function promoAppend(container,list,parentEl){
   if(!list)return;var ref=parentEl;
@@ -9497,7 +9508,7 @@ var HELP_WAIT=[
   ['Termen apropiat','dată în text','Zilnic, rândurile cu dată la cel mult 7 zile revin în Termene.'],
   ['Wait legat','copii wl::','Copiile create de prefixul w din NEXT: numele se sincronizează, bifarea unuia o închide și pe celălalt.']
 ];
-function showSelHelp(){
+function showSelHelpV178(){
   showHelpDialog('? Meniul de selecție',[
     ['Anulare selecție','✕ Cancel','Golește selecția.'],
     ['Depromovare','↶ Depromovează','Inversa promovării: subtaskurile promovate selectate (chenar + T) dispar din Prioritare/Zona 2/3 și rămân subtaskuri ale tatălui (vizibile din ☰). Tatăl revine în NEXT dacă nu mai are alte subtaskuri promovate.'],
@@ -9819,6 +9830,295 @@ function buildNeterminate(o){
   var ord=subOrderAsc(arr).map(function(i){return arr[i];});
   return buildNeterminateOld({name:o.name,subtasks:ord});
 }
+
+// ══ V180: selecție reorganizată, subtree promovat (X84), export istoric TXT (X89), contori C1/C2, help Date (X90) ══
+function shareSelectedText(){
+  var keys=Object.keys(S.selectedNext).sort(function(a,b){return S.selectedNext[a]-S.selectedNext[b];});
+  if(!keys.length){fbToast('Nicio selecție','#1E2130','#6B7280',2000);return;}
+  var parts=[];
+  keys.forEach(function(k){
+    var X=ownerFromSelKey(k);if(!X)return;
+    if(X.kind==='sub')parts.push(fmtTaskText({name:stripPromoPrefix(X.st.text||''),note:X.st.note||'',subtasks:[]}));
+    else parts.push(fmtTaskText(X.o,(X.kind==='proj'?X.P.name+' › ':'')+(X.o.name||'')));
+  });
+  shareOrCopyText('Text — '+parts.length+' taskuri selectate',parts.join('\n\n'));
+}
+function showSelHelp(){
+  showTextHelp('? Meniul de selecție',`EDITARE
+  ✎ Editează (doar la 1 rând selectat): nume + notă
+    pe un rând promovat: editorul subtaskului promovat
+EXPORT
+  vezi PARTAJARE
+MUTARE LA
+  Început Prioritare (↑ Top)
+    loc 1 – urgent: prefix U
+    loc 2 – wait: prefix W
+    loc 3 – ↑ Top (restul, imediat după U și W)
+  Sfârșit NEXT = Restul (↓ Bottom)
+  Sub o ancoră
+    primul selectat (↳ Sub primul): rândurile 2..n, în ordinea
+    selectării; rămân taskuri separate
+    proiectul
+      din grupul selectat (⊟ Auto-link)
+      ales din lista de proiecte existente (⊞ Project)
+      nou (⊞ Project, nume nou): preia și restul taskurilor
+      din proiectele sursă
+  Zona 2 – utile (Z2)
+PARTAJARE
+  📤 OPML (pentru WorkFlowy); fereastra Android are și „Copiază"
+  📤 Text: nume, notă, subtaskuri; fereastra Android are și
+  „Copiază"
+SUBTASK
+  Mutare ca subtask (⊟ → Subtask): 4 variante
+  Promovare: N / N+U / N+W în textul subtaskului
+  Depromovare (↶ Depromovează)
+PREFIXE ȘI ANULARE
+  U / W: pun sau scot prefixul u (urgent, roșu) / w (wait legat)
+  ✕ anulează selecția`);
+}
+// ── X84: subtaskurile unui subtask promovat (subarborele lui), editabile ca ecran separat ──
+function openSubtreeFor(oid,stId,label){
+  var o=ownerById(oid);if(!o||!o.subtasks)return;
+  var i=o.subtasks.findIndex(function(x){return x.id===stId;});if(i<0)return;
+  var root=o.subtasks[i],e=_subBlk(o.subtasks,i),base=(root.depth||0)+1;
+  var real=o.subtasks.slice(i+1,e);
+  var sub=real.map(function(k){return Object.assign({},k,{depth:Math.max(0,(k.depth||0)-base)});});
+  touchUse(oid);
+  _subOG=function(){return ownerById(oid);};
+  showSubtasksOverlay('Subtaskurile lui: '+(label||'').slice(0,60),sub,function(){
+    var oo=ownerById(oid);if(!oo)return;
+    var A=oo.subtasks,ri=A.findIndex(function(x){return x.id===stId;});if(ri<0)return;
+    var m={};real.forEach(function(k){m[k.id]=k;});
+    var nb=sub.map(function(c){var d=(c.depth||0)+base,r=m[c.id];if(r){Object.assign(r,c,{depth:d});return r;}return Object.assign({},c,{depth:d});});
+    A.splice.apply(A,[ri+1,real.length].concat(nb));real=nb;
+    oo.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());
+    promoAfterChange(oo);
+  });
+}
+// ── Contori mod programare: C1 = generate din notă, C2 = trimise în clipboard ──
+function subMaxXn(o){
+  var mx=0;(o.subtasks||[]).forEach(function(s){if(s.xn>mx)mx=s.xn;});
+  (String(o.note||'').match(/^\s*X(\d+)\s/gm)||[]).forEach(function(m){var k=parseInt(m.replace(/\D/g,''),10);if(k>mx)mx=k;});
+  return mx;
+}
+function subSentLegacy(o){var n=0;(o.subtasks||[]).forEach(function(s){var c=(s.text||'').trim().charAt(0);if(c==='?'||c==='!')n++;});return n;}
+function subCounters(o){
+  var c1=(o.cGen!==undefined)?o.cGen:subMaxXn(o);
+  var c2=(o.cSent!==undefined)?o.cSent:subSentLegacy(o);
+  var un=0;try{un=buildNeterminate(o).marks.filter(function(x){return !parsePromo(x.text);}).length;}catch(_){}
+  return {c1:c1,c2:c2,unsent:un};
+}
+function markSentQ(o,marks){
+  if(o.cSent===undefined)o.cSent=subSentLegacy(o);
+  var n=marks.filter(function(x){return !parsePromo(x.text);}).length;
+  markSentQOld(o,marks);
+  o.cSent+=n;
+  lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);
+}
+function showCountersDialog(o){
+  var c=subCounters(o),m=mkModal('Contori mod programare','#F59E0B',10006);
+  mmText(m.card,'C1 = '+c.c1+' — subtaskuri generate din notă cu ⇣ (total, cumulat; cele curățate cu 🧹 rămân numărate)','#FCD34D');
+  mmText(m.card,'C2 = '+c.c2+' — subtaskuri trimise în clipboard cu 📤 (total, cumulat)','#FCD34D');
+  if(c.c1===c.c2)mmText(m.card,'C1 = C2: tot ce a fost generat din notă a fost și trimis.','#A7F3D0');
+  else if(c.c1>c.c2)mmText(m.card,'C1 > C2 (diferență '+(c.c1-c.c2)+'): au fost generate subtaskuri care n-au fost încă trimise. Motive: n-ai apăsat 📤 sau le-ai bifat / curățat fără să le trimiți.','#FCA5A5');
+  else mmText(m.card,'C2 > C1 (diferență '+(c.c2-c.c1)+'): ai trimis și subtaskuri scrise de mână, care nu vin din notă.','#93C5FD');
+  mmText(m.card,'Acum, nebifate și netrimise încă: '+c.unsent+' (intră în secțiunea B la următorul 📤).','#CBD5E1');
+  mmText(m.card,'Numărătoarea e exactă de la V180; la taskurile mai vechi e estimată din marcajele X și din semnele ? / !.','#9CA3AF');
+  mmBtn(m.card,'✕ Închide','#374151','#E2E8F0',m.close);
+}
+HELP_SUB_TXT+=`
+  Contori C1 · C2 (cu Prog ON; apasă pe ei pentru detalii)
+    C1 = subtaskuri generate din notă cu ⇣ (total, cumulat)
+    C2 = subtaskuri trimise în clipboard cu 📤 (total, cumulat)
+    C1 > C2: generate, dar netrimise încă (sau bifate / curățate
+             fără să fi fost trimise)
+    C2 > C1: ai trimis și subtaskuri scrise de mână`;
+HELP_NOTE_TXT=HELP_NOTE_TXT.replace('    fără Prog: text oarecare, nu se creează subtaskuri',`    contori C1 · C2 (butonul „C1 … C2"): C1 = generate din notă,
+    C2 = trimise în clipboard; dacă diferă, apasă pe ei
+    fără Prog: text oarecare, nu se creează subtaskuri`);
+// ── X89: export istoric TXT pentru AI ──
+function dtf(ts){if(!ts)return '?';var d=new Date(ts),p=function(n){return String(n).padStart(2,'0');};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());}
+function histInd(t,pad){return String(t||'').replace(/\n/g,'\n'+pad);}
+function histSubs(o,ind){
+  var L=[];
+  (o.subtasks||[]).forEach(function(s){
+    var pad=ind+'  '.repeat(s.depth||0);
+    L.push(pad+(s.done?'[x] ':'[ ] ')+(s.xn?'X'+s.xn+' ':'')+histInd(s.text,pad+'    ')+(s.doneV?'  (bifat în '+s.doneV+')':'')+(s.ts?'  (creat '+dtf(s.ts)+')':''));
+    if(s.note&&s.note.trim())L.push(pad+'    NOTĂ: '+histInd(s.note.trim(),pad+'    '));
+  });
+  return L;
+}
+function histTask(o,pre,extra){
+  var L=[],meta=[];
+  L.push(pre+String(o.name||'').replace(/\n/g,' ⏎ '));
+  if(o.ts)meta.push('creat '+dtf(o.ts));else if(extra&&extra.cre)meta.push('creat '+dtf(extra.cre)+' (din jurnal)');
+  if(o.modifiedTs)meta.push('modificat '+dtf(o.modifiedTs));
+  if(o.doneTs)meta.push('terminat '+dtf(o.doneTs));else if(extra&&extra.don)meta.push('terminat '+dtf(extra.don)+' (din jurnal)');
+  if(o.zone)meta.push('zona '+o.zone);
+  if(meta.length)L.push('    ('+meta.join(' · ')+')');
+  if(o.note&&o.note.trim())L.push('    NOTĂ:\n      '+histInd(o.note.trim(),'      '));
+  var sb=histSubs(o,'      ');
+  if(sb.length){L.push('    SUBTASKURI:');L=L.concat(sb);}
+  if(o.attachments&&o.attachments.length)L.push('    ATAȘAMENTE: '+o.attachments.map(function(a){return (a.name||'')+(a.url?' <'+a.url+'>':'');}).join('; '));
+  return L;
+}
+function histProjName(id){var p=S.items.find(function(x){return x.id===id;});return p?p.name:'(proiect șters/arhivat)';}
+function histJournalLine(e){
+  var t='['+dtf(e.ts)+'] ',nt=(e.note&&e.note.trim())?'\n      NOTĂ: '+histInd(e.note.trim(),'      '):'';
+  switch(e.kind){
+    case 'task-create':return t+'TASK CREAT în proiectul „'+histProjName(e.projectId)+'" ('+(CN[e.colId]||e.colId)+'): '+e.taskName;
+    case 'task-move':return t+'MUTAT '+(CN[e.fromCol]||e.fromCol)+' → '+(CN[e.toCol]||e.toCol)+(e.projectId?' [proiect „'+histProjName(e.projectId)+'"]':' [task liber]')+': '+e.taskName;
+    case 'free-task-create':return t+'TASK LIBER CREAT'+(e.section?' ('+e.section+')':'')+': '+e.taskName;
+    case 'free-task-delete':return t+'TASK LIBER ȘTERS'+(e.section?' ('+e.section+')':'')+': '+e.taskName+nt;
+    case 'task-delete':return t+'TASK ȘTERS din proiectul „'+(e.projectName||histProjName(e.pid))+'": '+e.taskName+nt;
+    case 'project-create':return t+'PROIECT CREAT: '+e.projectName+(e.fromFree&&e.fromFree!==e.projectName?' (din „'+e.fromFree+'")':'');
+    case 'project-archive':return t+'PROIECT ARHIVAT: '+e.projectName+(e.tasks&&e.tasks.length?'\n'+e.tasks.map(function(x){return '      - ['+(CN[x.status]||x.status)+'] '+x.name;}).join('\n'):'');
+    case 'subtask-clean':return t+'SUBTASKURI CURĂȚATE ('+(e.items||[]).length+') din „'+e.taskName+'"'+(e.items&&e.items.length?'\n'+e.items.map(function(x){return '      - '+(x.xn?'X'+x.xn+' ':'')+String(x.text||'').split('\n')[0];}).join('\n'):'');
+    case 'cal-event-check':return t+'EVENIMENT CALENDAR BIFAT: '+e.taskName;
+    default:return t+e.kind+': '+(e.taskName||e.projectName||'');
+  }
+}
+function buildHistoryText(mode){
+  var L=[],now=Date.now();
+  L.push('KANBAN — ISTORIC COMPLET','Exportat: '+dtf(now)+' · versiune '+VERSION,'');
+  L.push('LEGENDĂ',
+    '  Document pentru căutare și sinteze (ex. cu un asistent AI). Datele sunt în ordinea: 1) starea actuală, 2) jurnalul cronologic.',
+    '  Date: AAAA-LL-ZZ OO:MM, ora locală. „(din jurnal)" = data a fost dedusă din jurnalul de acțiuni.',
+    '  Proiect: taskuri cu stare To Do / Wait / Done. Task liber: nu aparține unui proiect (NEXT sau WAIT).',
+    '  zona green = Prioritare, red = Termene, yellow = Zona 2. SUBTASKURI: [ ] nebifat, [x] bifat; X12 = marcaj din notă.',
+    '  Limite: nota are doar ultima variantă; subtaskurile create înainte de V180 nu au dată de creare; ce a fost golit din jurnal nu mai există.','');
+  var cre={},don={};
+  S.journal.forEach(function(e){
+    if(!e.projectId)return;
+    var k=e.projectId+'\u0001'+e.taskName;
+    if(e.kind==='task-create'&&(!cre[k]||e.ts<cre[k]))cre[k]=e.ts;
+    if(e.kind==='task-move'&&e.toCol==='done'&&(!don[k]||e.ts>don[k]))don[k]=e.ts;
+  });
+  L.push('════════ 1. STAREA ACTUALĂ ════════','');
+  var pc=0,tc=0;
+  L.push('── PROIECTE ──');
+  S.items.forEach(function(p){
+    if(p.type==='section'){L.push('','§ SECȚIUNE: '+p.name);return;}
+    if(p.type!=='project')return;
+    pc++;L.push('','■ PROIECT: '+p.name+'  ('+(p.tasks||[]).length+' taskuri)');
+    ['next','wait','done'].forEach(function(st){
+      (p.tasks||[]).filter(function(t){return t.status===st;}).forEach(function(t){
+        tc++;
+        var k=p.id+'\u0001'+t.name;
+        histTask(t,'  ['+(CN[st]||st)+'] ',{cre:cre[k],don:don[k]}).forEach(function(l){L.push(l);});
+      });
+    });
+  });
+  L.push('','── TASKURI LIBERE — NEXT ──');
+  var nf=0;
+  S.freeTasks.forEach(function(f){
+    if(/^\*[123]/.test(f.name||'')||!(f.name||'').trim())return;
+    nf++;histTask(f,'  • '+((f.id||'').indexOf('cal::')===0?'[calendar] ':''),null).forEach(function(l){L.push(l);});
+  });
+  L.push('','── TASKURI LIBERE — WAIT ──');
+  var nw=0;
+  S.waitFreeTasks.forEach(function(f){
+    if((f.id||'').indexOf('wl::')===0)return;
+    nw++;histTask(f,'  • ',null).forEach(function(l){L.push(l);});
+  });
+  L.push('','── SHARE (inbox) ──');
+  S.shareTasks.forEach(function(it){
+    L.push('  • ['+dtf(it.ts)+'] '+histInd(it.name,'    '));
+  });
+  L.push('','Sumar stare: '+pc+' proiecte, '+tc+' taskuri de proiect, '+nf+' taskuri libere NEXT, '+nw+' WAIT, '+S.shareTasks.length+' iteme Share.');
+  if(mode!=='state'){
+    L.push('','════════ 2. JURNAL CRONOLOGIC ('+S.journal.length+' intrări) ════════','');
+    S.journal.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);}).forEach(function(e){L.push(histJournalLine(e));});
+  }
+  if(mode==='all'){
+    L.push('','════════ 3. JURNAL SHARE ('+S.shareJournal.length+' intrări) ════════','');
+    S.shareJournal.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);}).forEach(function(e){
+      L.push('['+dtf(e.ts)+'] '+String(e.kind||'share').toUpperCase()+': '+histInd(e.text||'','    '));
+    });
+  }
+  return L.join('\n');
+}
+function exportHistoryTxt(mode){
+  var txt=buildHistoryText(mode),d=new Date(),p=function(n){return String(n).padStart(2,'0');};
+  var name='kanban-istoric-'+String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate())+'.txt';
+  dlBlob(txt,name,'text/plain',true);
+  fbToast('📚 '+name+' ('+Math.round(txt.length/1024)+' KB) — în Descărcări','#0F2A1A','#10B981',5000);
+}
+function openHistoryExportDialog(){
+  var m=mkModal('📚 Export istoric TXT','#0369A1',10003);
+  mmText(m.card,'Un singur fișier text, cu proiecte, taskuri, note, subtaskuri, date de creare / modificare / terminare / ștergere, ca să poți cere unui AI să caute și să facă sinteze. Începe cu o legendă a formatului.','#9CA3AF');
+  mmBtn(m.card,'Stare actuală + jurnal (recomandat)','#0369A1','#fff',function(){m.close();exportHistoryTxt('journal');});
+  mmBtn(m.card,'Doar starea actuală (fișier mai mic)','#2D3048','#93C5FD',function(){m.close();exportHistoryTxt('state');});
+  mmBtn(m.card,'Tot, inclusiv jurnalul Share (mare)','#2D3048','#C4B5FD',function(){m.close();exportHistoryTxt('all');});
+  mmBtn(m.card,'✕ Renunț','#374151','#E2E8F0',m.close);
+}
+// ── X90: ce conține ecranul Date și exportul JSON ──
+HELP_DATA_TXT=`CE CONȚINE ECRANUL DATE
+  Export JSON · Import JSON · Export istoric TXT
+  rândul cu numere (proiecte, taskuri, jurnal, Share)
+  panoul Firebase Sync (Push, Pull, Deconectare)
+  lista backup-urilor locale (💾 și Restore)
+
+EXPORT JSON (+dată)  →  pb-date-AAAA-LL-ZZ.json
+  conține
+    proiecte, cu taskurile lor (To Do / Wait / Done), notele,
+    subtaskurile și atașamentele fiecărui task
+    taskuri libere din NEXT (inclusiv marcatorii *1 *2 *3 și
+    evenimentele de calendar) și ordinea lor
+    taskuri libere din WAIT și ordinea lor
+    itemele din Share
+    jurnalul acțiunilor și jurnalul Share
+    etichetele rapide
+  NU conține
+    bifările din Share, marcajele de ștergere, backup-urile,
+    preferințele (tab, sortări ★ 🕘), tokenurile Google / Drive,
+    reamintirile FINALIZARE în așteptare, draftul notei
+IMPORT JSON
+  înlocuiește datele locale cu cele din fișier (fără confirmare)
+  și le marchează ca modificate, ca să ajungă în cloud
+
+EXPORT ISTORIC TXT  →  kanban-istoric-AALLZZ.txt
+  un text pentru căutare și sinteze cu AI: starea actuală (proiecte,
+  taskuri, note, subtaskuri, date) + jurnalul cronologic (creări,
+  mutări, ștergeri, arhivări); opțional și jurnalul Share
+
+FIREBASE SYNC (cloud Firestore)
+  ● conectat · email
+    ești logat în cloud
+  ↑ Push
+    de fapt Smart Sync (la fel ca ☁), compară cloud-ul cu ultima
+    sincronizare
+      local mai nou: scrie local în cloud
+      cloud mai nou + modificări locale: merge, apoi push
+      cloud mai nou, fără modificări locale: Pull cu suprascriere
+  ↓ Pull
+    aduce cloud-ul peste local (suprascriere), după un backup
+    automat; te avertizează dacă în cloud e cu 10% mai puțin
+  Deconectare
+    te scoate din cont, nu șterge date
+
+BACKUP-URI LOCALE (n/5)
+  Ce sunt
+    copii ale stării locale: proiecte, taskuri libere, Wait,
+    ordine, etichete (fără Share și jurnale)
+  Când se fac
+    automat, înainte de fiecare Pull: manual, la pornire, la
+    revenirea în aplicație, la sincronizare
+  Câte
+    ultimele 5, cele mai noi primele; cu Pull-uri dese cele bune
+    se pierd repede
+  Unde stau
+    în memoria browserului; dispar dacă Android curăță datele
+    aplicației
+  💾 Salvează pe disc
+    slv-backup-firebase-N-AALLZZ.json (N = poziția 1–5, AALLZZ =
+    data salvării), în Descărcări; poate fi importat cu Import JSON
+  Restore
+    după confirmare, înlocuiește datele locale cu acel backup; se
+    marchează ca modificate și ajunge în cloud
+
+RECOMANDARE
+  Înainte de Restore sau de un Pull riscant, fă Export JSON`;
 
 function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();var _t1=performance.now();
   const app=document.getElementById('app');app.innerHTML='';
