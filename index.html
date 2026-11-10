@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V182</title>
+<title>Project Board V183</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -298,7 +298,7 @@ function fbPayloadShare(){
   return {shareTasks:S.shareTasks,mergeFlags:S.mergeFlags,shareDeleted:shareDelGet(),ts:Date.now()};
 }
 function fbPayloadJournal(){
-  return {journal:S.journal,ts:Date.now()};
+  return {journal:S.journal,jrDeleted:jrDelGet(),ts:Date.now()};
 }
 function fbPayloadShareJournal(){
   return {shareJournal:S.shareJournal,ts:Date.now()};
@@ -1024,8 +1024,9 @@ async function fbPull(mode){try{stampSubs();stampStatus();}catch(_){}
     }
     // Journal: întotdeauna append+dedup
     if(rJournal){
+      jrDelImport(rJournal.jrDeleted);var _jd=jrDelGet();if(Object.keys(_jd).length){var _jl=S.journal.length;S.journal=S.journal.filter(function(x){return !_jd[x.ts+'|'+(x.kind||'')];});if(S.journal.length!==_jl)lw(JK,S.journal);}
       var seen=new Set(S.journal.map(function(x){return x.ts+'|'+(x.kind||'');}));
-      var extra=(rJournal.journal||[]).filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''));});
+      var extra=(rJournal.journal||[]).filter(function(x){return !seen.has(x.ts+'|'+(x.kind||''))&&!_jd[x.ts+'|'+(x.kind||'')];});
       if(extra.length){S.journal=S.journal.concat(extra).sort(function(a,b){return a.ts-b.ts;});lw(JK,S.journal);}
     }
     if(rSJ){
@@ -5691,7 +5692,7 @@ function rBoard(){
   nJumpProj.textContent='↓P';nJumpProj.title='Salt la Projects';nJumpWait.textContent='↓W';nJumpWait.title='Salt la Waiting';nJumpShare.textContent='↓S';nJumpShare.title='Salt la Share';
   nd.style.gap='6px';nd.style.padding='6px 10px';nd.style.flexWrap='nowrap';
   var _nsTxt=sp('stxt','NEXT');_nsTxt.style.letterSpacing='.12em';
-  ap(nd,_nsTxt,nCount,nJumpProj,nJumpWait,nJumpShare);
+  ap(nd,_nsTxt,nCount,nJumpProj,nJumpWait,nJumpShare,mkHdrBtn('?','#93C5FD',function(){showTextHelp('? Bara NEXT',HELP_NEXT_TXT);}));
   root.appendChild(nd);
 
   // T1 (V141, experimental): contoare pe categorii — folosite atât de banda de taburi, cât și de mesajul „gol"
@@ -5706,15 +5707,17 @@ function rBoard(){
   // ── T1 (V141, experimental): bandă de taburi filtrate sub NEXT — nu afectează view-ul „Toate" ──
   (function(){
     var tabDefs=[
-      {id:'all',lbl:'Toate',color:'#9CA3AF'},
       {id:'prioritare',lbl:'🟢 Prioritare',color:'#10B981'},
-      {id:'termene',lbl:'🔴 Termene',color:'#EF4444'},
+      {id:'zona2',lbl:'🟡 Z2-utile',color:'#EAB308'},
+      {id:'waitjump',lbl:'⏳ Wait',color:'#6366F1'},
+      {id:'restul',lbl:'⚪ Restul',color:'#9CA3AF'},
       {id:'calendar',lbl:'📅 Calendar',color:'#3B82F6'},
-      {id:'zona2',lbl:'Z2-utile',color:'#EAB308'},
-      {id:'restul',lbl:'⚪ Restul',color:'#9CA3AF'}
+      {id:'termene',lbl:'🔴 Termene',color:'#EF4444'},
+      {id:'all',lbl:'Toate',color:'#9CA3AF'}
     ];
     var tb=div('');
     tb.style.cssText='display:flex;gap:4px;align-items:center;padding:4px 8px;background:#111827;border-bottom:1px solid #1F2937;overflow-x:auto;flex-wrap:nowrap';
+    var actsRow=div('');actsRow.style.cssText='display:flex;gap:6px;align-items:center;padding:4px 8px;background:#0B1220;border-bottom:1px solid #1F2937;overflow-x:auto;flex-wrap:nowrap';var _bFq=null;
     // P1 (V160): grupare vizuală a zonei Prioritare pe proiecte — doar pe tabul clasic
     // „Prioritare" (nu în Split-View). Activarea sare automat pe acel tab și iese din Split,
     // ca grupările (colorate distinct per proiect) să fie chiar vizibile. Nu atinge S.nextOrder —
@@ -5730,7 +5733,7 @@ function rBoard(){
     }
     p1Btn.addEventListener('click',doToggleP1);
     p1Btn.addEventListener('touchend',function(e){e.preventDefault();doToggleP1();},{passive:false});
-    p1Btn.style.padding='3px 7px';p1Btn.style.fontSize='10px';p1Btn.style.marginLeft='auto';nd.appendChild(p1Btn);
+    p1Btn.style.padding='3px 7px';p1Btn.style.fontSize='10px';p1Btn.style.marginLeft='0';
     // SV1: buton split-view (▣) — imediat în stânga butonului „Toate"
     var svBtn=mk('button','');
     svBtn.textContent=S.nextSplitView?'▣ Split ✓':'▣ Split';
@@ -5739,7 +5742,7 @@ function rBoard(){
     function doToggleSplit(){S.nextSplitView=!S.nextSplitView;render();}
     svBtn.addEventListener('click',doToggleSplit);
     svBtn.addEventListener('touchend',function(e){e.preventDefault();doToggleSplit();},{passive:false});
-    svBtn.style.padding='3px 7px';svBtn.style.fontSize='10px';nd.appendChild(svBtn);
+    svBtn.style.padding='3px 7px';svBtn.style.fontSize='10px';actsRow.appendChild(grpLbl('Reorganizare'));actsRow.appendChild(svBtn);actsRow.appendChild(p1Btn);
     // X70: sortare după utilizare — doar la afișare, pe tabul curent (nu pe „Toate" și nu în Split)
     function mkUseBtn(mode,ic,ttl){
       var on=S.useSort===mode;
@@ -5755,23 +5758,23 @@ function rBoard(){
       b.addEventListener('touchend',function(e){e.preventDefault();go();},{passive:false});
       return b;
     }
-    nd.appendChild(mkUseBtn('freq','★','Sortare după frecvența utilizării (apasă din nou = ordinea reală)'));
-    nd.appendChild(mkUseBtn('recent','🕘','Sortare după ultima utilizare, cele mai recente sus (apasă din nou = ordinea reală)'));
-    var _tabCur=S.nextSplitView?'split':S.nextTab;nd.appendChild(mkHdrBtn('🧹','#FCD34D',function(){openCleanDialog(_tabCur);}));
+    (_bFq=mkUseBtn('freq','★','Sortare după frecvența utilizării (apasă din nou = ordinea reală)'));
+    actsRow.appendChild(grpLbl('Sortare'));actsRow.appendChild(mkUseBtn('recent','🕘','Sortare după ultima utilizare, cele mai recente sus (apasă din nou = ordinea reală)'));
+    var _tabCur=S.nextSplitView?'split':S.nextTab;actsRow.appendChild(_bFq);actsRow.appendChild(grpLbl('Curățenie'));actsRow.appendChild(mkHdrBtn('🧹','#FCD34D',function(){openCleanDialog(_tabCur);}));
     var _allBtn=null;
     tabDefs.forEach(function(td){
       var active=!S.nextSplitView&&S.nextTab===td.id;
       var btn=mk('button','');
-      btn.textContent=td.lbl+' '+(_catCounts[td.id]||0);
+      btn.textContent=td.lbl+' '+(td.id==='waitjump'?getWR().length:(_catCounts[td.id]||0));
       btn.style.cssText='flex-shrink:0;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;touch-action:manipulation;border:1px solid '+td.color+';background:'+(active?td.color:'transparent')+';color:'+(active?'#0F1117':td.color);
       btn.style.padding='3px 7px';btn.style.fontSize='10px';
-      function doTab(){S.nextTab=td.id;S.nextSplitView=false;render();}
+      function doTab(){if(td.id==='waitjump'){doJumpWait();return;}S.nextTab=td.id;S.nextSplitView=false;render();}
       btn.addEventListener('click',doTab);
       btn.addEventListener('touchend',function(e){e.preventDefault();doTab();},{passive:false});
       if(td.id==='all'){btn.style.marginLeft='auto';_allBtn=btn;}else tb.appendChild(btn);
     });
     if(_allBtn)tb.appendChild(_allBtn);
-    root.appendChild(tb);
+    root.appendChild(tb);root.appendChild(actsRow);
   })();
 
   // ── Bara selecție multiplă (apare când selectMode=true) ──
@@ -5977,8 +5980,9 @@ function rBoard(){
       var cc=getNextRowCategory(rr);
       if(cc==='marker'||cc!==S.nextTab)return;
       var uid=rr.isFree?rr.id:rr.taskId,u=_um[uid]||{c:0,l:0};
-      _rs.push({id:uid,c:u.c,l:u.l,i:ri});
+      _rs.push({id:uid,c:u.c,l:Math.max(u.l,(function(){var oo=promoOwner(rr);return (oo&&oo.ts)||0;})()),i:ri});
     });
+    if(S.nextTab==='prioritare'){var _ppU=promoPlan(nr),_vs=_ppU.orph.slice();Object.keys(_ppU.by).forEach(function(k){_vs=_vs.concat(_ppU.by[k]);});_vs.forEach(function(v){var u2=_um['v::'+v.st.id]||{c:0,l:0};_rs.push({id:'v::'+v.st.id,c:u2.c,l:Math.max(u2.l,v.st.pm||0,v.st.ts||0),i:-1});});}
     _rs.sort(function(a,b){
       if(S.useSort==='freq'){if(b.c!==a.c)return b.c-a.c;if(b.l!==a.l)return b.l-a.l;}
       else if(b.l!==a.l)return b.l-a.l;
@@ -6003,7 +6007,7 @@ function rBoard(){
   var _rg2Active=false;
   if(S.nextTab==='prioritare'&&!_p1Active&&!_useActive){nr.forEach(function(rr){if(getNextRowCategory(rr)==='prioritare'&&(/^[wWuU][ .]/.test(rr.tname||'')||promoList(rr).some(function(v){return v.pri;})))_rg2Active=true;});if(_rg2Active)nsec.style.cssText='display:flex;flex-direction:column';}
   var _pp=promoPlan(nr);var _newMap=newIdsGet();
-  if(!_rg2Active&&S.nextTab==='prioritare'&&!_p1Active&&!_useActive&&_pp.orph.some(function(v){return v.pri;})){_rg2Active=true;nsec.style.cssText='display:flex;flex-direction:column';}if(S.nextTab==='prioritare'||S.nextTab==='all'){_pp.orph.forEach(function(v){var e=promoEl(v);e.style.order=_rg2Active?(v.pri==='u'?0:v.pri==='w'?1:-1):-1;nsec.appendChild(e);});}
+  if(!_rg2Active&&S.nextTab==='prioritare'&&!_p1Active&&!_useActive&&_pp.orph.some(function(v){return v.pri;})){_rg2Active=true;nsec.style.cssText='display:flex;flex-direction:column';}if(S.nextTab==='prioritare'||S.nextTab==='all'){_pp.orph.forEach(function(v){var e=promoEl(v);e.style.order=_useActive?String(_useRank['v::'+v.st.id]!=null?_useRank['v::'+v.st.id]:9999):(_rg2Active?(v.pri==='u'?0:v.pri==='w'?1:2):-1);nsec.appendChild(e);});}
   var _bandColor=null;
   var _firstFutureFound=false;
   nr.forEach((row,idx)=>{
@@ -6411,7 +6415,7 @@ function rBoard(){
     _scb.addEventListener('touchend',_togSel,{passive:false});
     r.insertBefore(_scb,r.firstChild);
     if(!row.isFree)twoLineRow(r,tn);
-    nsec.appendChild(r);if(S.nextTab==='prioritare'&&_rowCat==='prioritare')promoAppend(nsec,_pp.by[row.isFree?row.id:row.taskId],r);
+    nsec.appendChild(r);if(S.nextTab==='prioritare'&&_rowCat==='prioritare'){if(_useActive){(_pp.by[row.isFree?row.id:row.taskId]||[]).forEach(function(v){var e2=promoEl(v),k2='v::'+v.st.id;e2.style.order=String(_useRank[k2]!=null?_useRank[k2]:9999);nsec.appendChild(e2);});}else promoAppend(nsec,_pp.by[row.isFree?row.id:row.taskId],r);}
   });
 
   // Add free task
@@ -6840,7 +6844,7 @@ function rBoard(){
       const nb=document.createElement('button');
       nb.className='share-to-next';
       nb.textContent='→ Next';
-      function doToNext(e){
+      function doToNext(e){try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(sname);}catch(_){}
         e.stopPropagation();
         promptShareTitle(sname,function(title,dest){
           placeShared([{sid:sid,name:title,text:sname}],dest);
@@ -8406,11 +8410,11 @@ function promoEl(v){
   r.appendChild(sc);r.appendChild(cb);r.appendChild(hd);r.appendChild(tbg);var _sa=v.owner.subtasks||[],_si=_sa.indexOf(v.st),_sn=_si>=0?_subBlk(_sa,_si)-_si-1:0;
   var sbt2=document.createElement('button');sbt2.textContent='↳☰'+(_sn?' '+_sn:'');sbt2.title='Subtaskurile acestui subtask';
   sbt2.style.cssText='background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;padding:4px 6px;font-size:12px;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:30px;min-height:30px';
-  function osb2(e){e.stopPropagation();e.preventDefault();openSubtreeFor(v.pk,v.st.id,v.text);}
+  function osb2(e){e.stopPropagation();e.preventDefault();touchUse('v::'+v.st.id);openSubtreeFor(v.pk,v.st.id,v.text);}
   sbt2.addEventListener('click',osb2);sbt2.addEventListener('touchend',osb2,{passive:false});
   var sbn=document.createElement('button');sbn.textContent='✎';sbn.title='Nota subtaskului';var _hn=!!(v.st.note&&v.st.note.trim());
   sbn.style.cssText='background:'+(_hn?'#FFF8EC':'#F3F4F6')+';color:'+(_hn?'#F59E0B':'#9CA3AF')+';border:1px solid '+(_hn?'#F59E0B':'#D1D5DB')+';border-radius:6px;padding:4px 7px;font-size:13px;cursor:pointer;flex-shrink:0;touch-action:manipulation;min-width:30px;min-height:30px';
-  function onote(e){e.stopPropagation();e.preventDefault();_noteSub={oid:v.pk,sid:v.st.id};showNoteOverlay((v.text||'').slice(0,60),v.st.note||'','',function(n){v.st.note=n;v.owner.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());render();});}
+  function onote(e){e.stopPropagation();e.preventDefault();touchUse('v::'+v.st.id);_noteSub={oid:v.pk,sid:v.st.id};showNoteOverlay((v.text||'').slice(0,60),v.st.note||'','',function(n){v.st.note=n;v.owner.modifiedTs=Date.now();lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());render();});}
   sbn.addEventListener('click',onote);sbn.addEventListener('touchend',onote,{passive:false});
   r.appendChild(t);r.appendChild(sbt);r.appendChild(sbt2);r.appendChild(sbn);return r;
 }
@@ -8988,6 +8992,7 @@ function planTwoLine(W,gap,lw,tw,bw){
   return {mode:'split',k:k};
 }
 function layoutTwoLine(r){
+  if(r.querySelector('input,textarea'))return;
   if(r._orig){ // revenire la aranjarea plată înainte de măsurare
     while(r.firstChild)r.removeChild(r.firstChild);
     r._orig.forEach(function(c){r.appendChild(c);});
@@ -9126,7 +9131,7 @@ function openSubtaskEditor(o,st){
   mmBtn(m.card,'✓ Salvează','#10B981','#04120A',function(){
     var nb=ta.value.trim();
     if(nb)st.text=pre+nb;
-    st.note=nt.value;touchUse(o.id);
+    st.note=nt.value;touchUse(o.id);touchUse('v::'+st.id);
     o.modifiedTs=Date.now();
     lw(SK,S.items);lw(FK,S.freeTasks);lw(WFK,S.waitFreeTasks);lw('pb-local-dirty-ts',Date.now());
     m.close();render();
@@ -9243,7 +9248,14 @@ function openJournalEditor(e,goJournal){
   function btn(t,bg,col,fn){var b=document.createElement('button');b.textContent=t;b.style.cssText='background:'+bg+';color:'+col+';border:none;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer;touch-action:manipulation;white-space:nowrap';b.addEventListener('click',fn);row.appendChild(b);return b;}
   function close(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
   (function(){var lkb=mkLinksBox();card.appendChild(lkb);var tx=function(){return (nameTa?nameTa.value:(e.taskName||e.projectName||''))+'\n'+(noteTa?noteTa.value:(e.note||''));};lkb.update(tx());if(nameTa)nameTa.addEventListener('input',function(){lkb.update(tx());});if(noteTa)noteTa.addEventListener('input',function(){lkb.update(tx());});})();
-  btn(k==='task-move'?'↩ Reactivează':'↩ Refă','#10B981','#04120A',function(){
+  row.style.flexWrap='wrap';
+  var _snap=null;
+  if(k==='free-task-delete'||k==='task-delete'){try{_snap=e.taskSnap?JSON.parse(e.taskSnap):null;}catch(_){_snap=null;}if(!_snap)_snap={name:e.taskName,note:e.note||''};if(!_snap.subtasks)_snap.subtasks=[];}
+  if(_snap)btn('☰ Sub','#374151','#C4B5FD',function(){
+    showSubtasksOverlay((e.taskName||'').slice(0,50),_snap.subtasks,function(){e.taskSnap=JSON.stringify(_snap);lw(JK,S.journal);lw('pb-local-dirty-ts',Date.now());});
+    var _so=document.body.lastElementChild;if(_so)_so.style.zIndex='10002';
+  });
+  btn(k==='task-move'?'↩ Reactivează':(k==='free-task-delete'||k==='task-delete')?'↩ Refă în Prioritare':'↩ Refă','#10B981','#04120A',function(){
     var nm=nameTa?(nameTa.value.trim()||e.taskName||e.projectName):'';
     if(k==='free-task-delete'){
       var nft=restoreFreeDelete({taskName:nm,note:noteTa.value,taskSnap:e.taskSnap});close();S.sq='';S.sr=null;_x3Tab(nft.id,nft.name);render();
@@ -9253,6 +9265,7 @@ function openJournalEditor(e,goJournal){
       var e2=Object.assign({},e);
       try{var sn=JSON.parse(e.taskSnap);sn.name=nm;sn.note=noteTa.value;e2.taskSnap=JSON.stringify(sn);}catch(_){}
       var nt=restoreTaskDelete(e2);if(!nt)return;
+      try{if(nt.status==='next')placeProjTaskInNext(e.pid,nt.id);}catch(_){}
       close();S.sq='';S.sr=null;render();
       fbToast('↩ Task refăcut în proiect','#0F2A1A','#10B981',2500);
       setTimeout(function(){var inNext=getNR().some(function(rr){return !rr.isFree&&rr.taskId===nt.id;});if(inNext)_x21Task({taskId:nt.id});else navigateTo(e.pid);},60);
@@ -10283,7 +10296,7 @@ function buildUtileText(){
   L.push('','Total: '+n+' taskuri în Z2-utile.');
   return L.join('\n');
 }
-function exportUtileTxt(){
+function exportUtileTxtOld(){
   var txt=buildUtileText(),d=new Date(),p=function(n){return String(n).padStart(2,'0');};
   var name='kanban-utile-'+String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate())+'.txt';
   dlBlob(txt,name,'text/plain',true);
@@ -10298,6 +10311,142 @@ function openHistoryExportDialog(){
   mmBtn(m.card,'Doar starea actuală, fără jurnal','#2D3048','#93C5FD',function(){m.close();exportHistoryTxt('state');});
   mmBtn(m.card,'Tot, inclusiv jurnalul Share (mare)','#2D3048','#C4B5FD',function(){m.close();exportHistoryTxt('all');});
   mmBtn(m.card,'✕ Renunț','#374151','#E2E8F0',m.close);
+}
+
+// ══ V183: ștergere Z2 după export (X105), bara NEXT rearanjată + help (X107), jurnal cu marcaje de ștergere ══
+function grpLbl(t){var s=document.createElement('span');s.textContent=t;s.style.cssText='font-size:9px;font-weight:800;color:#6B7280;letter-spacing:.05em;text-transform:uppercase;flex-shrink:0;margin-left:4px';return s;}
+var HELP_NEXT_TXT=`SCHIMBARE TAB CURENT
+  Prioritare 🟢
+    zona verde: ce lucrezi acum. Rândurile cu prefix u (roșii) și
+    w (galben-maro) stau primele; urmează restul.
+  Utile 🟡
+    zona Z2: informații utile, fără termen.
+  Wait ⏳
+    sare la secțiunea WAITING (la fel ca ↓W).
+  Restul ⚪
+    tot ce nu e în nicio zonă marcată.
+  Calendar 📅
+    evenimente din Google Calendar de azi și mâine; ✓ le bifează
+    definitiv.
+  Termene 🔴
+    taskuri cu dată, în ordine cronologică.
+  Toate
+    toate zonele, cu marcatori *1 *2 *3; aici tragi rândurile
+    cu ⠿.
+REORGANIZARE
+  Split ▣
+    două coloane: Prioritare | Termene + Calendar; doar citire și
+    bifare.
+  Pe proiecte 📂
+    grupează pe proiecte, la alegere: doar din Prioritare sau
+    cumulat (Prioritare + Utile + Restul, pe culori).
+SORTARE (doar la afișare; a doua apăsare revine la ordinea reală)
+  Ultima utilizare 🕘
+    sus ce ai atins recent (✎ ☰ 📎, salvare, creare). Ignoră
+    prefixele u / w. Un task fără istoric se ia după data creării.
+  Frecvență ★
+    sus ce ai folosit cel mai des. Nu are legătură cu * din
+    numele unui To Do de proiect (acela decide ce apare în NEXT).
+CURĂȚENIE
+  Curățenie 🧹
+    comenzile tabului curent (export, golire, dubluri) + memorie.
+SALT ÎN LISTĂ
+  ↓P ↓W ↓S
+    sare la Proiecte, Waiting, Share.`;
+// ── jurnal: marcaje de ștergere, trimise și aplicate la sincronizare (altfel Pull-ul readuce intrările) ──
+var JRD_KEY='pb-jr-deleted';
+function jrKey(e){return e.ts+'|'+(e.kind||'');}
+function jrDelGet(){try{return JSON.parse(localStorage.getItem(JRD_KEY)||'{}');}catch(_){return {};}}
+function jrDelMark(keys){var m=jrDelGet(),n=Date.now();keys.forEach(function(k){m[k]=n;});try{localStorage.setItem(JRD_KEY,JSON.stringify(m));}catch(_){}}
+function jrDelImport(remote){
+  if(!remote)return;
+  var m=jrDelGet(),ch=false;
+  Object.keys(remote).forEach(function(k){if(!m[k]){m[k]=remote[k];ch=true;}});
+  if(ch){try{localStorage.setItem(JRD_KEY,JSON.stringify(m));}catch(_){}}
+}
+async function fbPushJournalNow(){
+  if(!fbDb||!fbUser)return {ok:false,err:'neconectat'};
+  try{await fbDb.collection('users').doc(fbUser.uid+'-journal').set(Object.assign({uid:fbUser.uid},fbPayloadJournal()));return {ok:true};}
+  catch(e){return {ok:false,err:e.message||String(e)};}
+}
+// ── X105: după exportul Z2-utile ──
+function z2EntryIdx(r){
+  return S.nextOrder.findIndex(function(e){return r.isFree?(e.type==='free'&&e.id===r.id):(e.type==='proj'&&e.projectId===r.projectId&&e.taskId===r.taskId);});
+}
+function z2MoveOut(rows){
+  rows.forEach(function(r){var i=z2EntryIdx(r);if(i>=0){var ent=S.nextOrder.splice(i,1)[0];S.nextOrder.push(ent);}});
+  lw(NK,S.nextOrder);detectAndSaveZones();lw('pb-local-dirty-ts',Date.now());
+  traceLog('X105 Z2: '+rows.length+' taskuri scoase din zonă (trec în Restul)');
+}
+function z2DeleteDB(rows){
+  var now=Date.now(),names=[];
+  rows.forEach(function(r){
+    if(r.isFree){
+      var f=S.freeTasks.find(function(x){return x.id===r.id;});if(!f)return;
+      names.push({name:f.name,pid:null});
+      jeFreeDelete(f,now);markDeleted(f.id);
+      S.freeTasks=S.freeTasks.filter(function(x){return x.id!==f.id;});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&e.id===f.id);});
+    } else {
+      var P=S.items.find(function(x){return x.id===r.projectId;});
+      var t=P&&P.tasks.find(function(x){return x.id===r.taskId;});if(!t)return;
+      names.push({name:t.name,pid:P.id});
+      je({kind:'task-delete',taskName:t.name,projectName:P.name,note:t.note||'',pid:P.id,tid:t.id,taskSnap:JSON.stringify(t),ts:now});
+      P.tasks=P.tasks.filter(function(x){return x.id!==t.id;});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='proj'&&e.taskId===t.id);});
+      S.waitOrder=S.waitOrder.filter(function(e){return !(e.type==='proj'&&e.taskId===t.id);});
+    }
+  });
+  lw(FK,S.freeTasks);lw(SK,S.items);lw(NK,S.nextOrder);lw(WK,S.waitOrder);
+  detectAndSaveZones();lw('pb-local-dirty-ts',Date.now());
+  traceLog('X105 Z2: '+names.length+' taskuri șterse din baza de date');
+  return names;
+}
+function jrEntriesFor(names){
+  var strip=function(s){return String(s||'').replace(/^\*/,'');};
+  return S.journal.filter(function(e){
+    return names.some(function(n){
+      if(strip(e.taskName)!==strip(n.name))return false;
+      if(!n.pid)return (e.kind==='free-task-create'||e.kind==='free-task-delete'||(e.kind==='task-move'&&!e.projectId));
+      return (e.projectId===n.pid||e.pid===n.pid)&&(e.kind==='task-create'||e.kind==='task-move'||e.kind==='task-delete');
+    });
+  });
+}
+function purgeJournalEntries(list){
+  var set={};list.forEach(function(e){set[jrKey(e)]=1;});
+  jrDelMark(Object.keys(set));
+  S.journal=S.journal.filter(function(e){return !set[jrKey(e)];});
+  lw(JK,S.journal);lw('pb-local-dirty-ts',Date.now());
+  traceLog('X105 jurnal: '+list.length+' intrări șterse (cu marcaje de ștergere)');
+  if(fbUser&&fbDb)fbPushJournalNow();
+}
+function openZ2AfterExportDialog(){
+  var rows=z2Rows();if(!rows.length)return;
+  var m=mkModal('🟡 Z2-utile exportat — ce faci cu cele '+rows.length+' taskuri?','#EAB308',10003);
+  mmText(m.card,'Exportul e salvat în Descărcări. Alege cât vrei să ștergi:','#9CA3AF');
+  mmBtn(m.card,'Doar de pe ecran: ies din Z2 și trec în Restul (nu se șterge nimic)','#2D3048','#FDE68A',function(){
+    m.close();z2MoveOut(rows);fbToast('🟡 '+rows.length+' taskuri scoase din Z2 (acum în Restul)','#0F2A1A','#10B981',3500);render();
+  });
+  mmBtn(m.card,'Și din baza de date: se șterg taskurile; jurnalul păstrează urma (↩ Refă)','#7F1D1D','#FCA5A5',function(){
+    m.close();z2DeleteDB(rows);fbToast('🗑 '+rows.length+' taskuri șterse din Z2 (↩ Refă în Jurnal)','#0F2A1A','#10B981',4000);render();
+  });
+  mmBtn(m.card,'Și din jurnal: se șterg și intrările lor din jurnal (ireversibil)','#450A0A','#FCA5A5',function(){
+    m.close();
+    var names=z2DeleteDB(rows);render();
+    var ents=jrEntriesFor(names);
+    var c=mkModal('🗑 Ștergi și din jurnal?','#EF4444',10003);
+    mmText(c.card,'Taskurile au fost șterse. Mai sunt '+ents.length+' intrări de jurnal despre ele (creări, mutări, ștergeri, cu notele păstrate acolo). Se șterg definitiv, inclusiv de pe celelalte device-uri la sincronizare, și nu mai poți folosi ↩ Refă.','#CBD5E1');
+    mmBtn(c.card,'🗑 Da, șterge '+ents.length+' intrări','#7F1D1D','#FCA5A5',function(){c.close();purgeJournalEntries(ents);fbToast('🗑 '+ents.length+' intrări de jurnal șterse','#0F2A1A','#10B981',3500);});
+    mmBtn(c.card,'Nu, las jurnalul','#374151','#E2E8F0',c.close);
+  });
+  mmBtn(m.card,'Nu șterg nimic','#374151','#E2E8F0',m.close);
+}
+function exportUtileTxt(){
+  var txt=buildUtileText(),d=new Date(),p=function(n){return String(n).padStart(2,'0');};
+  var name='kanban-utile-'+String(d.getFullYear()).slice(2)+p(d.getMonth()+1)+p(d.getDate())+'.txt';
+  dlBlob(txt,name,'text/plain',true);
+  fbToast('📚 '+name+' ('+Math.round(txt.length/1024)+' KB) — în Descărcări','#0F2A1A','#10B981',5000);
+  setTimeout(openZ2AfterExportDialog,900);
 }
 
 function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();promoSweep();var _t1=performance.now();
@@ -10401,7 +10550,7 @@ window.addEventListener('beforeunload',function(){
   // Auto-push la închidere dacă există modificări nesincronizate
   var dirtyTs=ls('pb-local-dirty-ts')||0;
   var lastPushTs=ls('pb-last-push-ts')||0;
-  if(dirtyTs>lastPushTs && dirtyTs>0 && fbUser && fbDb && fbIsRealData(S.items,S.freeTasks)){
+  if(dirtyTs>lastPushTs && dirtyTs>0 && fbUser && fbDb && !_shareLaunch && fbIsRealData(S.items,S.freeTasks)){
     fbPush(); // fire-and-forget — nu garantat pe Android dar funcționează în majoritatea cazurilor
   }
 });
@@ -10658,7 +10807,7 @@ function addToShare(taskText){
   // share-receive → NUMAI în shareJournal, NU în jurnalul principal
   S.shareJournal.push({ts:st.ts,kind:'share-receive',text:st.name});
   lw(SHJK,S.shareJournal);
-  S.shareTasks=[st,...S.shareTasks];
+  S.shareTasks=[st,...S.shareTasks];traceLog('X106 Share adăugat ('+String(st.name).slice(0,30).replace(/\n/g,' ')+') total='+S.shareTasks.length+(_shareLaunch?' [pornire din Share]':''));
   lw(SHK,S.shareTasks);
   // R17/Sy1 (V155): FĂRĂ asta, un item primit prin Share nu era niciodată detectat ca
   // „modificare locală nesincronizată" — la următorul auto-sync (lansare sau ☁ manual, dacă
@@ -10675,6 +10824,7 @@ function handleIncomingShare(){
   var sharedUrl=url.searchParams.get('addurl')||'';
 
   if(!text&&!title&&!sharedUrl) return; // nimic de procesat
+  traceLog('X106 Share primit: text='+text.length+' titlu='+title.length+' url='+(sharedUrl?1:0));
 
   history.replaceState({},'',window.location.pathname);
 
@@ -10737,7 +10887,8 @@ render();
 registerSW();
 // Fetch calendar după render (async, nu blochează UI)
 calCheckAndFetch();
-// Sortare implicită la lansare — după ce render-ul s-a stabilizat
+// Sortare implicită la lansare — după ce render-ul s-a stabilizat (nu la pornirea din Share)
+if(!_shareLaunch)
 setTimeout(function(){
   applyWeekdaysToAll();
   checkPendingFinalizari(); // K-pending: reafișează FINALIZARE chiar dacă rândul sursă a fost șters
