@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V183</title>
+<title>Project Board V184</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -2943,6 +2943,20 @@ function checkSlashW(name, taskId, projectId){
 function delFree(id){
   const f=S.freeTasks.find(x=>x.id===id);
   const isCalEv=id&&id.startsWith('cal::');
+  if(f&&f.tsrc){ // X121A: copie de termen din Prioritare — bifarea ei închide și taskul-sursă din Termene
+    var _s=f.tsrc;
+    markDeleted(id);
+    S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
+    S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    traceLog('X121 copie termen bifata: '+(f.name||'').slice(0,25));
+    if(_s.free&&S.freeTasks.some(x=>x.id===_s.id)){fbToast('✓ Bifat și în Termene','#0F2A1A','#10B981',2200);delFree(_s.id);return;}
+    if(!_s.free){
+      var _pp=S.items.find(x=>x.id===_s.projectId),_tt=_pp&&_pp.tasks.find(t=>t.id===_s.taskId);
+      if(_tt&&_tt.status==='next'){fbToast('✓ Terminat și în proiect','#0F2A1A','#10B981',2200);markDone(_s.projectId,_s.taskId,'next');return;}
+    }
+    lw('pb-local-dirty-ts',Date.now());render();return;
+  }
   if(f){
     if(isCalEv) je({kind:'cal-event-check',taskName:f.name,ts:Date.now()});
     else jeFreeDelete(f,Date.now());
@@ -2951,6 +2965,7 @@ function delFree(id){
   S.freeTasks=S.freeTasks.filter(x=>x.id!==id);
   S.nextOrder=S.nextOrder.filter(x=>!(x.type==='free'&&x.id===id));
   lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+  if(isCalEv&&f)calTickToPrioritare(f); // X121B
   lw('pb-local-dirty-ts',Date.now()); // C1: marchează dirty — sync automat propagă bifarea pe celelalte dispozitive
   render();
 }
@@ -3026,12 +3041,12 @@ function doSearchNextOnly(q){
       if(t.status!=='next') return;
       var taskMatch=t.name.toLowerCase().indexOf(q)>=0;
       var noteMatch=!!(t.note&&t.note.toLowerCase().indexOf(q)>=0)||subHit(t,q);
-      if(taskMatch||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,hasNote:noteMatch});
+      if(taskMatch||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,hasNote:noteMatch,subs:subHitList(t,q)});
     });
   });
   S.freeTasks.forEach(function(f){
     var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();
-    if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fn',name:f.name||'',id:f.id});
+    if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fn',name:f.name||'',id:f.id,subs:subHitList(f,q)});
   });
   traceLog('F1 doSearchNextOnly: q="'+q+'" results='+res.length);
   if(res.some(function(r){return r.k==='sh';}))S.shareLimit=999999;S.sr=searchSort(res);render();
@@ -3053,13 +3068,13 @@ function doSearch(){
       var taskMatch=t.name.toLowerCase().indexOf(q)>=0;
       var noteMatch=!!(t.note&&t.note.toLowerCase().indexOf(q)>=0)||subHit(t,q);
       var includeByProj=projMatch&&(t.status==='next'||t.status==='wait');
-      if(taskMatch||includeByProj||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,byProj:!taskMatch&&!noteMatch,hasNote:noteMatch});
+      if(taskMatch||includeByProj||noteMatch) res.push({k:'task',tn:t.name,pn:item.name,projectId:item.id,taskId:t.id,st:t.status,byProj:!taskMatch&&!noteMatch,hasNote:noteMatch,subs:subHitList(t,q)});
     });
   });
   // Free tasks din Next — cu id pentru navigare și editare
-  S.freeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fn',name:f.name||'',id:f.id});});
+  S.freeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fn',name:f.name||'',id:f.id,subs:subHitList(f,q)});});
   // Free tasks din Wait — cu id
-  S.waitFreeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fw',name:f.name||'',id:f.id});});
+  S.waitFreeTasks.forEach(function(f){var fn=(f.name||'').toLowerCase();var fnote=(f.note||'').toLowerCase();if(fn.indexOf(q)>=0||fnote.indexOf(q)>=0||subHit(f,q)) res.push({k:'fw',name:f.name||'',id:f.id,subs:subHitList(f,q)});});
   S.shareTasks.forEach(function(f){if(((f.name||'').toLowerCase()).indexOf(q)>=0) res.push({k:'sh',name:f.name||'',id:f.id});});
   // Jurnal principal
   S.journal.forEach(function(e){
@@ -4198,12 +4213,15 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
         hd.removeEventListener('touchmove',onMove);hd.removeEventListener('touchend',onEnd);hd.removeEventListener('touchcancel',onCancel);
         hg();clearMark();srcRow.style.opacity='';
         if(!apply||!tgt)return;
-        var arr=subtasksArr,e2=_subBlk(arr,idx),tobj=arr[tgt.idx];
-        var blk=arr.splice(idx,e2-idx),ti=arr.indexOf(tobj),ins,nd;
+        var arr=subtasksArr,srcObj=arr[idx],tobj=arr[tgt.idx];
+        if(srcObj.depth===0||tobj.depth===0)subFreezeOrder(arr);
+        var i0=arr.indexOf(srcObj),e2=_subBlk(arr,i0);
+        var blk=arr.splice(i0,e2-i0),ti=arr.indexOf(tobj),ins,nd;
         if(tgt.where==='before'){ins=ti;nd=tobj.depth||0;}
         else if(tgt.where==='after'){ins=_subBlk(arr,ti);nd=tobj.depth||0;}
         else{ins=_subBlk(arr,ti);nd=(tobj.depth||0)+1;}
         _subPut(arr,blk,ins,nd);
+        if(blk[0].depth===0&&!blk[0].done)blk[0].mo=1;
         persistFn();renderList();
       }
       function onEnd(ev){ev.preventDefault();finish(true);}
@@ -4220,6 +4238,7 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
   }
   function renderList(){
     listWrap.innerHTML='';
+    var _urlsL=subLinkList(subtasksArr);
     try{if(typeof bCntUpd==='function')bCntUpd();}catch(_){}
     try{if(typeof lkBox!=='undefined'&&lkBox)lkBox.update(subtasksArr.map(function(s){return (s.text||'')+'\n'+(s.note||'');}).join('\n'));}catch(_){}
     if(!subtasksArr.length){
@@ -4239,6 +4258,8 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
       cb.addEventListener('touchend',doToggleDone,{passive:false});
       var txt=document.createElement('div');
       txt.textContent=(st.xn?'X'+st.xn+' ':'')+st.text;
+      var _lkm=subLinkMarks(st,_urlsL);
+      if(_lkm){var _lks=document.createElement('span');_lks.textContent='  '+_lkm;_lks.style.cssText='color:#F59E0B;font-weight:700;white-space:nowrap';txt.appendChild(_lks);}
       txt.style.cssText='flex:1;font-size:12px;color:'+(st.done?'#6B7280':subColor(st.text))+';text-decoration:'+(st.done?'line-through':'none')+';word-break:break-word;white-space:pre-wrap;cursor:text;min-width:0;padding-top:2px';
       function doEditText(){
         var inp=document.createElement('input');
@@ -4268,12 +4289,20 @@ function showSubtasksOverlay(ownerLabel, subtasksArr, persistFn){
       var bOutdent=mini('⇤','Scoate indentarea',function(){
         if(st.depth>0){st.depth--;persistFn();renderList();}
       });
-      var bUp=mini('▲','Mută sus',function(){
-        if(idx>0){var tmp=subtasksArr[idx-1];subtasksArr[idx-1]=subtasksArr[idx];subtasksArr[idx]=tmp;persistFn();renderList();}
-      });
-      var bDown=mini('▼','Mută jos',function(){
-        if(idx<subtasksArr.length-1){var tmp=subtasksArr[idx+1];subtasksArr[idx+1]=subtasksArr[idx];subtasksArr[idx]=tmp;persistFn();renderList();}
-      });
+      function moveSib(dir){
+        // V184: mută blocul (cu copii) peste frații de același nivel; la nivelul 0 lucrează pe ordinea afișată
+        if(st.depth===0&&!st.done)subFreezeOrder(subtasksArr);
+        var i0=subtasksArr.indexOf(st);if(i0<0)return;
+        var sibs=_subSibs(subtasksArr,i0);
+        if(st.depth===0&&!st.done)sibs=sibs.filter(function(j){return j===i0||!subtasksArr[j].done;});
+        var pos=sibs.indexOf(i0),np=pos+dir;
+        if(np<0||np>=sibs.length)return;
+        _subMove(subtasksArr,i0,sibs[np],dir<0?'before':'after');
+        if(st.depth===0&&!st.done)st.mo=1;
+        persistFn();renderList();
+      }
+      var bUp=mini('▲','Mută sus',function(){moveSib(-1);});
+      var bDown=mini('▼','Mută jos',function(){moveSib(1);});
       var bDel=mini('✕','Șterge',function(){subtasksArr.splice(idx,1);persistFn();renderList();},'#F87171');
       var bNote=mini('✎','Notă subtask',function(){var _ow=ownerNow();_noteSub=_ow?{oid:_ow.id,sid:st.id}:null;showNoteOverlay(st.text,st.note||'','',function(n){st.note=n;persistFn();renderList();});},(st.note&&st.note.trim())?'#F59E0B':null);
       ap(btnsWrap,bNote,bOutdent,bIndent,bUp,bDown,bDel);
@@ -5541,17 +5570,17 @@ function rBoard(){
           tnEl.style.fontSize='12px';
           tnEl.style.color=r.byProj?'#9CA3AF':'';
           var tsEl=document.createElement('div');tsEl.textContent=r.pn+(r.byProj?' (din proiect)':'');tsEl.style.cssText='font-size:10px;color:#9CA3AF';
-          td.appendChild(tnEl);td.appendChild(tsEl);row.appendChild(td);
+          td.appendChild(tnEl);td.appendChild(tsEl);srSubs(td,r);row.appendChild(td);
           var stTag=sp('',SL[r.st]||r.st);
           stTag.style.cssText='font-size:10px;padding:1px 5px;border-radius:3px;color:#fff;background:'+(SC[r.st]||'#6B7280')+';flex-shrink:0';
           row.appendChild(stTag);
           if(r.hasNote){var nm=sp('','✎');nm.style.cssText='font-size:10px;color:#F59E0B;flex-shrink:0;margin-left:2px';row.appendChild(nm);}
         } else if(r.k==='fn'){
           var bn=sp('sbg','NEXT');bn.style.cssText='background:#FFF8EC;color:#92400E';row.appendChild(bn);
-          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+          nameSpan.textContent=r.name;srSubs(nameSpan,r);row.appendChild(nameSpan);
         } else if(r.k==='fw'){
           var bw=sp('sbg','WAIT');bw.style.cssText='background:#F0F0FF;color:#3730A3';row.appendChild(bw);
-          nameSpan.textContent=r.name;row.appendChild(nameSpan);
+          nameSpan.textContent=r.name;srSubs(nameSpan,r);row.appendChild(nameSpan);
         } else if(r.k==='sh'){
           var bsh=sp('sbg','SHARE');bsh.style.cssText='background:#ECFDF5;color:#065F46';row.appendChild(bsh);
           nameSpan.textContent=r.name;row.appendChild(nameSpan);
@@ -6112,7 +6141,7 @@ function rBoard(){
       nh.style.cssText='font-size:16px;color:#4B5563;cursor:default;user-select:none;flex-shrink:0;padding:1px 3px;opacity:.5';
       nh.title='Reordonare dezactivată cât timp gruparea pe proiecte e activă';
     } else {
-      nh.style.cssText='font-size:16px;color:#CBD5E1;cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
+      nh.style.cssText='font-size:16px;color:'+(/^[wWuU][ .]/.test(row.tname||'')?'#4B5563;font-weight:800':'#CBD5E1')+';cursor:grab;touch-action:none;user-select:none;flex-shrink:0;padding:1px 3px';
       attNextHandle(nh,idx,(row.isFree?'':row.pname+' › ')+row.tname);
     }
     r.appendChild(nh);
@@ -8064,17 +8093,26 @@ function onDateAdded(isFree,pid,tid,oldN,newN){
 }
 function subOrder(arr){
   var bl=[],cur=null;
-  arr.forEach(function(s,i){if(!cur||s.depth===0){cur={done:!!s.done&&s.depth===0,idx:[],xn:s.xn||0,i:bl.length};bl.push(cur);}cur.idx.push(i);});
+  arr.forEach(function(s,i){if(!cur||s.depth===0){cur={done:!!s.done&&s.depth===0,idx:[],xn:s.xn||0,i:bl.length,mo:!!(s.mo&&s.depth===0)};bl.push(cur);}cur.idx.push(i);});
   // X32 (V171): nebifatele — întâi cele fără număr X (ordinea reală), apoi cele cu X descrescător (cel mai mare primul); bifatele jos. Doar afișare, ordinea reală din listă nu se schimbă.
-  var open=bl.filter(function(b){return !b.done;}).sort(function(a,b){
+  // V184 (X119/X120): blocurile mutate manual (mo) își păstrează poziția reală; cele noi / fără mo se afișează deasupra, după regula X32
+  var open=bl.filter(function(b){return !b.done&&!b.mo;}).sort(function(a,b){
     if(!a.xn&&!b.xn)return a.i-b.i;
     if(!a.xn)return -1;
     if(!b.xn)return 1;
     return b.xn-a.xn||a.i-b.i;
   });
+  var kept=bl.filter(function(b){return !b.done&&b.mo;}).sort(function(a,b){return a.i-b.i;});
   var out=[];
-  open.concat(bl.filter(function(b){return b.done;})).forEach(function(b){out=out.concat(b.idx);});
+  open.concat(kept).concat(bl.filter(function(b){return b.done;})).forEach(function(b){out=out.concat(b.idx);});
   return out;
+}
+// V184 (X119/X120): așază fizic lista în ordinea afișată și marchează blocurile de nivel 0 ca ordonate manual (mo) — apelată înaintea oricărei mutări a unui subtask de nivel 0
+function subFreezeOrder(arr){
+  var ord=subOrder(arr);
+  var out=ord.map(function(i){return arr[i];});
+  Array.prototype.splice.apply(arr,[0,arr.length].concat(out));
+  arr.forEach(function(s){if(s.depth===0&&!s.done)s.mo=1;});
 }
 function removeNoteLine(note,text,xn,rmNote){
   var L=(note||'').split('\n'),T=(text||'').split('\n').map(function(x){return x.trim();});
@@ -8153,6 +8191,8 @@ function execSubCmds(arr){
       if(!m)continue;
       var body=t.slice(m[0].length).trim();
       if(!body)continue;
+      var _el=arr[i];
+      if(_el.depth===0){subFreezeOrder(arr);i=arr.indexOf(_el);}
       var sibs=_subSibs(arr,i),pos=sibs.indexOf(i),cmd=m[1].toLowerCase(),np;
       if(cmd==='1')np=0;
       else if(cmd==='l')np=sibs.length-1;
@@ -8160,6 +8200,7 @@ function execSubCmds(arr){
       np=Math.max(0,Math.min(sibs.length-1,np));
       arr[i].text=body;
       if(np!==pos)_subMove(arr,i,sibs[np],np<pos?'before':'after');
+      if(_el.depth===0&&!_el.done)_el.mo=1;
       again=true;break;
     }
   }
@@ -8173,8 +8214,10 @@ function execSubCmds(arr){
     else if(!bx||!by)msg='.m/.t/.f: lipsește textul după comandă';
     else{
       X.text=bx;Y.text=by;
+      if(X.depth===0||Y.depth===0){subFreezeOrder(arr);xs=arr.indexOf(X);xe=_subBlk(arr,xs);}
       var blk=arr.splice(xs,xe-xs),yi=arr.indexOf(Y);
       _subPut(arr,blk,_subBlk(arr,yi),(Y.depth||0)+(kind==='t'?1:0));
+      if(X.depth===0&&!X.done)X.mo=1;
     }
   }else if(mi.length>1||(mi.length&&ti.length>1))msg='Comenzi .m/.t/.f ambigue: trebuie exact un .m și o țintă (.t sau .f)';
   return msg;
@@ -10449,7 +10492,181 @@ function exportUtileTxt(){
   setTimeout(openZ2AfterExportDialog,900);
 }
 
-function render(){var _t0=performance.now();syncWaitCopies();scanPushCmd();promoSweep();var _t1=performance.now();
+// ══ V184: X117 căutare cu subtaskuri, X118 asteriscuri link, X119/X120 ordine manuală (vezi subOrder / subFreezeOrder), X121 termene în Prioritare ══
+function subHitList(o,q){
+  var out=[];
+  (o&&o.subtasks||[]).forEach(function(s){
+    var t=s.text||'',n=s.note||'';
+    var th=t.toLowerCase().indexOf(q)>=0,nl=n.toLowerCase().indexOf(q);
+    if(!th&&nl<0)return;
+    var snip='';
+    if(nl>=0){var a=Math.max(0,nl-30),b=Math.min(n.length,nl+q.length+50);snip=(a>0?'…':'')+n.slice(a,b).replace(/\s+/g,' ')+(b<n.length?'…':'');}
+    out.push({text:t.split('\n')[0].slice(0,110),depth:s.depth||0,snip:snip,done:!!s.done});
+  });
+  return out;
+}
+// sub rândul taskului-tată: subtaskurile în care apare textul căutat + fragmentul din nota lor
+function srSubs(el,r){
+  if(!r||!r.subs||!r.subs.length)return;
+  var pad=function(h){return (10+Math.min(h.depth,3)*8)+'px';};
+  r.subs.slice(0,10).forEach(function(h){
+    var d=document.createElement('div');
+    d.style.cssText='font-size:11px;font-weight:400;line-height:1.4;margin-top:3px;padding-left:'+pad(h)+';color:#A5B4FC;word-break:break-word'+(h.done?';text-decoration:line-through;opacity:.7':'');
+    d.textContent='↳ '+h.text;
+    el.appendChild(d);
+    if(h.snip){
+      var n=document.createElement('div');
+      n.style.cssText='font-size:10px;font-weight:400;line-height:1.4;padding-left:calc('+pad(h)+' + 12px);color:#FCD34D;word-break:break-word';
+      n.textContent='✎ '+h.snip;
+      el.appendChild(n);
+    }
+  });
+  if(r.subs.length>10){
+    var m=document.createElement('div');
+    m.style.cssText='font-size:10px;color:#6B7280;padding-left:10px;margin-top:2px';
+    m.textContent='… încă '+(r.subs.length-10)+' subtaskuri';
+    el.appendChild(m);
+  }
+}
+// X118: aceeași numerotare ca în fereastra de linkuri (ordinea apariției în text+notă, fără dubluri)
+function subLinkList(arr){
+  var seen={},out=[];
+  (arr||[]).forEach(function(s){
+    ((s.text||'')+'\n'+(s.note||'')).replace(/https?:\/\/[^\s]+/g,function(u){if(!seen[u]){seen[u]=1;out.push(u);}return u;});
+  });
+  return out;
+}
+function subLinkMarks(st,urls){
+  var found=(st.note||'').match(/https?:\/\/[^\s]+/g)||[],idx=[];
+  found.forEach(function(u){var i=urls.indexOf(u);if(i>=0&&idx.indexOf(i)<0)idx.push(i);});
+  idx.sort(function(a,b){return a-b;});
+  return idx.map(function(i){return '★'.repeat(i+1);}).join(',');
+}
+// X121: punctele din date devin spații (12.3.2026 → 12 3 2026; 21.mai → 21 mai), ca textul să nu mai fie recunoscut ca termen
+function termDotsToSpaces(s){
+  s=String(s||'');
+  s=s.replace(/(^|[^\w.])(\d{1,2})\.(\d{1,2})(\.20\d{2})?(?!\d)/g,function(m,pre,d,mo,yr){
+    if(+d<1||+d>31||+mo<1||+mo>12)return m;
+    return pre+d+' '+mo+(yr?' '+yr.slice(1):'');
+  });
+  s=s.replace(/(^|[^\w.])(\d{1,2})\.(ian|feb|mar|apr|mai|iun|iul|aug|sep|oct|noi|nov|dec|jan|jun|jul)/gi,function(m,pre,d,mo){
+    if(+d<1||+d>31)return m;
+    return pre+d+' '+mo;
+  });
+  return s;
+}
+// X121A: taskurile din Termene (zona roșie, doar din Kanban) primesc o copie în fruntea Prioritare cu TERM_AHEAD zile înainte de termen.
+// Copia are id determinist 'tc::<idSursă>' (același pe toate device-urile) și câmpul tsrc; bifarea copiei închide și sursa (delFree).
+var TERM_AHEAD=4,TERM_PAST=3;
+function syncTermCopies(){
+  try{
+    var today=new Date();today.setHours(0,0,0,0);
+    var del={};try{del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');}catch(_){}
+    var waitIds={};S.waitFreeTasks.forEach(function(w){waitIds[w.id]=1;});
+    function dayDiff(name){
+      var d=extractDateFromRow({tname:name,isFree:true,id:''});
+      if(!d)return null;
+      d=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+      return Math.round((d-today)/86400000);
+    }
+    var srcs={};
+    S.freeTasks.forEach(function(f){
+      var id=f.id||'';
+      if(f._deleted||f.tsrc||id.indexOf('cal::')===0||id.indexOf('wl::')===0||id.indexOf('tc::')===0)return;
+      var nm=f.name||'';
+      if(!nm.trim()||/^\*[123]/.test(nm))return;
+      srcs['tc::'+id]={src:{free:true,id:id},label:termDotsToSpaces(nm.split('\n')[0]),days:dayDiff(nm),red:f.zone==='red'};
+    });
+    S.items.forEach(function(p){
+      if(p.type!=='project')return;
+      (p.tasks||[]).forEach(function(t){
+        if(t.status!=='next')return;
+        var nm=(t.name||'').replace(/^\*\s*/,'');
+        if(!nm.trim())return;
+        srcs['tc::'+t.id]={src:{projectId:p.id,taskId:t.id},label:termDotsToSpaces(p.name+' › '+nm.split('\n')[0]),days:dayDiff(nm),red:t.zone==='red'};
+      });
+    });
+    var changed=false,rm={},have={};
+    S.freeTasks.forEach(function(c){
+      if(!c.tsrc)return;
+      var s=srcs[c.id];
+      if(!s||s.days===null||s.days>TERM_AHEAD){rm[c.id]=1;changed=true;return;}
+      have[c.id]=1;
+      if(c.name===c.tsyn&&s.label!==c.tsyn){c.name=s.label;c.tsyn=s.label;c.modifiedTs=Date.now();changed=true;}
+    });
+    if(changed&&Object.keys(rm).length){
+      S.freeTasks=S.freeTasks.filter(function(f){return !rm[f.id];});
+      S.nextOrder=S.nextOrder.filter(function(e){return !(e.type==='free'&&rm[e.id]);});
+      traceLog('X121 copii de termen scoase: '+Object.keys(rm).length);
+    }
+    var add=[];
+    Object.keys(srcs).forEach(function(cid){
+      var s=srcs[cid];
+      if(!s.red||s.days===null||s.days>TERM_AHEAD||s.days<-TERM_PAST)return;
+      if(have[cid]||waitIds[cid]||del[cid])return;
+      add.push({cid:cid,s:s});
+    });
+    if(add.length){
+      add.sort(function(a,b){return b.s.days-a.s.days;}); // cel mai apropiat termen ajunge primul în față
+      add.slice(0,30).forEach(function(x,i){
+        var now=Date.now()+i;
+        S.freeTasks.push({id:x.cid,name:x.s.label,ts:now,modifiedTs:now,tsrc:x.s.src,tsyn:x.s.label});
+        S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:x.cid}]);
+      });
+      traceLog('X121 copii de termen create în Prioritare: '+Math.min(add.length,30));
+      changed=true;
+    }
+    if(changed){
+      lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+      detectAndSaveZones();
+      lw('pb-local-dirty-ts',Date.now());
+    }
+  }catch(e){traceLog('X121 syncTermCopies eroare: '+(e.message||e));}
+}
+// X121B: evenimentul din calendar bifat apare și ca task în Prioritare (fără puncte în dată, ca să nu ajungă în Termene)
+function calTickToPrioritare(f){
+  try{
+    var n=(f.name||'').replace(/^↺\s*/,'');
+    var ong=/^\[ongoing/i.test(n);
+    n=n.replace(/^\[[^\]]*\]\s*/,'').trim();
+    if(!n)return;
+    var dm='';
+    if(!ong&&f.calStart){var d=new Date(f.calStart);if(!isNaN(d.getTime()))dm=d.getDate()+' '+(d.getMonth()+1);}
+    if(dm){
+      if(/^\((?:lun|mar|mie|joi|vin|sam|dum)\)/i.test(n))n=n.replace(/^(\((?:lun|mar|mie|joi|vin|sam|dum)\))\s*/i,'$1 '+dm+' ');
+      else n=dm+' '+n;
+    }
+    n=termDotsToSpaces(n);
+    var now=Date.now(),ft={id:gid(),name:n,ts:now,modifiedTs:now};
+    je({kind:'free-task-create',taskName:n,ts:now});
+    S.freeTasks.push(ft);
+    S.nextOrder=insertInGreenZone(S.nextOrder,[{type:'free',id:ft.id}]);
+    lw(FK,S.freeTasks);lw(NK,S.nextOrder);
+    detectAndSaveZones();
+    traceLog('X121B eveniment calendar bifat -> Prioritare: '+n.slice(0,30));
+    fbToast('📅→🟢 „'+n.slice(0,36)+'” a apărut și în Prioritare','#0F2A1A','#10B981',3000);
+  }catch(e){traceLog('X121B eroare: '+(e.message||e));}
+}
+HELP_SEARCH.push(['Subtaskuri în rezultate','','Dacă textul căutat apare în subtaskuri sau în notele lor, sub taskul-tată se arată ↳ subtaskul și ✎ fragmentul din notă.']);
+HELP_SUB_TXT+=`
+  Linkuri din notă (V184)
+    sub titlu, fereastra de linkuri are ★, ★★ …; dacă linkul e în nota
+    unui subtask, la sfârșitul textului lui apare numărul (ex. ★★,★★★)
+  Ordine manuală (V184)
+    .1  .l  .+n  .-n  .m/.f/.t  ▲ ▼ și tragerea cu ⠿ merg și pe
+    subtaskurile cu număr X: după prima mutare lista rămâne în ordinea
+    ta; subtaskurile noi apar deasupra`;
+HELP_NEXT_TXT+=`
+TERMENE ÎN PRIORITARE (V184)
+  Taskurile din Termene primesc, cu 4 zile înainte de termen (sau
+  când termenul a trecut de cel mult 3 zile), o copie în fruntea
+  Prioritare, cu data scrisă cu spații (14 5, nu 14.5). Bifarea
+  copiei bifează și taskul din Termene; dacă bifezi originalul,
+  copia dispare. Dacă muți copia în Wait sau o faci proiect,
+  nu mai e recreată.
+  Evenimentele din Calendar: când le bifezi (✓), apar și ca task
+  în Prioritare.`;
+function render(){var _t0=performance.now();syncWaitCopies();syncTermCopies();scanPushCmd();promoSweep();var _t1=performance.now();
   const app=document.getElementById('app');app.innerHTML='';
   app.appendChild(
     S.view==='journal'?rJournal():
