@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#1A1D2E"/>
-<title>Project Board V184</title>
+<title>Project Board V185</title>
 <meta property="og:title" content="Project Board"/>
 <meta property="og:description" content="Kanban board pentru managementul proiectelor"/>
 <meta property="og:image" content="https://xpareto.github.io/Kanban/icon-512.png"/>
@@ -501,7 +501,7 @@ async function _doActualPush(light){try{stampSubs();stampStatus();}catch(_){}
     }
     await Promise.all(_wr);
     noteBaseSave(); // X61: local == cloud acum
-    if(_needJ){try{localStorage.setItem('pb-jr-pushed-ts',String(Date.now()));localStorage.setItem('pb-jr-pushed-sig',_jSig);}catch(_){}}
+    if(_needJ){try{lsSet('pb-jr-pushed-ts',String(Date.now()));lsSet('pb-jr-pushed-sig',_jSig);}catch(_){}}
     lw(LAST_GOOD_SIZE_KEY,dataSize(S.items,S.freeTasks)); // G1: starea acceptată acum devine noul reper „ultima stare bună"
     return {ok:true};
   }catch(e){console.warn('fbPush error:',e);return {ok:false,err:e.message||String(e)};}
@@ -712,9 +712,9 @@ function confirmSizeGuard(oldSize,newSize,actionLabel,direction,offerPullSwitch,
   });
 }
 
-// ── Backup rotativ local (ultimele 5), înainte de orice Pull ──
+// ── Backup rotativ local (ultimele 2, din V185), înainte de orice Pull ──
 var BACKUP_KEY='pb-fb-backups';
-var MAX_BACKUPS=5;
+var MAX_BACKUPS=2;
 function getFbBackups(){try{return JSON.parse(localStorage.getItem(BACKUP_KEY)||'[]');}catch(_){return [];}}
 function fbBackupLocal(){
   var entry={
@@ -726,8 +726,9 @@ function fbBackupLocal(){
   var arr=getFbBackups();
   arr.unshift(entry);
   if(arr.length>MAX_BACKUPS) arr=arr.slice(0,MAX_BACKUPS);
-  try{localStorage.setItem(BACKUP_KEY,JSON.stringify(arr));}
-  catch(_){try{localStorage.setItem(BACKUP_KEY,JSON.stringify(arr.slice(0,2)));}catch(__){}}
+  if(!lsSet(BACKUP_KEY,JSON.stringify(arr))){ // memorie plină: încearcă doar cu cel mai nou backup
+    if(!lsSet(BACKUP_KEY,JSON.stringify(arr.slice(0,1))))traceLog('V185 backup local nu a încăput în memorie');
+  }
 }
 
 // ── Pull: citește din Firestore și actualizează local ──
@@ -1242,13 +1243,18 @@ const CAL_PREF_KEY='pb-cal-pref-id';
 
 // ── TRACE system ─────────────────────────────────────────────────
 var TRACE_KEY='pb-cal-trace';
+// V185: scriere sigură în localStorage — la memorie plină întoarce false, nu aruncă eroare
+function lsSet(k,v){try{localStorage.setItem(k,v);return true;}catch(_){return false;}}
 function traceLog(msg){
   var _d=new Date();
   var ts=String(_d.getHours()).padStart(2,'0')+':'+String(_d.getMinutes()).padStart(2,'0')+':'+String(_d.getSeconds()).padStart(2,'0');
   var arr=[];try{arr=JSON.parse(localStorage.getItem(TRACE_KEY)||'[]');}catch(_){}
   arr.push(ts+' '+msg);
   if(arr.length>100)arr=arr.slice(-100);
-  localStorage.setItem(TRACE_KEY,JSON.stringify(arr));
+  if(!lsSet(TRACE_KEY,JSON.stringify(arr))){ // memorie plină: păstrează ultimele 20 de linii, iar dacă nici asta nu merge, renunță la trace
+    arr=arr.slice(-20);
+    if(!lsSet(TRACE_KEY,JSON.stringify(arr))){try{localStorage.removeItem(TRACE_KEY);}catch(_){}}
+  }
 }
 function traceClear(){localStorage.removeItem(TRACE_KEY);}
 function traceCopy(){
@@ -1300,7 +1306,7 @@ const DEF=[
 // ── State ──
 let S={items:[],journal:[],nextOrder:[],freeTasks:[],waitOrder:[],waitFreeTasks:[],shareTasks:[],shareJournal:[],mergeFlags:{},labels:['#a','#u','#c'],view:'board',editId:null,editTid:null,editWaitId:null,showAdd:null,addName:'',nt:{},nfree:'',nfreeNote:'',showFree:false,wfree:'',wfreeNote:'',showWFree:false,sq:'',sr:null,showClip:false,showSettings:false,selectMode:false,selectedNext:{},fbUser:null,nextTab:'prioritare',nextSplitView:false,svGreenGroupByProject:false};
 function ls(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null;}catch(_){return null;}}
-function lw(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}}
+function lw(k,v){try{lsSet(k,JSON.stringify(v));}catch(_){}}
 function gid(){return 'id_'+Math.random().toString(36).substr(2,9);}
 function fmt(ts){const d=new Date(ts);return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'});}
 // Demo free tasks — în ordinea optimă, includ marcatori și zone colorate
@@ -1422,11 +1428,11 @@ function calGetToken(){
   }catch(_){return null;}
 }
 function calSaveToken(access_token, expires_in, email){
-  localStorage.setItem(CAL_CK,JSON.stringify({
+  lsSet(CAL_CK,JSON.stringify({
     access_token:access_token,
     expires_at:Date.now()+parseInt(expires_in||3600)*1000
   }));
-  if(email) localStorage.setItem('pb-cal-email',email);
+  if(email) lsSet('pb-cal-email',email);
 }
 function calClearToken(){localStorage.removeItem(CAL_CK);}
 
@@ -1467,7 +1473,7 @@ function calHandleCallback(){
       if(oauthError==='interaction_required'||oauthError==='login_required'||oauthError==='account_selection_required'){
         // Necesită interacțiune manuală — nu mai reîncerca automat azi
         var todayE=calTodayStr();
-        localStorage.setItem('pb-cal-silent-tried',todayE);
+        lsSet('pb-cal-silent-tried',todayE);
         traceLog('silent blocked today: '+oauthError);
       } else {
         // Altă eroare (ex: network) — permite retry la next launch
@@ -1491,13 +1497,13 @@ function calHandleCallback(){
   // Marchează silent re-auth ca reușit pentru ziua de azi
   if(isSilent){
     var todayStr2=calTodayStr();
-    localStorage.setItem('pb-cal-silent-tried',todayStr2);
+    lsSet('pb-cal-silent-tried',todayStr2);
     traceLog('silent re-auth OK, tried='+todayStr2);
   }
   traceLog('OAuth OK'+(isSilent?' [silent]':''));
   fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token='+token)
     .then(function(r){return r.json();})
-    .then(function(d){if(d&&d.email) localStorage.setItem('pb-cal-email',d.email);})
+    .then(function(d){if(d&&d.email) lsSet('pb-cal-email',d.email);})
     .catch(function(){});
   return true;
 }
@@ -1747,7 +1753,7 @@ function showMorningModal(waitMovedItems){
   if(!todayItems.length&&!tomorrowItems.length&&!calToday.length&&!calTomorrow.length&&!waitMoved.length) return;
 
   // M1 fix: setăm cheia ACUM (după ce am confirmat că avem ce arăta)
-  localStorage.setItem(MORNING_KEY,today);
+  lsSet(MORNING_KEY,today);
   var overlay=div('morning-overlay');
   overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px';
   var box=div('morning-box');
@@ -1807,7 +1813,7 @@ var WAIT_CHECK_KEY='pb-wait-check-day';
 function checkWaitingDeadlines(){
   var today=calTodayStr();
   if(localStorage.getItem(WAIT_CHECK_KEY)===today) return;
-  localStorage.setItem(WAIT_CHECK_KEY,today);
+  lsSet(WAIT_CHECK_KEY,today);
 
   var todayD=new Date(); todayD.setHours(0,0,0,0);
   var limitD=new Date(todayD); limitD.setDate(limitD.getDate()+7);
@@ -1906,7 +1912,7 @@ var _selOrder=0; // contor ordine selecție
 var _tapTimes={}; // last tap timestamp per task.id pentru dublu-tap în Projects
 function markDeleted(id){
   try{var del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');
-  del[id]=Date.now();localStorage.setItem('pb-deleted-ids',JSON.stringify(del));}catch(_){}
+  del[id]=Date.now();lsSet('pb-deleted-ids',JSON.stringify(del));}catch(_){}
 }
 async function calCheckAndFetch(){
   if(_shareLaunch)return;
@@ -1920,7 +1926,7 @@ async function calCheckAndFetch(){
   // păstrează cele nebifate, elimină doar cele deja bifate sau reconfirmate de fetch.
   var calCleaned=localStorage.getItem('pb-cal-cleaned')||'';
   if(calCleaned!==today){
-    localStorage.setItem('pb-cal-cleaned',today);
+    lsSet('pb-cal-cleaned',today);
     // Resetează silent doar dacă nu e blocat din interaction_required
     var silentBlocked=localStorage.getItem('pb-cal-silent-tried')||'';
     if(silentBlocked!==today) localStorage.removeItem('pb-cal-silent-tried');
@@ -1954,7 +1960,7 @@ async function calCheckAndFetch(){
       // Cer explicit userului login — O SINGURA DATA pana da OK sau pana maine
       var loginAskedDay=localStorage.getItem('pb-cal-login-asked')||'';
       if(loginAskedDay!==today){
-        localStorage.setItem('pb-cal-login-asked',today);
+        lsSet('pb-cal-login-asked',today);
         traceLog('cer login explicit: prima cerere din zi');
         _calFetchInProgress=false;
         setTimeout(function(){calLogin(false);},800);
@@ -1979,7 +1985,7 @@ async function calCheckAndFetch(){
     traceLog('inject '+events.length+' ev');
     fbToast('📅 '+events.length+' ev','#0F2A1A','#10B981',4000);
     calInjectEvents(events);
-    localStorage.setItem(CAL_DK,today);
+    lsSet(CAL_DK,today);
     render();
   } catch(err){
     traceLog('catch: '+err.message);
@@ -2852,11 +2858,11 @@ function savePendingFinalizare(rec){
   var arr=getPendingFinalizari();
   var idx=arr.findIndex(function(x){return x.key===rec.key;});
   if(idx>=0) arr[idx]=rec; else arr.push(rec);
-  localStorage.setItem(PENDING_FINAL_KEY,JSON.stringify(arr));
+  lsSet(PENDING_FINAL_KEY,JSON.stringify(arr));
 }
 function removePendingFinalizare(key){
   var arr=getPendingFinalizari().filter(function(x){return x.key!==key;});
-  localStorage.setItem(PENDING_FINAL_KEY,JSON.stringify(arr));
+  lsSet(PENDING_FINAL_KEY,JSON.stringify(arr));
 }
 // Rulează la fiecare lansare a aplicației — reverifică toate intervalele pendinte,
 // chiar dacă rândul original (d1-d2) a fost șters între timp de utilizator
@@ -2879,7 +2885,7 @@ function checkPendingFinalizari(){
     if(now>expiry){traceLog('K-pending: expirat '+rec.key);return false;}
     return true;
   });
-  if(kept.length!==fresh.length) localStorage.setItem(PENDING_FINAL_KEY,JSON.stringify(kept));
+  if(kept.length!==fresh.length) lsSet(PENDING_FINAL_KEY,JSON.stringify(kept));
 }
 function checkAndCreateFinalizare(name){
   if(!name) return;
@@ -4426,7 +4432,7 @@ function drvToken(cb){
             var p=_drvPending;_drvPending=null;if(!p)return;
             if(resp&&resp.access_token){
               if(google.accounts.oauth2.hasGrantedAllScopes&&!google.accounts.oauth2.hasGrantedAllScopes(resp,DRV_SCOPE)){p(new Error('Permisiunea Drive nu a fost acordată'));return;}
-              localStorage.setItem(DRV_TK,JSON.stringify({t:resp.access_token,exp:Date.now()+parseInt(resp.expires_in||3600,10)*1000}));
+              lsSet(DRV_TK,JSON.stringify({t:resp.access_token,exp:Date.now()+parseInt(resp.expires_in||3600,10)*1000}));
               p(null,resp.access_token);
             } else p(new Error((resp&&(resp.error_description||resp.error))||'Autorizare refuzată'));
           },
@@ -4464,7 +4470,7 @@ async function drvFolder(token){
     var r2=await drvApi('https://www.googleapis.com/drive/v3/files?fields=id',token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'ProjectBoard',mimeType:'application/vnd.google-apps.folder'})});
     id=(await r2.json()).id;
   }
-  localStorage.setItem(DRV_FK,id);
+  lsSet(DRV_FK,id);
   traceLog('X27 folder Drive ProjectBoard: '+String(id).slice(-6));
   return id;
 }
@@ -4834,7 +4840,7 @@ function showNoteOverlay(taskTitle, currentNote, taskText, saveFn, draftText){
   // X37 (V172): adresa taskului + draftul se țin în memorie cât timp editorul e deschis; se șterg la ieșirea normală
   var _sessId=null;try{var _oo=_own?_own():null;if(_oo)_sessId=_oo.id;}catch(_){}
   if(_sessId)touchUse(_sessId);
-  function writeSess(){var sid2=_sessId||(_nsub&&_nsub.oid);if(sid2){try{var o2={k:_nsub?'subnote':'note',id:sid2,draft:ta.value,ts:Date.now()};if(_nsub)o2.sid=_nsub.sid;localStorage.setItem('pb-edit-session',JSON.stringify(o2));}catch(_){}}}
+  function writeSess(){var sid2=_sessId||(_nsub&&_nsub.oid);if(sid2){try{var o2={k:_nsub?'subnote':'note',id:sid2,draft:ta.value,ts:Date.now()};if(_nsub)o2.sid=_nsub.sid;lsSet('pb-edit-session',JSON.stringify(o2));}catch(_){}}}
   function clearSess(){if(_sessId||_nsub){try{localStorage.removeItem('pb-edit-session');}catch(_){}}window._noteFlush=null;}
   function closeNote(){clearSess();if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);}
   var _sessT=null;
@@ -8506,7 +8512,7 @@ function memRecord(){
     var h=JSON.parse(localStorage.getItem('pb-mem-hist')||'[]'),d=calTodayStr();
     var e={d:d,total:Math.round(st.total/1024),share:Math.round(((m['pb-share-v1']||0)+(m['pb-sharejour-v1']||0))/1024),shareN:S.shareTasks.length,bk:Math.round((m['pb-fb-backups']||0)/1024)};
     var i=h.findIndex(function(x){return x.d===d;});if(i>=0)h[i]=e;else h.push(e);
-    if(h.length>90)h=h.slice(-90);localStorage.setItem('pb-mem-hist',JSON.stringify(h));}catch(_){}
+    if(h.length>90)h=h.slice(-90);lsSet('pb-mem-hist',JSON.stringify(h));}catch(_){}
 }
 function showMemOverlay(){
   var st=memStats(),LIM=5*1024*1024,groups={};
@@ -8534,9 +8540,9 @@ function showMemOverlay(){
 }
 var _tunsSkip={};
 var NEWK='pb-new-ids';
-function newIdsGet(){try{var o=JSON.parse(localStorage.getItem(NEWK)||'{}'),n=Date.now(),c=false;Object.keys(o).forEach(function(k){if(n-o[k]>259200000){delete o[k];c=true;}});if(c)localStorage.setItem(NEWK,JSON.stringify(o));return o;}catch(_){return {};}}
-function newIdsAdd(ids){var o=newIdsGet();ids.forEach(function(i){o[i]=Date.now();});try{localStorage.setItem(NEWK,JSON.stringify(o));}catch(_){}}
-function newIdsDel(id){var o=newIdsGet();delete o[id];try{localStorage.setItem(NEWK,JSON.stringify(o));}catch(_){}}
+function newIdsGet(){try{var o=JSON.parse(localStorage.getItem(NEWK)||'{}'),n=Date.now(),c=false;Object.keys(o).forEach(function(k){if(n-o[k]>259200000){delete o[k];c=true;}});if(c)lsSet(NEWK,JSON.stringify(o));return o;}catch(_){return {};}}
+function newIdsAdd(ids){var o=newIdsGet();ids.forEach(function(i){o[i]=Date.now();});try{lsSet(NEWK,JSON.stringify(o));}catch(_){}}
+function newIdsDel(id){var o=newIdsGet();delete o[id];try{lsSet(NEWK,JSON.stringify(o));}catch(_){}}
 function tunsPlace(order,newE,ftArr){
   _tunsSkip={};
   var ne=(newE||[]).filter(function(e){if(e.type==='free'){var f=(ftArr||[]).find(function(x){return x.id===e.id;});return f&&!f._deleted&&f.name&&!/^\*[123]/.test(f.name)&&(f.id||'').indexOf('cal::')!==0;}return true;});
@@ -8587,19 +8593,19 @@ function shareDelGet(){try{return JSON.parse(localStorage.getItem(SHD_KEY)||'{}'
 function markShareDeleted(ids){
   var m=shareDelGet(),n=Date.now();
   (Array.isArray(ids)?ids:[ids]).forEach(function(i){if(i)m[i]=n;});
-  try{localStorage.setItem(SHD_KEY,JSON.stringify(m));}catch(_){}
+  try{lsSet(SHD_KEY,JSON.stringify(m));}catch(_){}
 }
 function shareDelImport(remote){
   if(!remote)return;
   var m=shareDelGet(),ch=false;
   Object.keys(remote).forEach(function(k){if(!m[k]){m[k]=remote[k];ch=true;}});
-  if(ch){try{localStorage.setItem(SHD_KEY,JSON.stringify(m));}catch(_){}}
+  if(ch){try{lsSet(SHD_KEY,JSON.stringify(m));}catch(_){}}
 }
 function importRemoteTombstones(arr){
   var del;try{del=JSON.parse(localStorage.getItem('pb-deleted-ids')||'{}');}catch(_){del={};}
   var ch=false;
   (arr||[]).forEach(function(x){if(x&&x._deleted&&x.id&&!del[x.id]){del[x.id]=x.modifiedTs||Date.now();ch=true;}});
-  if(ch){try{localStorage.setItem('pb-deleted-ids',JSON.stringify(del));}catch(_){}}
+  if(ch){try{lsSet('pb-deleted-ids',JSON.stringify(del));}catch(_){}}
 }
 function pruneTombstones(){
   var lim=Date.now()-90*86400000;
@@ -8607,7 +8613,7 @@ function pruneTombstones(){
     try{
       var m=JSON.parse(localStorage.getItem(k)||'{}'),n=0;
       Object.keys(m).forEach(function(i){if(m[i]<lim){delete m[i];n++;}});
-      if(n){localStorage.setItem(k,JSON.stringify(m));traceLog('V172 tombstones >90 zile eliminate din '+k+': '+n);}
+      if(n){lsSet(k,JSON.stringify(m));traceLog('V172 tombstones >90 zile eliminate din '+k+': '+n);}
     }catch(_){}
   });
 }
@@ -8800,7 +8806,7 @@ function openDuplicatesDialog(){
 function dupToastAfterMerge(){
   try{
     var n=findDuplicateGroups().length,seen=parseInt(localStorage.getItem('pb-dup-seen')||'0',10);
-    localStorage.setItem('pb-dup-seen',String(n));
+    lsSet('pb-dup-seen',String(n));
     if(n>seen)fbToast('🔍 '+n+' grupuri de posibile dubluri — Settings → Caută dubluri','#1E2130','#F59E0B',5000);
   }catch(_){}
 }
@@ -9092,7 +9098,7 @@ function noteBaseSave(){
   function add(o){if(o&&o.id&&o.note&&o.note.trim())m[o.id]=nhash(o.note.trim());}
   S.freeTasks.forEach(add);S.waitFreeTasks.forEach(add);
   S.items.forEach(function(p){(p.tasks||[]).forEach(add);});
-  try{localStorage.setItem('pb-note-base',JSON.stringify(m));}catch(_){}
+  try{lsSet('pb-note-base',JSON.stringify(m));}catch(_){}
 }
 // X66 (V176): inversa promovării — subtaskurile promovate selectate dispar din Prioritare/Zona 2/3 și rămân subtaskuri ale tatălui; tatăl revine în NEXT dacă nu mai are altele promovate
 function restoreParentToNext(o){
@@ -9221,12 +9227,12 @@ function touchUse(id){
   var m=useMap(),e=m[id]||(m[id]={c:0,l:0});
   e.c++;e.l=Date.now();
   clearTimeout(_useT);
-  _useT=setTimeout(function(){try{localStorage.setItem(USE_KEY,JSON.stringify(m));}catch(_){}},600);
+  _useT=setTimeout(function(){try{lsSet(USE_KEY,JSON.stringify(m));}catch(_){}},600);
 }
 function pruneUsage(){
   var m=useMap(),lim=Date.now()-90*86400000,n=0;
   Object.keys(m).forEach(function(i){if(m[i].l<lim){delete m[i];n++;}});
-  if(n){try{localStorage.setItem(USE_KEY,JSON.stringify(m));}catch(_){}traceLog('X70 utilizări >90 zile eliminate: '+n);}
+  if(n){try{lsSet(USE_KEY,JSON.stringify(m));}catch(_){}traceLog('X70 utilizări >90 zile eliminate: '+n);}
 }
 function journalRestorable(e){
   if(!e)return false;var k=e.kind;
@@ -9814,7 +9820,7 @@ FIREBASE SYNC (cloud Firestore)
   Deconectare
     te scoate din cont, nu șterge date
 
-BACKUP-URI LOCALE (n/5)
+BACKUP-URI LOCALE (n/2)
   Ce sunt
     copii ale stării locale: proiecte, taskuri libere, Wait,
     ordine, etichete (fără Share și jurnale)
@@ -9822,7 +9828,7 @@ BACKUP-URI LOCALE (n/5)
     automat, înainte de fiecare Pull: manual, la pornire, la
     revenirea în aplicație, la sincronizare
   Câte
-    ultimele 5, cele mai noi primele; cu Pull-uri dese cele bune
+    ultimele 2, cele mai noi primele; cu Pull-uri dese cele bune
     se pierd repede
   Unde stau
     în memoria browserului; dispar dacă Android curăță datele
@@ -10172,7 +10178,7 @@ FIREBASE SYNC (cloud Firestore)
   Deconectare
     te scoate din cont, nu șterge date
 
-BACKUP-URI LOCALE (n/5)
+BACKUP-URI LOCALE (n/2)
   Ce sunt
     copii ale stării locale: proiecte, taskuri libere, Wait,
     ordine, etichete (fără Share și jurnale)
@@ -10180,7 +10186,7 @@ BACKUP-URI LOCALE (n/5)
     automat, înainte de fiecare Pull: manual, la pornire, la
     revenirea în aplicație, la sincronizare
   Câte
-    ultimele 5, cele mai noi primele; cu Pull-uri dese cele bune
+    ultimele 2, cele mai noi primele; cu Pull-uri dese cele bune
     se pierd repede
   Unde stau
     în memoria browserului; dispar dacă Android curăță datele
@@ -10205,7 +10211,7 @@ function uiSave(){
       sy:window.scrollY||document.documentElement.scrollTop||0,sq:S.sq||'',sr:S.sr!==null,
       ov:_uiReg.map(function(e){return Object.assign({k:e.k},e.x||{});}),
       fab:(window._fabState?window._fabState():null)};
-    localStorage.setItem('pb-ui-state',JSON.stringify(st));
+    lsSet('pb-ui-state',JSON.stringify(st));
   }catch(_){}
 }
 function uiRestore(){
@@ -10400,12 +10406,12 @@ SALT ÎN LISTĂ
 var JRD_KEY='pb-jr-deleted';
 function jrKey(e){return e.ts+'|'+(e.kind||'');}
 function jrDelGet(){try{return JSON.parse(localStorage.getItem(JRD_KEY)||'{}');}catch(_){return {};}}
-function jrDelMark(keys){var m=jrDelGet(),n=Date.now();keys.forEach(function(k){m[k]=n;});try{localStorage.setItem(JRD_KEY,JSON.stringify(m));}catch(_){}}
+function jrDelMark(keys){var m=jrDelGet(),n=Date.now();keys.forEach(function(k){m[k]=n;});try{lsSet(JRD_KEY,JSON.stringify(m));}catch(_){}}
 function jrDelImport(remote){
   if(!remote)return;
   var m=jrDelGet(),ch=false;
   Object.keys(remote).forEach(function(k){if(!m[k]){m[k]=remote[k];ch=true;}});
-  if(ch){try{localStorage.setItem(JRD_KEY,JSON.stringify(m));}catch(_){}}
+  if(ch){try{lsSet(JRD_KEY,JSON.stringify(m));}catch(_){}}
 }
 async function fbPushJournalNow(){
   if(!fbDb||!fbUser)return {ok:false,err:'neconectat'};
@@ -10680,7 +10686,8 @@ function render(){var _t0=performance.now();syncWaitCopies();syncTermCopies();sc
 }
 
 var _ti=performance.now();init();traceLog('V1 init '+Math.round(performance.now()-_ti)+'ms free='+S.freeTasks.length+' share='+S.shareTasks.length+' ls='+Math.round(JSON.stringify(localStorage).length/1024)+'KB');
-(function(){var b=getFbBackups();if(b.some(function(x){return x.shareTasks;})){b.forEach(function(x){delete x.shareTasks;});try{localStorage.setItem(BACKUP_KEY,JSON.stringify(b));traceLog('V1 backup-uri slim: fara Share');}catch(_){}}})();
+(function(){var b0=getFbBackups();if(b0.length>MAX_BACKUPS){lsSet(BACKUP_KEY,JSON.stringify(b0.slice(0,MAX_BACKUPS)));traceLog('V185 backup-uri taiate la '+MAX_BACKUPS+' (erau '+b0.length+')');}})();
+(function(){var b=getFbBackups();if(b.some(function(x){return x.shareTasks;})){b.forEach(function(x){delete x.shareTasks;});try{lsSet(BACKUP_KEY,JSON.stringify(b));traceLog('V1 backup-uri slim: fara Share');}catch(_){}}})();
 pruneTombstones();pruneUsage();
 memRecord();
 (function(){var a=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);a.push([k,Math.round((localStorage.getItem(k)||'').length/1024)]);}a.sort(function(x,y){return y[1]-x[1];});traceLog('V1 ls top: '+a.slice(0,8).map(function(x){return x[0]+'='+x[1]+'KB';}).join(' '));})();
@@ -10848,7 +10855,7 @@ function doMerge(){
   // 2. Append la log intern + shareJournal
   var existing=localStorage.getItem(CK)||'';
   var newLog=existing+(existing?'\n':'')+result;
-  localStorage.setItem(CK,newLog);
+  lsSet(CK,newLog);
   // Jurnal Share — kind:'share-merge'
   S.shareJournal.push({ts:Date.now(),kind:'share-merge',text:result});
   lw(SHJK,S.shareJournal);
